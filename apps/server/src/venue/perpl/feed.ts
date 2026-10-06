@@ -98,9 +98,10 @@ export class PerplFeed implements MarketFeed {
     const out: Candle[] = [];
     for (let from = Math.floor(fromMs / MINUTE) * MINUTE; from < toMs; from += MAX_CANDLES * MINUTE) {
       const to = Math.min(toMs, from + (MAX_CANDLES - 1) * MINUTE);
-      const res = (await getJson(`${this.cfg.apiUrl}/v1/market-data/${m.id}/candles/60/${from}-${to}`)) as { d?: { t: number; o: number; h: number; l: number; c: number }[] };
+      const res = (await getJson(`${this.cfg.apiUrl}/v1/market-data/${m.id}/candles/60/${from}-${to}`)) as { d?: { t: number; o: number; h: number; l: number; c: number; v?: string }[] };
       for (const k of res.d ?? []) {
-        if (k.t >= fromMs && k.t < toMs) out.push({ t: k.t, o: k.o / m.px, h: k.h / m.px, l: k.l / m.px, c: k.c / m.px });
+        // `v` is the sum of wire price x wire size (checked against single-trade candles), so it scales by px * sz.
+        if (k.t >= fromMs && k.t < toMs) out.push({ t: k.t, o: k.o / m.px, h: k.h / m.px, l: k.l / m.px, c: k.c / m.px, v: Number(k.v ?? 0) / (m.px * m.sz) });
       }
     }
     return out;

@@ -18,7 +18,13 @@ Open http://localhost:3000. With no `.env` the whole thing runs on a simulated m
 - **Landing page** shows the house account quoting live.
 - **Launch app, then "Use a demo account"** walks the real onboarding: account check, trade key, limits, start.
 - **On the key step**, any token and secret work. A token starting with `read` or a secret starting with `bad` shows the error states.
-- **On the dashboard**, "Simulate buying / selling" fires a smart-money burst so you can watch the reflex pull a quote.
+- **On the dashboard**, "Buy burst / Sell burst" fires a smart-money burst so you can watch the reflex pull a quote.
+
+To try it on Perpl's real prices without trading, run paper mode. Candles, the order book and Nansen trades are real; Monday's orders are simulated, never reach Perpl, and fill when the real book trades through them. Demo accounts work here too.
+
+```bash
+VENUE=paper NETWORK=mainnet npm run dev
+```
 
 ## What is simulated, and how to make it real
 
@@ -66,6 +72,8 @@ Guards that apply on real funds:
 | Policy caps | `CAP_QUOTE_USD`, `CAP_INVENTORY_USD`, `CAP_DAILY_LOSS_USD` bound every user's policy. Defaults: $50, $250, $25. |
 | Acknowledgement | A user must tick "this trades real funds" before the first start. The header shows "Mainnet: real funds" at all times. |
 | No simulated signals | Without a Nansen key the signal counts as stale and Monday quotes in its conservative regime. |
+| Collateral rule | A policy needs the margin for its full inventory at its leverage plus the whole daily loss limit. The High leverage preset (10x) and the margin x leverage sizer obey it, so the loss kill fires before Perpl's maintenance margin. |
+| Margin floor | Equity below the margin the policy needs kills and flattens, so losses carried across days cannot walk into a liquidation. |
 | Existing limits | Price band of 1% around the oracle, inventory and leverage checks on every order, daily loss kill, stale-data kill, three-failures kill. |
 
 Suggested order:
@@ -95,8 +103,8 @@ infra           Dockerfile, docker-compose, Caddyfile
 
 Three layers, as in PRD section 10:
 
-- **Engine**, every second. Fair price, spread, inventory skew, smart-money skew, PostOnly safety. Deterministic and unit tested.
-- **Reflex**, next tick after a burst. Pulls or widens the threatened side for five minutes.
+- **Engine**, every second. Fair price (Perpl blended halfway toward Hyperliquid's mid, ignored past a 50 bps gap), spread, inventory skew, smart-money skew, order-book skew, quote size capped at 5% of an average hour's volume, PostOnly safety. Deterministic and unit tested.
+- **Reflex**, next tick after a burst. Pulls or widens the threatened side for five minutes. When smart money is quiet, a lopsided Perpl book (top 5 levels, 75%/87.5% one side) does the same for 60 seconds.
 - **Governor**, every 15 minutes. Sets bounded parameters and a plain-language reason. LLM output is schema-validated and clamped; on any failure the rules answer.
 
 The web app only ever talks to its own origin (`/api` is proxied), so the session cookie is httpOnly and SameSite=Strict. The live stream uses a one-time ticket.
@@ -115,7 +123,7 @@ Tokens live in `apps/web/app/globals.css`.
 ## Checks
 
 ```bash
-npm test                 # 27 unit tests on the strategy package
+npm test                 # 34 unit tests on the strategy package
 npm run typecheck
 npm run build            # production build of the web app
 cd contracts && forge test                                   # 25 tests incl. fuzz and invariants

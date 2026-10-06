@@ -12,5 +12,5 @@ export function NetworkNote() {
   }, []);
   if (!cfg) return <>Check the network badge in the app before you start: it says whether funds are real.</>;
   if (cfg.realFunds) return <strong className="font-semibold text-ask-fg">This deployment trades real funds on {cfg.networkName}.</strong>;
-  return <>{cfg.sim ? 'This deployment runs on a simulated market.' : `This deployment runs on ${cfg.networkName}.`} No real funds.</>;
+  return <>{cfg.sim ? 'This deployment runs on a simulated market.' : cfg.paper ? `This deployment paper-trades on Perpl's real ${cfg.networkName} prices.` : `This deployment runs on ${cfg.networkName}.`} No real funds.</>;
 }

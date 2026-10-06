@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PRESETS, balanceNeededUsd, canonicalJson, clampParams, limitsForBalance, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  preTradeReject, reflexTrigger, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
+  PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, limitsForBalance, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
+  preTradeReject, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
 
@@ -101,6 +101,66 @@ describe('FR-RFX reflex', () => {
     const d = nextReflex(c.state, null, t0 + 361_000, 0, []);
     expect(d.state).toBeNull();
     expect(d.changed).toBe(true);
+  });
+});
+
+describe('order-book reflex', () => {
+  const lv = (...sizes: number[]) => sizes.map((size, i) => ({ price: 100 + i, size }));
+
+  it('measures top-5 imbalance and ignores a one-sided book', () => {
+    expect(bookImbalance(lv(3, 1), lv(1, 1))).toBeCloseTo(1 / 3);
+    expect(bookImbalance(lv(1, 1, 1, 1, 1, 99), lv(1, 1, 1, 1, 1))).toBe(0); // level 6 is out of range
+    expect(bookImbalance(lv(5), [])).toBe(0);
+  });
+
+  it('heavy bids threaten the ask, and the lean follows the heavy side', () => {
+    expect(bookTrigger(0.8)).toEqual({ side: 'ask', action: 'pull' });
+    expect(bookTrigger(-0.6)).toEqual({ side: 'bid', action: 'widen' });
+    expect(bookTrigger(0.3)).toBeNull();
+    expect(computeQuotes({ ...base, book: 1 }).skewBookBps).toBe(2);
+    expect(computeQuotes({ ...base, book: -0.5 }).center).toBeLessThan(computeQuotes(base).center);
+  });
+
+  it('a short book hold never cuts a longer smart-money hold', () => {
+    const t0 = 1_000_000;
+    const flow = nextReflex(null, { side: 'ask', action: 'pull' }, t0, 2.9, ['0xa']);
+    const book = nextReflex(flow.state, { side: 'ask', action: 'widen', book: true }, t0 + 10_000, 0.6, [], { ...DEFAULT_CONFIG, reflexHoldMs: 60_000 });
+    expect(book.state!.until).toBe(t0 + 300_000);
+    expect(book.state!.action).toBe('pull');
+  });
+});
+
+describe('Hyperliquid blend and volume cap', () => {
+  it('centres halfway to Hyperliquid, and ignores a gap too wide to trust', () => {
+    expect(computeQuotes({ ...base, hlMid: 85_020 }).ref).toBeCloseTo(85_010);
+    expect(computeQuotes({ ...base, hlMid: 85_020 }).blendBps).toBeCloseTo(1.18, 1);
+    expect(computeQuotes({ ...base, hlMid: 86_000 }).ref).toBe(85_000); // 118 bps away: bad data or a dislocation
+    expect(computeQuotes({ ...base, hlMid: null }).ref).toBe(85_000);
+  });
+  it('caps each quote at a share of an average hour of volume', () => {
+    const q = computeQuotes({ ...base, hourlyVolumeUsd: 600 }); // 5% = $30 < $100
+    expect(q.sizeCapUsd).toBe(30);
+    expect(q.bid!.size * q.bid!.price).toBeLessThanOrEqual(30);
+    expect(computeQuotes({ ...base, hourlyVolumeUsd: 1e6 }).bid!.size * 85_000).toBeGreaterThan(99);
+  });
+});
+
+describe('analytics', () => {
+  const row = (o: Partial<Parameters<typeof analyticsOf>[0][number]>) => ({
+    sym: 'BTC' as const, side: 'bid' as const, price: 100, size: 1, fee: 0.01, isMaker: true, ts: Date.UTC(2026, 9, 6, 14), regime: 'calm',
+    realized: null, halfBps: 4, markouts: [1, 1, 1, 2, 3], ...o,
+  });
+  it('nets fees against realised PnL and buckets by market, regime, spread and hour', () => {
+    const a = analyticsOf([row({}), row({ side: 'ask', realized: 0.5, halfBps: 12, regime: 'storm', markouts: [null, null, null, -4, null] }), row({ sym: 'ETH', realized: -0.2, isMaker: false })], 0, 1);
+    expect(a.summary.fills).toBe(3);
+    expect(a.summary.netUsd).toBeCloseTo(0.27);
+    expect(a.summary.netBps).toBeCloseTo(9);
+    expect(a.summary.winRate).toBe(0.5);
+    expect(a.markouts.find((m) => m.horizon === '1m')).toEqual({ horizon: '1m', bps: -1, n: 2 });
+    expect(a.bySpread.map((b) => b.key)).toEqual(['<5', '10-20']);
+    expect(a.byRegime.map((b) => b.key)).toEqual(['calm', 'storm']);
+    expect(a.hourly.find((c) => c.dow === 2 && c.hour === 14)!.fills).toBe(3);
+    expect(a.daily).toEqual([{ day: '2026-10-06', volumeUsd: 300, netUsd: expect.closeTo(0.27) }]);
   });
 });
 
@@ -227,9 +287,19 @@ describe('evidence statistics', () => {
 });
 
 describe('FR-POL-2 policy sizing', () => {
-  it('needs inventory across markets at leverage', () => {
-    expect(balanceNeededUsd(PRESETS.conservative, 1)).toBe(125);
-    expect(balanceNeededUsd(PRESETS.balanced, 3)).toBe(500);
+  it('needs the margin for full inventory at leverage plus the daily loss', () => {
+    expect(balanceNeededUsd(PRESETS.conservative, 1)).toBe(150);
+    expect(balanceNeededUsd(PRESETS.balanced, 3)).toBe(550);
+    expect(balanceNeededUsd(PRESETS.high, 1)).toBe(100); // the point of 10x: Balanced sizes on far less collateral
+    expect(marginFloorUsd(PRESETS.high, 3)).toBe(150);
+  });
+  it('sizes from margin and leverage without needing more than the margin', () => {
+    for (const [margin, lev, n] of [[100, 10, 1], [250, 15, 3], [37, 2.5, 2]] as const) {
+      const l = limitsFromMargin(margin, lev, n);
+      expect(balanceNeededUsd(l, n)).toBeLessThanOrEqual(margin);
+      expect(l.maxLeverage).toBe(lev);
+    }
+    expect(limitsFromMargin(100, 10, 1)).toMatchObject({ maxDailyLossUsd: 10, maxInventoryUsd: 900, quoteSizeUsd: 180 });
   });
   it('shrinks limits to fit small balances and never exceeds them', () => {
     for (const [bal, n] of [[100, 1], [10, 1], [100, 3], [57.3, 2]] as const) {
@@ -238,7 +308,7 @@ describe('FR-POL-2 policy sizing', () => {
       expect(l.quoteSizeUsd).toBeLessThanOrEqual(l.maxInventoryUsd);
       expect(l.maxLeverage).toBe(PRESETS.conservative.maxLeverage);
     }
-    expect(limitsForBalance(100, 1)).toMatchObject({ quoteSizeUsd: 40, maxInventoryUsd: 200, maxDailyLossUsd: 20 });
+    expect(limitsForBalance(100, 1)).toMatchObject({ quoteSizeUsd: 33, maxInventoryUsd: 166, maxDailyLossUsd: 16 });
     expect(limitsForBalance(5_000, 1)).toEqual(PRESETS.conservative);
   });
 });

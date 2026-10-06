@@ -1,6 +1,7 @@
 'use client';
 
-import { MARKETS, PRESETS, balanceNeededUsd, limitsForBalance, usd, type MarketSym, type PolicyLimits, type PresetName } from '@monday/core';
+import { useState } from 'react';
+import { MARKETS, PRESETS, balanceNeededUsd, limitsForBalance, limitsFromMargin, usd, type MarketSpec, type MarketSym, type PolicyLimits, type PresetName } from '@monday/core';
 import { INPUT, cx } from './ui';
 
 export type Caps = Pick<PolicyLimits, 'quoteSizeUsd' | 'maxInventoryUsd' | 'maxDailyLossUsd'>;
@@ -28,6 +29,7 @@ const NAMES: { id: PresetName; label: string; note: string }[] = [
   { id: 'conservative', label: 'Conservative', note: 'Small and wide' },
   { id: 'balanced', label: 'Balanced', note: 'A sensible start' },
   { id: 'active', label: 'Active', note: 'Larger and tighter' },
+  { id: 'high', label: 'High leverage', note: 'Balanced at 10x' },
   { id: 'custom', label: 'Custom', note: 'Set each limit' },
 ];
 
@@ -45,7 +47,7 @@ export function draftForBalance(balance: number, caps: Caps | null, markets: Mar
   return { preset: 'custom', markets, limits: limitsForBalance(balance, markets.length) };
 }
 
-export function PolicyForm({ value, onChange, available, caps = null, balance = null }: { value: PolicyDraft; onChange: (d: PolicyDraft) => void; available: MarketSym[]; caps?: Caps | null; balance?: number | null }) {
+export function PolicyForm({ value, onChange, available, caps = null, balance = null, specs = {} }: { value: PolicyDraft; onChange: (d: PolicyDraft) => void; available: MarketSym[]; caps?: Caps | null; balance?: number | null; specs?: Partial<Record<MarketSym, Pick<MarketSpec, 'maxLeverage'>>> }) {
   const pick = (id: PresetName) => onChange({ ...value, preset: id, limits: id === 'custom' ? value.limits : PRESETS[id] });
   const toggle = (m: MarketSym) => {
     const next = value.markets.includes(m) ? value.markets.filter((x) => x !== m) : [...value.markets, m];
@@ -58,6 +60,8 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
   const locked = (id: PresetName) => (id !== 'custom' && overCap(PRESETS[id], caps)) || short(id);
   const fits = draftFits(value, balance);
   const fit = () => balance != null && onChange({ ...value, preset: 'custom', limits: limitsForBalance(balance, value.markets.length) });
+  // The highest leverage every selected market allows.
+  const maxLev = Math.min(...value.markets.map((m) => specs[m]?.maxLeverage ?? 10));
 
   return (
     <div className="grid gap-8">
@@ -81,7 +85,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
       <fieldset>
         <legend className="text-[13px] font-medium">Risk preset</legend>
         {/* Desktop: one table, a column per preset. The whole column is the radio. */}
-        <div className="mt-2 hidden grid-cols-[minmax(9rem,1.2fr)_repeat(4,minmax(0,1fr))] grid-rows-[auto_repeat(5,2.5rem)] border-y border-line-2 sm:grid">
+        <div className="mt-2 hidden grid-cols-[minmax(9rem,1.2fr)_repeat(5,minmax(0,1fr))] grid-rows-[auto_repeat(5,2.5rem)] border-y border-line-2 sm:grid">
           <div className="row-span-6 grid grid-rows-subgrid text-[13px] text-fg-2">
             <span />
             {ROWS.map((r) => <span key={r.key} className="flex items-center border-t border-line" title={r.help}>{r.label}</span>)}
@@ -132,6 +136,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
           ))}
         </div>
       </fieldset>
+      <MarginSizer markets={value.markets} maxLeverage={maxLev} balance={balance} caps={caps} onLimits={(limits) => onChange({ ...value, preset: 'custom', limits })} />
       {balance != null && (
         <p role={fits ? undefined : 'alert'} className={cx('-mt-4 text-[13px]', fits ? 'text-fg-3' : 'text-ask-fg')}>
           {fits
@@ -146,6 +151,49 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Tread-style sizing: say how much collateral to commit and at what leverage, and Monday derives the limits.
+ * Every change writes a Custom policy, so the numbers stay editable in the Custom column.
+ */
+function MarginSizer({ markets, maxLeverage, balance, caps, onLimits }: { markets: MarketSym[]; maxLeverage: number; balance: number | null; caps: Caps | null; onLimits: (l: PolicyLimits) => void }) {
+  const [margin, setMargin] = useState(() => String(Math.floor(balance ?? 200)));
+  const [lev, setLev] = useState(() => Math.min(10, maxLeverage));
+  const leverage = Math.min(lev, maxLeverage);
+  const derived = (m: string, l: number): PolicyLimits => {
+    const raw = limitsFromMargin(Math.max(0, Number(m) || 0), l, markets.length);
+    // On real funds the operator caps still win.
+    return caps ? { ...raw, quoteSizeUsd: Math.min(raw.quoteSizeUsd, caps.quoteSizeUsd), maxInventoryUsd: Math.min(raw.maxInventoryUsd, caps.maxInventoryUsd), maxDailyLossUsd: Math.min(raw.maxDailyLossUsd, caps.maxDailyLossUsd) } : raw;
+  };
+  const l = derived(margin, leverage);
+  const apply = (m: string, v: number) => {
+    setMargin(m);
+    setLev(v);
+    onLimits(derived(m, v));
+  };
+
+  return (
+    <fieldset className="-mt-2">
+      <legend className="text-[13px] font-medium">Or size from margin and leverage</legend>
+      <div className="mt-2 grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-end">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="sizer-margin" className="text-[12.5px] text-fg-2">Margin to commit</label>
+          <input id="sizer-margin" type="number" inputMode="decimal" min={0} step={10} value={margin} onChange={(e) => apply(e.target.value, leverage)} className={cx(INPUT, 'num')} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="sizer-lev" className="flex justify-between text-[12.5px] text-fg-2">
+            Leverage <span className="num text-fg">{leverage}x <span className="text-fg-3">of {maxLeverage}x max</span></span>
+          </label>
+          <input id="sizer-lev" type="range" min={1} max={maxLeverage} step={0.5} value={leverage} onChange={(e) => apply(margin, Number(e.target.value))} className="h-9 w-full accent-[var(--accent)]" />
+        </div>
+      </div>
+      <p className="num mt-2 text-[12.5px] text-fg-2">
+        {usd(l.quoteSizeUsd)} per side, up to {usd(l.maxInventoryUsd)} per market, stop for the day at {usd(-l.maxDailyLossUsd)}.
+        <span className="font-sans text-fg-3"> A tenth of the margin is the daily loss limit. Higher leverage means less collateral per dollar of inventory, and a closer liquidation price on Perpl.</span>
+      </p>
+    </fieldset>
   );
 }
 

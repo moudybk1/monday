@@ -161,7 +161,11 @@ export async function decide(ctx: GovernorContext): Promise<GovernorResult> {
   try {
     const user = JSON.stringify(snapshot(ctx));
     const text = anthropic ? await askAnthropic(user) : await askOpenAiCompatible(user);
-    const parsed = Output.parse(JSON.parse(text));
+    // Some OpenAI-compatible models wrap the object in a markdown fence despite JSON mode, or write
+    // the market as "SOL-PERP". Take the object itself; the schema and clampParams still bound every value.
+    const raw = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as Record<string, unknown>;
+    if (typeof raw.market === 'string') raw.market = raw.market.toUpperCase().match(/^[A-Z]+/)?.[0] ?? raw.market;
+    const parsed = Output.parse(raw);
     if (parsed.market !== ctx.market) throw new Error('market mismatch');
     llmFailures = 0;
     return { params: clampParams(parsed, ctx.policy.maxInventoryUsd), source: 'governor', llmModel: model };

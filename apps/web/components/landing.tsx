@@ -7,7 +7,8 @@ import { api } from '@/lib/api';
 import { fmtPrice } from '@/lib/format';
 import { useLive } from '@/lib/live';
 import { OrderBook } from './book';
-import { LineChart, SignedBars } from './charts';
+import { SignedBars } from './charts';
+import { PriceChart } from './price-chart';
 import { FlowBars, SmartTape } from './smart-money';
 import { Panel, Skeleton, Tag, cx } from './ui';
 
@@ -53,16 +54,7 @@ export function HeroTerminal() {
           <Panel title="Order book" aside={<span>Perpl</span>} bodyClassName="!overflow-hidden">
             <OrderBook m={m} rows={7} now={state.at} />
           </Panel>
-          <Panel title="Mark price and Monday's quotes" aside={<span>20 min</span>} className="h-[260px] lg:h-auto" bodyClassName="p-1.5">
-            <LineChart
-              label={`${sym} mark price with Monday's bid and ask`} format={(v) => fmtPrice(v, m.spec)} empty="Collecting prices"
-              series={[
-                { name: 'Mark', tone: 'fg', points: m.priceSeries.map((p) => ({ t: p.t, v: p.p })) },
-                { name: 'Ask', tone: 'ask', step: true, points: m.priceSeries.map((p) => ({ t: p.t, v: p.ask })) },
-                { name: 'Bid', tone: 'bid', step: true, points: m.priceSeries.map((p) => ({ t: p.t, v: p.bid })) },
-              ]}
-            />
-          </Panel>
+          <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[300px] lg:h-auto" />
           <Panel title="Smart money on Hyperliquid" className="h-[300px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
             <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
             <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={14} /></div>
@@ -71,6 +63,7 @@ export function HeroTerminal() {
       </div>
       <figcaption className="mt-2 text-[12px] text-fg-3">
         {state.sim ? "Live: Monday's house account quoting on a simulated book. Pick a market."
+          : state.paper ? "Live: Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated."
           : `Live Perpl order book${m.signal ? ' with Nansen smart-money flow' : ''}. Monday's own quotes appear in your terminal once you start it.`}
       </figcaption>
     </figure>
@@ -91,7 +84,7 @@ function scene(step: number): MarketState {
     sym: 'BTC', spec: SPEC, mark: 85_200, oracle: 85_200, mid: 85_200, bestBid: 85_180.4, bestAsk: 85_219.8,
     asks: lv([85_219.8, 85_231.1, 85_242.6, 85_254.0], [0.021, 0.034, 0.047, 0.058]),
     bids: lv([85_180.4, 85_168.9, 85_157.2, 85_146.1], [0.024, 0.031, 0.049, 0.061]),
-    fundingRate: 0, dataAgeMs: 200, sigma1mBps: 2.4,
+    fundingRate: 0, dataAgeMs: 200, sigma1mBps: 2.4, book: 0, hlMid: null,
     quotes: { bid: { price: 85_162.1, size: 0.00117 }, ask: pulled ? null : { price: 85_237.9, size: 0.00117 } },
     model: null, position: { size: 0, entryPrice: 0, notionalUsd: 0, unrealizedUsd: 0 },
     params: { market: 'BTC', enabled: true, spread_mult: 1, skew_bias_bps: 0, size_mult: 1, max_inventory_usd: 500, ttl_min: 15, regime: 'calm', reason: '' },

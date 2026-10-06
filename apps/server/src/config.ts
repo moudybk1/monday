@@ -32,7 +32,8 @@ const NETWORKS = {
 
 const network = env('NETWORK', 'testnet') === 'mainnet' ? 'mainnet' : 'testnet';
 const net = NETWORKS[network];
-const venue = env('VENUE', 'sim') === 'perpl' ? 'perpl' : 'sim';
+// sim: everything simulated. paper: Perpl's real market data, simulated orders. perpl: live orders.
+const venue = (['perpl', 'paper'] as const).find((v) => v === env('VENUE', 'sim')) ?? 'sim';
 const nansenKey = env('NANSEN_API_KEY');
 const prod = env('NODE_ENV') === 'production';
 // The only overridable network value: your own RPC endpoint. Its chain id is verified at boot.
@@ -46,12 +47,12 @@ export const config = {
   webOrigin: env('WEB_ORIGIN', 'http://localhost:3000'),
   sessionSecret: env('SESSION_SECRET', prod ? '' : 'monday-dev-session-secret'),
   masterKey: env('MONDAY_MASTER_KEY'),
-  databasePath: env('DATABASE_PATH', venue === 'sim' && !nansenKey ? ':memory:' : resolve(process.cwd(), `data/monday-${venue === 'sim' ? 'sim' : network}.sqlite`)),
+  databasePath: env('DATABASE_PATH', venue === 'sim' && !nansenKey ? ':memory:' : resolve(process.cwd(), `data/monday-${venue === 'sim' ? 'sim' : venue === 'paper' ? `paper-${network}` : network}.sqlite`)),
 
   network: network as 'testnet' | 'mainnet',
   networkName: net.name,
   realFunds,
-  venue: venue as 'sim' | 'perpl',
+  venue: venue as 'sim' | 'paper' | 'perpl',
   perpl: { apiUrl: net.perplApi, wsUrl: net.perplWs, chainId: net.chainId, rpcUrl, exchangeAddress: net.exchange as `0x${string}`, appUrl: net.perplApp },
   budgetPerMin: num('TRADING_REQ_BUDGET_PER_MIN', 40),
 

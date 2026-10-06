@@ -8,8 +8,8 @@ import { getAddress, keccak256, toHex, verifyMessage } from 'viem';
 import { generateSiweNonce, parseSiweMessage } from 'viem/siwe';
 import { z } from 'zod';
 import {
-  MARKETS, MARKET_BIT, PRESETS, balanceNeededUsd, canonicalJson, policyForHash, usd,
-  type AppConfig, type DashboardState, type DecisionRecord, type MarketSym, type Me, type Policy,
+  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, policyForHash, usd,
+  type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type MarketSym, type Me, type Policy,
 } from '@monday/core';
 import { agentAddress, chainEnabled, onchainPolicyHash } from './chain';
 import { config } from './config';
@@ -18,7 +18,7 @@ import { evidence } from './evidence';
 import { llmEnabled } from './governor';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
-import { VenueError, type VenueDriver } from './venue/types';
+import { VenueError, type Candle, type VenueDriver } from './venue/types';
 
 export interface ApiDeps {
   driver: VenueDriver;
@@ -68,7 +68,7 @@ function decodeSession(raw: string | undefined): Cookie | null {
 }
 
 const PolicyBody = z.object({
-  preset: z.enum(['conservative', 'balanced', 'active', 'custom']),
+  preset: z.enum(['conservative', 'balanced', 'active', 'high', 'custom']),
   markets: z.array(z.enum(MARKETS)).min(1).max(3),
   limits: z.object({
     quoteSizeUsd: z.number().min(10).max(5_000),
@@ -78,6 +78,8 @@ const PolicyBody = z.object({
     maxLeverage: z.number().min(1).max(50),
   }).optional(),
 });
+const usdLimit = z.number().positive().max(1_000_000).nullable().optional();
+const StartBody = z.object({ stopLossUsd: usdLimit, takeProfitUsd: usdLimit });
 const CredsBody = z.object({ apiKeyToken: z.string().trim().min(1).max(512), apiKeySecret: z.string().trim().min(1).max(512) });
 
 export async function buildApi(deps: ApiDeps) {
@@ -146,7 +148,7 @@ export async function buildApi(deps: ApiDeps) {
 
   // ---- public ----
   app.get('/api/config', async (): Promise<AppConfig> => ({
-    sim: deps.driver.kind === 'sim', network: config.network, networkName: config.networkName, realFunds: config.realFunds, caps: config.caps,
+    sim: deps.driver.kind === 'sim', paper: deps.driver.kind === 'paper', network: config.network, networkName: config.networkName, realFunds: config.realFunds, caps: config.caps,
     smartMoney: config.smartMoney, chainId: config.chain.chainId, registry: config.chain.registry || null,
     agentAddress: chainEnabled ? agentAddress : null, explorerUrl: config.chain.explorerUrl, perplAppUrl: config.perpl.appUrl,
     minDepositUsd: deps.driver.minDepositUsd(), llm: llmEnabled, specs: deps.driver.feed.specs(),
@@ -154,6 +156,19 @@ export async function buildApi(deps: ApiDeps) {
   app.get('/api/health', async () => deps.health());
   app.get('/api/evidence', async () => evidence() ?? { pending: true });
   app.get('/api/public/preview', async () => deps.house()?.state() ?? null);
+  // One-minute candles for the price chart. Cached for 30 s, so any number of viewers costs Perpl one request per window.
+  const candleCache = new Map<string, { at: number; data: Promise<Candle[]> }>();
+  app.get('/api/candles', async (req) => {
+    const q = z.object({ market: z.enum(MARKETS), minutes: z.coerce.number().int().min(30).max(4320).default(360) }).parse(req.query);
+    const key = `${q.market}:${q.minutes}`;
+    const now = Date.now();
+    const hit = candleCache.get(key);
+    if (hit && now - hit.at < 30_000) return hit.data;
+    const data = deps.driver.feed.candles(q.market, now - q.minutes * 60_000, now);
+    candleCache.set(key, { at: now, data });
+    data.catch(() => candleCache.delete(key));
+    return data;
+  });
   app.get('/api/decisions/:id', async (req): Promise<DecisionRecord> => {
     const id = Number((req.params as { id: string }).id);
     const r = db.prepare('select d.*, u.wallet from decisions d join users u on u.id = d.user_id where d.id = ?').get(id) as Record<string, never> | undefined;
@@ -184,7 +199,7 @@ export async function buildApi(deps: ApiDeps) {
     return { wallet: w };
   });
   app.post('/api/auth/demo', async (_req, reply) => {
-    if (deps.driver.kind !== 'sim') throw new HttpError(403, 'demo_disabled', 'Demo accounts exist only on the simulated market.');
+    if (deps.driver.kind === 'perpl') throw new HttpError(403, 'demo_disabled', 'Demo accounts exist only when orders are simulated.');
     const w = getAddress(`0x${randomBytes(20).toString('hex')}`);
     setSession(reply, { w, demo: true });
     return { wallet: w };
@@ -308,7 +323,8 @@ export async function buildApi(deps: ApiDeps) {
   };
   app.post('/api/agent/start', async (req) => {
     const r = runner(req);
-    await r.start();
+    const b = StartBody.parse(req.body ?? {});
+    await r.start({ stopLossUsd: b.stopLossUsd ?? null, takeProfitUsd: b.takeProfitUsd ?? null });
     return { status: r.status };
   });
   app.post('/api/agent/pause', async (req) => {
@@ -322,6 +338,17 @@ export async function buildApi(deps: ApiDeps) {
     return { status: r.status };
   });
   app.get('/api/state', async (req): Promise<DashboardState> => runner(req).state());
+  app.get('/api/analytics', async (req): Promise<Analytics> => {
+    const s = need(req);
+    const { days } = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) }).parse(req.query);
+    const to = Date.now();
+    const from = to - days * 86_400_000;
+    const rows = db.prepare('select * from fills where user_id = ? and ts >= ? order by ts').all(s.uid, from) as Record<string, never>[];
+    return analyticsOf(rows.map((r) => ({
+      sym: r.sym, side: r.side, price: r.price, size: r.size, fee: r.fee, isMaker: !!r.is_maker, ts: r.ts, regime: r.regime, realized: r.realized, halfBps: r.half_bps,
+      markouts: [r.markout_1s, r.markout_5s, r.markout_10s, r.markout_1m, r.markout_5m],
+    })), from, to);
+  });
 
   app.post('/api/sim/burst', async (req) => {
     need(req);

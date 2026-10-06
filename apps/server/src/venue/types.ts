@@ -1,5 +1,5 @@
-// The seam between Monday and the outside world. Two implementations exist for
-// each interface: a simulator (default) and the live Perpl adapter. Nothing above
+// The seam between Monday and the outside world. Implementations: a simulator (default), the
+// live Perpl adapter, and paper trading (Perpl's real feed with simulated orders). Nothing above
 // this file knows which one it is talking to.
 
 import type { BookLevel, MarketSpec, MarketSym, QuoteTarget, Side } from '@monday/core';
@@ -24,6 +24,7 @@ export interface Candle {
   h: number;
   l: number;
   c: number;
+  v?: number; // traded notional in USD; the simulator does not report it
 }
 
 /** Public market data. One instance is shared by every runner. */
@@ -116,7 +117,7 @@ export interface VenueCredentials {
 
 /** Everything the rest of the server needs from an execution venue. */
 export interface VenueDriver {
-  kind: 'sim' | 'perpl';
+  kind: 'sim' | 'paper' | 'perpl';
   feed: MarketFeed;
   /** Does this wallet own an exchange account? Onboarding step 2. */
   detectAccount(wallet: string): Promise<{ accountId: number; balanceUsd: number } | null>;

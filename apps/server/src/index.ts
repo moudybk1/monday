@@ -8,13 +8,18 @@ import { Collector } from './collector';
 import { config } from './config';
 import { db, event, unseal, upsertUser } from './db';
 import { computeEvidence, evidence, nansenK } from './evidence';
+import { startHyperliquid } from './hyperliquid';
 import { llmEnabled } from './governor';
 import { Runner } from './runner';
+import { createPaperDriver } from './venue/paper';
 import { SimWorld } from './venue/sim';
 import type { VenueDriver } from './venue/types';
 
 const world = config.venue === 'sim' ? new SimWorld() : null;
-const driver: VenueDriver = world ?? (await import('./venue/perpl/index')).createPerplDriver(config.perpl);
+const live = world ? null : (await import('./venue/perpl/index')).createPerplDriver(config.perpl);
+const driver: VenueDriver = world ?? (config.venue === 'paper' ? createPaperDriver(live!) : live!);
+// Demo accounts and the quoting house account exist wherever orders are simulated.
+const simulatedOrders = driver.kind !== 'perpl';
 const collector = new Collector(world);
 
 function notify(text: string) {
@@ -53,9 +58,10 @@ function dropRunner(userId: number) {
 if (!world || chainEnabled) await verifyRpc();
 await driver.feed.start();
 await collector.start();
+if (!world) startHyperliquid();
 
-if (world) {
-  // The house account quotes on the simulated book from boot so the landing page shows a live agent.
+if (simulatedOrders) {
+  // The house account quotes from boot so the landing page shows a live agent (on the real book in paper mode).
   const uid = upsertUser(HOUSE_WALLET);
   const policy: Policy = { mode: 'maker', markets: ['BTC', 'ETH', 'SOL'] as MarketSym[], preset: 'balanced', ...PRESETS.balanced };
   house = new Runner(uid, HOUSE_WALLET, 1, policy, { driver, collector, k: nansenK, notify, creds: () => ({ wallet: HOUSE_WALLET, accountId: 1, token: 'house', secret: 'house' }) });
@@ -79,7 +85,7 @@ setInterval(() => {
 
 // Demo runners live in memory; evict the ones nobody has looked at for an hour.
 setInterval(() => {
-  if (!world) return;
+  if (!simulatedOrders) return;
   for (const [uid, r] of runners) if (Date.now() - r.lastSeenAt > 3_600_000) dropRunner(uid);
 }, 60_000).unref();
 

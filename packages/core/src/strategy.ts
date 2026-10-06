@@ -1,7 +1,7 @@
 // Maker quoting model, reflex and fallback regimes (PRD section 10).
 // Pure functions only: no I/O, no clock, no randomness.
 
-import type { GovernorParams, MarketSpec, MarketSym, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
+import type { BookLevel, GovernorParams, MarketSpec, MarketSym, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
@@ -12,6 +12,13 @@ export interface StrategyConfig {
   reflexWiden: number;
   reflexHoldMs: number;
   bigTradeUsd: number;
+  kBook: number; // order-book skew, bps per unit of imbalance
+  book1: number; // |imbalance| that widens the threatened side
+  book2: number; // |imbalance| that pulls it
+  bookHoldMs: number;
+  blend: number; // weight of Hyperliquid's mid in the reference price (Tread's Blend mode), 0..1
+  blendMaxBps: number; // a bigger Perpl/Hyperliquid gap is bad data or a dislocation, not something to lean into
+  participation: number; // each quote is at most this share of the market's average hourly volume
 }
 
 // PRD 10.6
@@ -24,6 +31,13 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   reflexWiden: 2,
   reflexHoldMs: 5 * 60_000,
   bigTradeUsd: 250_000,
+  kBook: 2,
+  book1: 0.5,
+  book2: 0.75,
+  bookHoldMs: 60_000,
+  blend: 0.5,
+  blendMaxBps: 50,
+  participation: 0.05,
 };
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -48,6 +62,12 @@ export interface QuoteInput {
   sigma1mBps: number;
   positionUsd: number; // signed notional, long positive
   S: number;
+  /** Smoothed top-of-book size imbalance, -1..1. Omitted where there is no book (replay). */
+  book?: number;
+  /** Hyperliquid mid. Omitted or null: quote off Perpl alone. */
+  hlMid?: number | null;
+  /** Average hourly traded volume in USD over the last 24 h. Omitted or null: no volume cap. */
+  hourlyVolumeUsd?: number | null;
   policy: Pick<PolicyLimits, 'quoteSizeUsd' | 'maxInventoryUsd' | 'minHalfSpreadBps'>;
   gov: Pick<GovernorParams, 'enabled' | 'spread_mult' | 'skew_bias_bps' | 'size_mult' | 'max_inventory_usd'>;
   reflex: Pick<ReflexState, 'side' | 'action'> | null;
@@ -63,15 +83,21 @@ export interface QuoteOutput {
   halfBps: number;
   skewInvBps: number;
   skewNanBps: number;
+  skewBookBps: number;
   q: number;
+  blendBps: number; // how far Hyperliquid moved the reference
+  sizeCapUsd: number | null;
 }
 
 export function computeQuotes(i: QuoteInput): QuoteOutput {
   const cfg = i.cfg ?? DEFAULT_CONFIG;
   const tick = i.spec.priceTick;
 
-  // 1. Reference price: mark, or book mid when it sits within 5 bps of mark.
-  const ref = i.mid != null && Math.abs(i.mid / i.mark - 1) * 1e4 <= 5 ? i.mid : i.mark;
+  // 1. Reference price: mark, or book mid when it sits within 5 bps of mark, then blended toward Hyperliquid,
+  // where price discovery happens. A gap wider than blendMaxBps is ignored rather than leaned into.
+  const local = i.mid != null && Math.abs(i.mid / i.mark - 1) * 1e4 <= 5 ? i.mid : i.mark;
+  const hl = i.hlMid != null && i.hlMid > 0 && Math.abs(i.hlMid / local - 1) * 1e4 <= cfg.blendMaxBps ? i.hlMid : null;
+  const ref = hl == null ? local : local + cfg.blend * (hl - local);
 
   // 3. Half-spread
   const h = Math.max(i.policy.minHalfSpreadBps, cfg.a * i.sigma1mBps) * i.gov.spread_mult + i.spec.makerFeeBps;
@@ -84,9 +110,11 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   // 5-6. Nansen skew and governor bias
   const skewNanBps = cfg.k * clamp(i.S, -3, 3);
   const bias = clamp(i.gov.skew_bias_bps, -10, 10);
+  // Order-book skew: lean toward the heavy side of Perpl's own book.
+  const skewBookBps = cfg.kBook * clamp(i.book ?? 0, -1, 1);
 
   // 7. Quotes
-  const center = ref * (1 + (skewInvBps + skewNanBps + bias) / 1e4);
+  const center = ref * (1 + (skewInvBps + skewNanBps + skewBookBps + bias) / 1e4);
   const widen = (side: Side) => (i.reflex?.action === 'widen' && i.reflex.side === side ? cfg.reflexWiden : 1);
   let bidPx = floorTo(center * (1 - (h * widen('bid')) / 1e4), tick);
   let askPx = ceilTo(center * (1 + (h * widen('ask')) / 1e4), tick);
@@ -95,10 +123,11 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   if (i.bestAsk != null && bidPx >= i.bestAsk) bidPx = floorTo(i.bestAsk - tick, tick);
   if (i.bestBid != null && askPx <= i.bestBid) askPx = ceilTo(i.bestBid + tick, tick);
 
-  // 9. Size. The side that grows inventory shrinks linearly as |q| approaches 1.
+  // 9. Size. The side that grows inventory shrinks linearly as |q| approaches 1. A quiet market caps it (Tread's participation rate).
+  const sizeCapUsd = i.hourlyVolumeUsd ? cfg.participation * i.hourlyVolumeUsd : null;
   const size = (side: Side, px: number): number => {
     const grows = (side === 'bid' && q > 0) || (side === 'ask' && q < 0);
-    const usd = i.policy.quoteSizeUsd * i.gov.size_mult * (grows ? 1 - Math.abs(q) : 1);
+    const usd = Math.min(sizeCapUsd ?? Infinity, i.policy.quoteSizeUsd * i.gov.size_mult * (grows ? 1 - Math.abs(q) : 1));
     return floorTo(usd / px, i.spec.sizeStep);
   };
   const side = (s: Side, px: number): QuoteTarget | null => {
@@ -109,7 +138,7 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
     return sz > 0 ? { price: px, size: sz } : null;
   };
 
-  return { bid: side('bid', bidPx), ask: side('ask', askPx), ref, center, halfBps: h, skewInvBps, skewNanBps, q };
+  return { bid: side('bid', bidPx), ask: side('ask', askPx), ref, center, halfBps: h, skewInvBps, skewNanBps, skewBookBps, q, blendBps: (ref / local - 1) * 1e4, sizeCapUsd };
 }
 
 /** PRD 10.2 step 10: only touch a side when it moved enough to be worth a request. */
@@ -134,6 +163,17 @@ export function reflexTrigger(
   return null;
 }
 
+/** Size imbalance of the top `levels` of the book: +1 all bids, -1 all asks, 0 when a side is empty. */
+export function bookImbalance(bids: BookLevel[], asks: BookLevel[], levels = 5): number {
+  const b = bids.slice(0, levels).reduce((s, l) => s + l.size, 0);
+  const a = asks.slice(0, levels).reduce((s, l) => s + l.size, 0);
+  return b > 0 && a > 0 ? (b - a) / (b + a) : 0;
+}
+
+/** The reflex ladder on order-book imbalance: a heavy bid side threatens the ask, and the reverse. */
+export const bookTrigger = (imbalance: number, cfg: StrategyConfig = DEFAULT_CONFIG) =>
+  reflexTrigger(imbalance, 0, { ...cfg, z1: cfg.book1, z2: cfg.book2 });
+
 /**
  * Fold a trigger into the held reflex. A reflex holds for `reflexHoldMs` after
  * the last trigger; a pull is never downgraded to a widen while it holds.
@@ -141,7 +181,7 @@ export function reflexTrigger(
  */
 export function nextReflex(
   prev: ReflexState | null,
-  trigger: Pick<ReflexState, 'side' | 'action'> | null,
+  trigger: Pick<ReflexState, 'side' | 'action' | 'book'> | null,
   now: number,
   z: number,
   triggerHashes: string[],
@@ -152,9 +192,10 @@ export function nextReflex(
   const until = now + cfg.reflexHoldMs;
   if (held && held.side === trigger.side) {
     const action = held.action === 'pull' ? 'pull' : trigger.action;
-    return { state: { ...held, action, until, z, triggerHashes }, changed: action !== held.action };
+    // A short book hold must not cut a longer smart-money hold.
+    return { state: { ...held, action, until: Math.max(held.until, until), z, triggerHashes, book: trigger.book }, changed: action !== held.action };
   }
-  return { state: { side: trigger.side, action: trigger.action, until, z, triggerHashes }, changed: true };
+  return { state: { side: trigger.side, action: trigger.action, until, z, triggerHashes, book: trigger.book }, changed: true };
 }
 
 export function regimeOf(S: number, sigma1mBps: number, sigmaMedianBps: number, stale: boolean, cfg: StrategyConfig = DEFAULT_CONFIG): Regime {

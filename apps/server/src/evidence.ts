@@ -158,7 +158,7 @@ export async function computeEvidence(driver: VenueDriver, collector: Collector)
   const lag = Math.round(collector.medianLagMs / MIN) * MIN;
   const out: Evidence = {
     at: Date.now(), synthetic: collector.kind === 'sim' || driver.kind === 'sim', smartMoneySource: collector.kind === 'nansen' ? 'Nansen Smart Money Perp Trades, Hyperliquid' : 'Simulated smart-money trades',
-    priceSource: driver.kind === 'perpl' ? 'Perpl 1-minute candles' : 'Simulated 1-minute candles', lagMs: lag, policy: POLICY, studies: {}, replays: {},
+    priceSource: driver.kind === 'sim' ? 'Simulated 1-minute candles' : 'Perpl 1-minute candles', lagMs: lag, policy: POLICY, studies: {}, replays: {},
   };
   for (const sym of MARKETS) {
     const spec = driver.feed.specs()[sym];

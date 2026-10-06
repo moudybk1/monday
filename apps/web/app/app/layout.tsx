@@ -19,6 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 const NAV = [
   { href: '/app', label: 'Terminal' },
+  { href: '/app/analytics', label: 'Analytics' },
   { href: '/app/policy', label: 'Policy' },
   { href: '/evidence', label: 'Evidence' },
 ];
@@ -53,7 +54,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {/* Always say what kind of money is on the line. Real funds is never hidden, even on a phone. */}
           {cfg.data?.realFunds ? <Tag tone="ask">Mainnet: real funds</Tag>
-            : cfg.data && <span className="hidden sm:block"><Tag tone={cfg.data.sim ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.networkName}</Tag></span>}
+            : cfg.data && <span className="hidden sm:block"><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
           {me.data && <span className={cx('hidden text-[12px] text-fg-2 sm:inline', !me.data.demo && 'num')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>}
           <ThemeToggle />
           {me.data && (
@@ -83,7 +84,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             </Notice>
           </div>
         ) : !me.data ? (
-          <Connect sim={Boolean(cfg.data?.sim)} realFunds={Boolean(cfg.data?.realFunds)} />
+          <Connect sim={Boolean(cfg.data?.sim || cfg.data?.paper)} realFunds={Boolean(cfg.data?.realFunds)} />
         ) : mustOnboard ? null : (
           children
         )}

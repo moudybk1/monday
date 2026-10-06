@@ -28,7 +28,7 @@ const TAKER_MEDIAN_USD = 1_200;
 const LABELS = ['Smart HL Perps Trader', 'Smart HL Perps Trader', 'Smart HL Perps Trader', 'Fund', '30D Smart Trader', '90D Smart Trader', '180D Smart Trader'];
 const BUY_ACTIONS = ['Buy - Open Long', 'Buy - Open Long', 'Buy - Add Long', 'Buy - Close Short', 'Buy - Reduce Short'];
 const SELL_ACTIONS = ['Sell - Open Short', 'Sell - Open Short', 'Sell - Add Short', 'Sell - Close Long', 'Sell - Reduce Long'];
-const SIM_BALANCE_USD = 1_000;
+export const SIM_BALANCE_USD = 1_000;
 
 interface Coin {
   sym: MarketSym;
@@ -179,7 +179,9 @@ export class SimWorld implements VenueDriver, MarketFeed {
     for (const sym of MARKETS) {
       const c = this.coins[sym];
       this.step(c, this.now - dt * 1000, dt);
-      for (const side of c.levels) for (let i = 0; i < side.length; i++) if (this.rnd() < 0.12) side[i].usd = this.levelUsd(i);
+      // Resting depth leans with informed pressure: buyers stack the bid and thin the ask, which is what the book reflex reads.
+      const bias = this.buyBias(c);
+      c.levels.forEach((side, s) => { for (let i = 0; i < side.length; i++) if (this.rnd() < 0.12) side[i].usd = this.levelUsd(i) * 2 * (s ? 1 - bias : bias); });
       // The collector owns history; the world only needs to answer recent polls.
       if (c.trades.length && c.trades[0].ts < this.now - 130 * 60_000) c.trades = c.trades.filter((t) => t.ts > this.now - 120 * 60_000);
       this.takerFlow(c);
@@ -282,7 +284,14 @@ export class SimWorld implements VenueDriver, MarketFeed {
   }
 }
 
-class SimVenue implements Venue {
+/** What a simulated account needs from its market: the simulator's own, or Perpl's real feed (paper trading). */
+export interface SimMarket {
+  snapshot(sym: MarketSym): MarketSnapshot | null;
+  specs(): Partial<Record<MarketSym, MarketSpec>>;
+  price(sym: MarketSym): number;
+}
+
+export class SimVenue implements Venue {
   private up = false;
   private balance = SIM_BALANCE_USD;
   private pos = {} as Record<MarketSym, VenuePosition>;
@@ -290,7 +299,7 @@ class SimVenue implements Venue {
   private handlers: { [E in keyof VenueEvents]?: VenueEvents[E][] } = {};
   private seq = 0;
 
-  constructor(private world: SimWorld, private creds: VenueCredentials, private onClose: () => void) {}
+  constructor(private world: SimMarket, private creds: VenueCredentials, private onClose: () => void) {}
 
   async connect(): Promise<VenueAccount> {
     // Magic values so every onboarding error state can be exercised without a real key.
@@ -322,7 +331,8 @@ class SimVenue implements Venue {
     const key = `${sym}:${side}`;
     if (!target) return void this.quotes.delete(key);
     const snap = this.world.snapshot(sym);
-    if ((side === 'bid' && target.price >= snap.bestAsk!) || (side === 'ask' && target.price <= snap.bestBid!)) {
+    if (!snap?.bestBid || !snap.bestAsk) throw new VenueError('rejected', 'No market data for this market yet.');
+    if ((side === 'bid' && target.price >= snap.bestAsk) || (side === 'ask' && target.price <= snap.bestBid)) {
       throw new VenueError('crosses_book', 'PostOnly order would cross the book.');
     }
     this.quotes.set(key, { ...target });
@@ -345,7 +355,7 @@ class SimVenue implements Venue {
 
   /** Called by the world when a taker hits this account's quote. */
   fill(sym: MarketSym, side: Side, price: number, size: number, isMaker: boolean) {
-    const spec = this.world.specs()[sym];
+    const spec = this.world.specs()[sym]!;
     const p = this.position(sym);
     const signed = side === 'bid' ? size : -size;
     const reducing = p.size !== 0 && Math.sign(p.size) !== Math.sign(signed) ? Math.min(Math.abs(p.size), size) : 0;

@@ -53,6 +53,14 @@ create table if not exists agent_events (
   id integer primary key autoincrement, user_id integer, kind text not null, detail text, created_at integer not null
 );
 `);
+// Columns added after the first deploy. SQLite has no "add column if not exists".
+for (const [table, col] of [['fills', 'markout_1s'], ['fills', 'markout_5s'], ['fills', 'markout_10s'], ['fills', 'half_bps'], ['agents', 'session_sl'], ['agents', 'session_tp'], ['agents', 'session_equity']]) {
+  try {
+    db.exec(`alter table ${table} add column ${col} real`);
+  } catch {
+    // already there
+  }
+}
 
 // ---- credentials vault: AES-256-GCM, fresh IV per record (PRD 17.2) ----
 const key = Buffer.from(config.masterKey, 'base64');

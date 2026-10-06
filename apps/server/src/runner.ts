@@ -3,9 +3,9 @@
 // sends orders, and only this file tells the venue what to do.
 
 import {
-  DEFAULT_CONFIG, KILL_CODE, REGIME_CODE, computeQuotes, ewmaVar, markoutBps, median, nextReflex, preTradeReject, reflexTrigger,
+  DEFAULT_CONFIG, KILL_CODE, REGIME_CODE, bookImbalance, bookTrigger, computeQuotes, ewmaVar, marginFloorUsd, markoutBps, median, nextReflex, preTradeReject, reflexTrigger,
   shouldRequote, tradeSign, usd, usdCompact, varToBps,
-  type AgentStatus, type Alert, type DashboardState, type Decision, type DecisionSource, type Fill, type GovernorParams,
+  type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GovernorParams,
   type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type QuoteOutput,
   type QuoteTarget, type ReflexState, type Side, type StrategyConfig,
 } from '@monday/core';
@@ -15,6 +15,7 @@ import type { Collector } from './collector';
 import { config } from './config';
 import { db, event } from './db';
 import { decide, fallbackDecision, hashOf, llmEnabled, llmFailures, type GovernorContext } from './governor';
+import { hlMid } from './hyperliquid';
 import { VenueError, type MarketSnapshot, type Venue, type VenueCredentials, type VenueDriver, type VenueFill } from './venue/types';
 
 const MIN_REQUOTE_MS = 1_500;
@@ -37,6 +38,7 @@ interface MarketRt {
   lastClose: number;
   lastMinute: number;
   sigmaHist: number[];
+  book: number;
   params: GovernorParams;
   paramsSource: DecisionSource;
   nextGovAt: number;
@@ -59,12 +61,24 @@ const KILL_TEXT: Record<KillReason, string> = {
   stale_data: 'Perpl market data stopped for 30 seconds. All orders were cancelled and positions closed.',
   order_failures: 'Three orders failed in a row. All orders were cancelled and positions closed.',
   key_error: 'Perpl rejected the API key. The agent has stopped.',
+  session_loss: 'Session stop loss reached. All orders were cancelled and positions closed.',
+  margin: 'Equity fell below the margin this policy needs. All orders were cancelled and positions closed.',
 };
+
+/** Since the last Start. Tread runs every bot with its own stop loss and take profit; Monday adds them per session. */
+export interface SessionLimits {
+  stopLossUsd: number | null;
+  takeProfitUsd: number | null;
+}
+
+// Average hourly traded volume over 24 h per market, shared by every runner and refreshed every 10 minutes.
+// Null until known, and always on the simulator, whose candles carry no volume.
+const volume = new Map<MarketSym, { at: number; hourlyUsd: number | null }>();
 
 const insDecision = db.prepare(
   'insert into decisions (user_id, at, market, source, regime, params, evidence, params_hash, evidence_hash, reason, llm_model) values (?,?,?,?,?,?,?,?,?,?,?)',
 );
-const insFill = db.prepare('insert or ignore into fills (id, user_id, sym, side, price, size, fee, is_maker, ts, regime, realized) values (?,?,?,?,?,?,?,?,?,?,?)');
+const insFill = db.prepare('insert or ignore into fills (id, user_id, sym, side, price, size, fee, is_maker, ts, regime, realized, half_bps) values (?,?,?,?,?,?,?,?,?,?,?,?)');
 
 export class Runner {
   status: AgentStatus = 'idle';
@@ -91,6 +105,7 @@ export class Runner {
   private listeners = new Set<(s: DashboardState) => void>();
   private lastPnlWrite = 0;
   private disconnectedAt = 0;
+  private session: (SessionLimits & { startedAt: number; startEquity: number }) | null = null;
 
   constructor(readonly userId: number, readonly wallet: string, private accountId: number, public policy: Policy, private deps: RunnerDeps) {
     // Restore what the dashboard shows after a process restart.
@@ -107,7 +122,7 @@ export class Runner {
     }
     this.fills = f.slice(0, 80).map((r) => ({
       id: r.id, sym: r.sym, side: r.side, price: r.price, size: r.size, feeUsd: r.fee, isMaker: !!r.is_maker, ts: r.ts, regime: r.regime,
-      markout1mBps: r.markout_1m, markout5mBps: r.markout_5m,
+      markout1sBps: r.markout_1s, markout5sBps: r.markout_5s, markout10sBps: r.markout_10s, markout1mBps: r.markout_1m, markout5mBps: r.markout_5m,
     }));
     const e = db.prepare('select ts, equity from pnl_snapshots where user_id = ? and ts >= ? order by ts').all(userId, Date.now() - 86_400_000) as { ts: number; equity: number }[];
     this.equity = e.map((r) => ({ t: r.ts, v: r.equity }));
@@ -116,10 +131,13 @@ export class Runner {
       this.dayKey = new Date().toISOString().slice(0, 10);
       this.dayStartEquity = first.equity;
     }
+    const a = db.prepare('select started_at, session_sl, session_tp, session_equity from agents where user_id = ?').get(userId) as Record<string, number | null> | undefined;
+    if (a?.session_equity != null) this.session = { startedAt: a.started_at ?? Date.now(), startEquity: a.session_equity, stopLossUsd: a.session_sl, takeProfitUsd: a.session_tp };
   }
 
   // ---- lifecycle ----
-  async start() {
+  /** `limits` opens a new session; without it (boot resume) the persisted session carries on. */
+  async start(limits?: SessionLimits) {
     if (this.status === 'quoting') return;
     if (!this.venue) {
       const v = this.deps.driver.open(this.deps.creds());
@@ -132,6 +150,7 @@ export class Runner {
     this.failures = 0;
     this.status = 'quoting';
     this.startedAt = Date.now();
+    if (limits || !this.session) this.session = { stopLossUsd: null, takeProfitUsd: null, ...limits, startedAt: this.startedAt, startEquity: this.equityNow() };
     for (const sym of this.policy.markets) this.rt(sym).govAsap = true;
     this.persist();
     this.alert('info', 'Monday started quoting.');
@@ -158,11 +177,33 @@ export class Runner {
     } catch (e) {
       this.alert('critical', `Could not flatten automatically: ${e instanceof Error ? e.message : e}. Close the position on Perpl.`);
     }
-    const text = reason === 'loss_limit' ? `Daily loss limit of ${usd(this.policy.maxDailyLossUsd)} reached. All orders were cancelled and positions closed.` : KILL_TEXT[reason];
+    const done = 'All orders were cancelled and positions closed.';
+    const text = reason === 'loss_limit' ? `Daily loss limit of ${usd(this.policy.maxDailyLossUsd)} reached. ${done}`
+      : reason === 'session_loss' && this.session?.stopLossUsd != null ? `Session stop loss of ${cents(this.session.stopLossUsd)} reached. ${done}`
+      : reason === 'margin' ? `Equity fell below the ${usd(marginFloorUsd(this.policy, this.policy.markets.length))} of margin this policy needs at ${this.policy.maxLeverage}x. ${done} Lower the limits or deposit more.`
+      : KILL_TEXT[reason];
+    this.session = null;
+    this.persist();
     this.logDecision(this.policy.markets[0] ?? 'BTC', 'kill', 'killed', { reason }, text, evidence, null);
     this.alert('critical', text);
     this.deps.notify(`Monday kill switch (${reason}) for ${this.wallet.slice(0, 8)}: ${text}`);
     event(this.userId, 'kill', { reason });
+  }
+
+  /** Session take profit: cancel, close the position and stop. Not a kill, nothing went wrong. */
+  private async takeProfit(pnlUsd: number) {
+    this.status = 'paused';
+    this.session = null;
+    this.persist();
+    try {
+      await this.venue?.cancelAll();
+      await this.venue?.flatten();
+    } catch (e) {
+      this.alert('critical', `Take profit reached but the position could not be closed: ${e instanceof Error ? e.message : e}. Close it on Perpl.`);
+    }
+    this.alert('info', `Take profit reached: ${cents(pnlUsd)} this session. Orders cancelled and positions closed.`);
+    this.deps.notify(`Monday take profit (${cents(pnlUsd)}) for ${this.wallet.slice(0, 8)}`);
+    event(this.userId, 'take_profit', { pnlUsd });
   }
 
   setPolicy(p: Policy) {
@@ -191,14 +232,15 @@ export class Runner {
   }
 
   private persist() {
-    db.prepare('insert into agents (user_id, status, kill_reason, started_at) values (?,?,?,?) on conflict(user_id) do update set status = excluded.status, kill_reason = excluded.kill_reason, started_at = excluded.started_at')
-      .run(this.userId, this.status, this.killReason, this.startedAt);
+    const s = this.session;
+    db.prepare('insert into agents (user_id, status, kill_reason, started_at, session_sl, session_tp, session_equity) values (?,?,?,?,?,?,?) on conflict(user_id) do update set status = excluded.status, kill_reason = excluded.kill_reason, started_at = excluded.started_at, session_sl = excluded.session_sl, session_tp = excluded.session_tp, session_equity = excluded.session_equity')
+      .run(this.userId, this.status, this.killReason, this.startedAt, s?.stopLossUsd ?? null, s?.takeProfitUsd ?? null, s?.startEquity ?? null);
   }
 
   // ---- per-market runtime ----
   private rt(sym: MarketSym): MarketRt {
     return (this.m[sym] ??= {
-      sym, var1m: 0, lastClose: 0, lastMinute: 0, sigmaHist: [],
+      sym, var1m: 0, lastClose: 0, lastMinute: 0, sigmaHist: [], book: 0,
       params: { market: sym, enabled: true, spread_mult: 2, skew_bias_bps: 0, size_mult: 0.5, max_inventory_usd: this.policy.maxInventoryUsd, ttl_min: 15, regime: 'stale', reason: 'Waiting for the first governor decision.' },
       paramsSource: 'fallback', nextGovAt: 0, lastGovAt: 0, govBusy: false, govAsap: false, wasStorm: false, reflex: null, lastBigTs: Date.now(),
       lastSent: { bid: 0, ask: 0 }, inflight: { bid: false, ask: false }, model: null, series: [], bandAlertAt: 0,
@@ -209,6 +251,17 @@ export class Runner {
   }
   private spec(sym: MarketSym): MarketSpec {
     return this.deps.driver.feed.specs()[sym]!;
+  }
+  private hourlyVolume(sym: MarketSym, now: number): number | null {
+    const hit = volume.get(sym);
+    if (!hit || now - hit.at > 10 * 60_000) {
+      volume.set(sym, { at: now, hourlyUsd: hit?.hourlyUsd ?? null }); // one fetch in flight
+      void this.deps.driver.feed.candles(sym, now - 86_400_000, now).then((cs) => {
+        const usd = cs.reduce((s, c) => s + (c.v ?? 0), 0);
+        volume.set(sym, { at: now, hourlyUsd: usd > 0 ? usd / 24 : null });
+      }).catch(() => {});
+    }
+    return volume.get(sym)!.hourlyUsd;
   }
 
   // ---- the tick (PRD 9.3) ----
@@ -222,6 +275,8 @@ export class Runner {
       if (!snap || !this.spec(sym)) continue;
       const rt = this.rt(sym);
       this.updateVol(rt, snap, now);
+      // EWMA with a 5-tick half-life (ticks are 1 s), so one flickering level cannot fire the reflex.
+      rt.book += (this.bookNow(sym, snap) - rt.book) * 0.13;
       if (!rt.series.length || now - rt.series[rt.series.length - 1].t >= 5_000) {
         rt.series.push({ t: now, p: snap.mark, bid: this.venue?.quote(sym, 'bid')?.price ?? null, ask: this.venue?.quote(sym, 'ask')?.price ?? null });
         if (rt.series.length > 240) rt.series.shift();
@@ -238,13 +293,13 @@ export class Runner {
       }
       // 2-4. Signal, reflex, governor parameters
       const sig = this.deps.collector.signal(sym);
-      this.runReflex(rt, sig, now);
+      this.runReflex(rt, sig, snap, now);
       this.runGovernor(rt, snap, sig, now);
 
       const spec = this.spec(sym);
       const posUsd = this.venue.position(sym).size * snap.mark;
       const out = computeQuotes({
-        mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S,
+        mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S, book: rt.book, hlMid: hlMid(sym), hourlyVolumeUsd: this.hourlyVolume(sym, now),
         policy: this.policy, gov: rt.params, reflex: rt.reflex, spec, cfg: this.cfg(sym),
       });
       rt.model = out;
@@ -303,22 +358,42 @@ export class Runner {
     if (rt.sigmaHist.length > 1440) rt.sigmaHist.shift();
   }
 
-  private runReflex(rt: MarketRt, sig: MarketSignal, now: number) {
+  /** Top-of-book imbalance. Only the live book carries Monday's own resting quotes; leave them out so it cannot chase itself. */
+  private bookNow(sym: MarketSym, snap: MarketSnapshot): number {
+    const tick = this.spec(sym).priceTick;
+    const others = (levels: BookLevel[], side: Side) => {
+      const q = this.deps.driver.kind === 'perpl' ? this.venue?.quote(sym, side) : null;
+      if (!q) return levels;
+      return levels.map((l) => (Math.abs(l.price - q.price) < tick / 2 ? { ...l, size: l.size - q.size } : l)).filter((l) => l.size > 0);
+    };
+    return bookImbalance(others(snap.bids, 'bid'), others(snap.asks, 'ask'));
+  }
+
+  private runReflex(rt: MarketRt, sig: MarketSignal, snap: MarketSnapshot, now: number) {
     const cfg = this.cfg(rt.sym);
     const sym = rt.sym;
     const big = this.deps.collector.recentTrades(sym, Math.max(rt.lastBigTs, now - 60_000)).filter((t) => t.valueUsd >= cfg.bigTradeUsd).sort((a, b) => b.valueUsd - a.valueUsd)[0];
     if (big) rt.lastBigTs = Math.max(rt.lastBigTs, big.ts) + 1;
     const z = sig.stale ? 0 : sig.w5.z;
-    const trig = reflexTrigger(z, big ? tradeSign(big) : 0, cfg);
+    const flow = reflexTrigger(z, big ? tradeSign(big) : 0, cfg);
+    // Smart-money flow wins; the book only acts when flow is quiet, and holds for less time.
+    const onBook = bookTrigger(rt.book, cfg);
+    const trig = flow ?? (onBook && { ...onBook, book: true });
+    const holdCfg = flow ? cfg : { ...cfg, reflexHoldMs: cfg.bookHoldMs };
     const dir = trig?.side === 'ask' ? 1 : -1;
-    const culprits = trig ? this.deps.collector.recentTrades(sym, now - 5 * 60_000).filter((t) => tradeSign(t) === dir).sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 12) : [];
-    const { state, changed } = nextReflex(rt.reflex, trig, now, z, culprits.map((t) => t.hash), cfg);
+    const culprits = flow ? this.deps.collector.recentTrades(sym, now - 5 * 60_000).filter((t) => tradeSign(t) === dir).sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 12) : [];
+    const { state, changed } = nextReflex(rt.reflex, trig, now, flow ? z : rt.book, culprits.map((t) => t.hash), holdCfg);
     const before = rt.reflex;
     rt.reflex = state;
     if (!changed) return;
-    rt.govAsap = true;
+    if (!state?.book) rt.govAsap = true; // book flicker is not worth an early governor run
     const holdMin = cfg.reflexHoldMs / 60_000;
-    if (state) {
+    if (state?.book) {
+      const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
+      const heavy = state.side === 'ask' ? 'bids' : 'asks';
+      const reason = `Perpl's ${sym} book is ${Math.round(50 + Math.abs(rt.book) * 50)}% ${heavy} in the top 5 levels. ${what} for ${cfg.bookHoldMs / 1000} seconds.`;
+      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.bookHoldMs / 1000, trigger: 'book' }, reason, { bookImbalance: rt.book, bids: snap.bids.slice(0, 5), asks: snap.asks.slice(0, 5), at: now }, null);
+    } else if (state) {
       const verb = state.side === 'ask' ? 'bought' : 'sold';
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
       const reason = big && Math.abs(z) <= cfg.z2
@@ -326,7 +401,7 @@ export class Runner {
         : `Smart money ${verb} ${usdCompact(Math.abs(sig.w5.netUsd))} ${sym} on Hyperliquid in 5 min (z = ${z.toFixed(1)}). ${what} for ${holdMin} minutes.`;
       this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_min: holdMin }, reason, { z5m: z, netUsd5m: sig.w5.netUsd, nansenTx: state.triggerHashes, at: now }, null);
     } else if (before) {
-      this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `Flow has cooled. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, at: now }, null);
+      this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `${before.book ? 'The book has evened out' : 'Flow has cooled'}. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, bookImbalance: rt.book, at: now }, null);
     }
   }
 
@@ -422,12 +497,15 @@ export class Runner {
 
   private onFill(f: VenueFill) {
     const regime = this.m[f.sym]?.params.regime ?? 'calm';
-    const fill: Fill = { id: f.id, sym: f.sym, side: f.side, price: f.price, size: f.size, feeUsd: f.feeUsd, isMaker: f.isMaker, ts: f.ts, regime, markout1mBps: null, markout5mBps: null };
+    const fill: Fill = {
+      id: f.id, sym: f.sym, side: f.side, price: f.price, size: f.size, feeUsd: f.feeUsd, isMaker: f.isMaker, ts: f.ts, regime,
+      markout1sBps: null, markout5sBps: null, markout10sBps: null, markout1mBps: null, markout5mBps: null,
+    };
     this.fills.unshift(fill);
     if (this.fills.length > 80) this.fills.pop();
     this.realized += f.realizedUsd;
     this.fees += f.feeUsd;
-    insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd);
+    insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, this.m[f.sym]?.model?.halfBps ?? null);
     if (f.isMaker) this.pendingMarkouts.push(fill);
   }
 
@@ -476,17 +554,31 @@ export class Runner {
         this.deps.notify(`Monday: daily loss above 70% of limit for ${this.wallet.slice(0, 8)}`);
         for (const sym of this.policy.markets) this.rt(sym).govAsap = true;
       }
+      // Equity below the margin the policy's full inventory needs: stop before Perpl's maintenance margin, which
+      // sits lower at any leverage Perpl allows. Skipped while the account balance is unknown (0).
+      if ((this.venue?.account().balanceUsd ?? 0) > 0 && equity < marginFloorUsd(this.policy, this.policy.markets.length)) return void this.kill('margin');
+      const s = this.session;
+      if (s) {
+        const pnl = equity - s.startEquity;
+        if (s.stopLossUsd != null && pnl <= -s.stopLossUsd) return void this.kill('session_loss');
+        if (s.takeProfitUsd != null && pnl >= s.takeProfitUsd) return void this.takeProfit(pnl);
+      }
     }
 
-    // Markouts at +1 and +5 minutes from the fill (PRD 11.4 step 7).
+    // Markouts after each maker fill: 1, 5 and 10 s (Tread's view of the book reacting) and 1 and 5 min (PRD 11.4 step 7).
+    // Ticks are 1 s apart, so a "1 s" markout is read 1 to 2 s after the fill.
     for (const f of this.pendingMarkouts) {
       const snap = this.deps.driver.feed.snapshot(f.sym);
       const ref = snap?.mid ?? snap?.mark;
       if (!ref) continue;
+      if (f.markout1sBps == null && now >= f.ts + 1_000) f.markout1sBps = markoutBps(f.side, f.price, ref);
+      if (f.markout5sBps == null && now >= f.ts + 5_000) f.markout5sBps = markoutBps(f.side, f.price, ref);
+      if (f.markout10sBps == null && now >= f.ts + 10_000) f.markout10sBps = markoutBps(f.side, f.price, ref);
       if (f.markout1mBps == null && now >= f.ts + 60_000) f.markout1mBps = markoutBps(f.side, f.price, ref);
       if (f.markout5mBps == null && now >= f.ts + 300_000) {
         f.markout5mBps = markoutBps(f.side, f.price, ref);
-        db.prepare('update fills set markout_1m = ?, markout_5m = ? where id = ?').run(f.markout1mBps, f.markout5mBps, f.id);
+        db.prepare('update fills set markout_1s = ?, markout_5s = ?, markout_10s = ?, markout_1m = ?, markout_5m = ? where id = ?')
+          .run(f.markout1sBps, f.markout5sBps, f.markout10sBps, f.markout1mBps, f.markout5mBps, f.id);
       }
     }
     this.pendingMarkouts = this.pendingMarkouts.filter((f) => f.markout5mBps == null);
@@ -527,6 +619,12 @@ export class Runner {
   }
 
   // ---- what the dashboard sees ----
+  /** The Hyperliquid mid the engine would blend in, for display. */
+  private hlShown(sym: MarketSym, mark: number): number | null {
+    const h = hlMid(sym);
+    return h != null && Math.abs(h / mark - 1) * 1e4 <= this.cfg(sym).blendMaxBps ? h : null;
+  }
+
   state(): DashboardState {
     const now = Date.now();
     const feed = this.deps.driver.feed;
@@ -545,7 +643,8 @@ export class Runner {
         sym, spec, mark: snap.mark, oracle: snap.oracle, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk,
         bids: snap.bids.slice(0, 12), asks: snap.asks.slice(0, 12), fundingRate: snap.fundingRate, dataAgeMs: age, sigma1mBps: varToBps(rt.var1m),
         quotes: { bid: this.venue?.quote(sym, 'bid') ?? null, ask: this.venue?.quote(sym, 'ask') ?? null },
-        model: quoting && rt.model ? { ref: rt.model.ref, center: rt.model.center, halfBps: rt.model.halfBps, skewInvBps: rt.model.skewInvBps, skewNanBps: rt.model.skewNanBps, q: rt.model.q } : null,
+        model: quoting && rt.model ? { ref: rt.model.ref, center: rt.model.center, halfBps: rt.model.halfBps, skewInvBps: rt.model.skewInvBps, skewNanBps: rt.model.skewNanBps, skewBookBps: rt.model.skewBookBps, q: rt.model.q, blendBps: rt.model.blendBps, sizeCapUsd: rt.model.sizeCapUsd } : null, book: rt.book,
+        hlMid: this.hlShown(sym, snap.mark),
         position: { size: pos.size, entryPrice: pos.entryPrice, notionalUsd: pos.size * snap.mark, unrealizedUsd: pos.size ? pos.size * (snap.mark - pos.entryPrice) : 0 },
         params: rt.params, paramsSource: rt.paramsSource, reflex: quoting && rt.reflex && rt.reflex.until > now ? rt.reflex : null,
         signal: this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(sym), trades: this.deps.collector.latestTrades(sym, 14), priceSeries: rt.series,
@@ -555,9 +654,10 @@ export class Runner {
     const step = Math.max(1, Math.ceil(this.equity.length / 300));
     // Full snapshot every second per subscriber. Send diffs if bandwidth ever matters.
     return {
-      at: now, sim: this.deps.driver.kind === 'sim', status: this.status, killReason: this.killReason, startedAt: this.startedAt, policy: this.policy,
+      at: now, sim: this.deps.driver.kind === 'sim', paper: this.deps.driver.kind === 'paper', status: this.status, killReason: this.killReason, startedAt: this.startedAt, policy: this.policy,
       account: { id: this.accountId, balanceUsd: acct?.balanceUsd ?? 0, equityUsd: this.equityNow() },
       pnl: { todayUsd: this.pnlToday(), realizedUsd: this.realized, unrealizedUsd: this.unrealized(), feesUsd: this.fees, lossLimitUsedPct: this.lossUsedPct() },
+      session: this.session && { startedAt: this.session.startedAt, pnlUsd: this.equityNow() - this.session.startEquity, stopLossUsd: this.session.stopLossUsd, takeProfitUsd: this.session.takeProfitUsd },
       health: {
         marketDataAgeMs: worstAge, signalAgeMs: Number.isFinite(this.deps.collector.ageMs) ? this.deps.collector.ageMs : -1, budgetRemaining: Math.floor(this.tokens),
         budgetPerMin: this.budget, venueConnected: this.venue?.connected() ?? false, llm: llmEnabled, llmFailing: llmEnabled && llmFailures >= 3, chain: chainEnabled && agentAddress !== null,
@@ -568,3 +668,5 @@ export class Runner {
 }
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+/** Whole dollars when whole, otherwise cents: session limits and take-profit amounts are often small. */
+const cents = (n: number) => usd(n, Number.isInteger(n) ? 0 : 2);

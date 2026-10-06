@@ -64,7 +64,7 @@ export default function PolicyPage() {
             </Notice>
           </div>
         )}
-        <div className="mt-8"><PolicyForm value={draft} onChange={setDraft} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={cfg?.caps ?? null} balance={balance} /></div>
+        <div className="mt-8"><PolicyForm value={draft} onChange={setDraft} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={cfg?.caps ?? null} balance={balance} specs={cfg?.specs ?? {}} /></div>
         <p className="mt-8 border-l-2 border-fg pl-4 text-[15px]">{policySummary({ ...draft.limits, markets: draft.markets })}</p>
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <Button size="lg" onClick={save} disabled={busy !== null || !draftFits(draft, balance)}>{busy ?? 'Save policy'}</Button>

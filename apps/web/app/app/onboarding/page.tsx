@@ -3,7 +3,7 @@
 import { ArrowSquareOutIcon, CheckIcon } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { policySummary, usd } from '@monday/core';
 import { PolicyForm, draftFits, draftForBalance, draftFrom, toBody, type Caps, type PolicyDraft } from '@/components/policy-form';
 import { Button, Field, INPUT, Notice, Skeleton, Tag, cx } from '@/components/ui';
@@ -62,12 +62,12 @@ export default function Onboarding() {
 
       <div className="max-w-[46rem]">
         {current === 1 && <AccountStep account={account.data} loading={account.isLoading} retry={() => void account.refetch()} next={() => setStep(2)} />}
-        {current === 2 && <KeyStep sim={Boolean(cfg?.sim)} perplUrl={cfg?.perplAppUrl ?? ''} hasKey={me.hasKey} revoked={me.keyStatus === 'revoked'} next={async () => { await Promise.all([refresh(), account.refetch()]); setLinked(true); setStep(3); }} />}
+        {current === 2 && <KeyStep sim={Boolean(cfg?.sim || cfg?.paper)} paper={Boolean(cfg?.paper)} perplUrl={cfg?.perplAppUrl ?? ''} hasKey={me.hasKey} revoked={me.keyStatus === 'revoked'} next={async () => { await Promise.all([refresh(), account.refetch()]); setLinked(true); setStep(3); }} />}
         {current === 3 && (
           <LimitsStep
             initial={policy.data?.pending?.policy ?? policy.data?.policy ? draftFrom(policy.data?.pending?.policy ?? policy.data?.policy) : draftForBalance(account.data?.balanceUsd ?? 0, cfg?.caps ?? null)}
             balance={account.data?.balanceUsd ?? 0} linked={linked}
-            available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={cfg?.caps ?? null}
+            available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={cfg?.caps ?? null} specs={cfg?.specs ?? {}}
             next={async () => { await refresh(); setStep(4); }}
           />
         )}
@@ -114,7 +114,7 @@ function AccountStep({ account, loading, retry, next }: { account?: Account; loa
   );
 }
 
-function KeyStep({ sim, perplUrl, hasKey, revoked, next }: { sim: boolean; perplUrl: string; hasKey: boolean; revoked: boolean; next: () => Promise<void> }) {
+function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: boolean; paper: boolean; perplUrl: string; hasKey: boolean; revoked: boolean; next: () => Promise<void> }) {
   const [token, setToken] = useState('');
   const [secret, setSecret] = useState('');
   const [busy, setBusy] = useState(false);
@@ -157,7 +157,7 @@ function KeyStep({ sim, perplUrl, hasKey, revoked, next }: { sim: boolean; perpl
       {sim && (
         <div className="mt-6">
           <Notice action={<Button size="sm" variant="ghost" onClick={() => { setToken('pk_demo_monday'); setSecret('sk_demo_monday'); }}>Fill a demo key</Button>}>
-            Simulated market: any token and secret are accepted. A token starting with <code className="num">read</code> or a secret starting with <code className="num">bad</code> shows the error states.
+            {paper ? 'Paper trading: prices are Perpl\'s real ones, orders are simulated.' : 'Simulated market:'} Any token and secret are accepted. A token starting with <code className="num">read</code> or a secret starting with <code className="num">bad</code> shows the error states.
           </Notice>
         </div>
       )}
@@ -175,7 +175,7 @@ function KeyStep({ sim, perplUrl, hasKey, revoked, next }: { sim: boolean; perpl
   );
 }
 
-function LimitsStep({ initial, balance, linked, available, caps, next }: { initial: PolicyDraft; balance: number; linked: boolean; available: PolicyDraft['markets']; caps: Caps | null; next: () => Promise<void> }) {
+function LimitsStep({ initial, balance, linked, available, caps, specs, next }: { initial: PolicyDraft; balance: number; linked: boolean; available: PolicyDraft['markets']; caps: Caps | null; specs: ComponentProps<typeof PolicyForm>['specs']; next: () => Promise<void> }) {
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -195,7 +195,7 @@ function LimitsStep({ initial, balance, linked, available, caps, next }: { initi
     <div>
       {linked && <div className="mb-8"><Notice>Key accepted. Monday can place, change and cancel orders in your account. It cannot withdraw or transfer funds.</Notice></div>}
       <Heading title="Set your limits">These limits bind the agent and the LLM alike. Nothing Monday does can exceed them. Your Perpl balance is <span className="num">{fmtUsd(balance)}</span>.</Heading>
-      <div className="mt-8"><PolicyForm value={draft} onChange={setDraft} available={available} caps={caps} balance={balance} /></div>
+      <div className="mt-8"><PolicyForm value={draft} onChange={setDraft} available={available} caps={caps} balance={balance} specs={specs} /></div>
       <p className="mt-8 border-l-2 border-fg pl-4 text-[15px]">{policySummary({ ...draft.limits, markets: draft.markets })}</p>
       {err && <p role="alert" className="mt-4 text-[13px] text-ask-fg">{err}</p>}
       <Button size="lg" className="mt-8" onClick={save} disabled={busy || !draftFits(draft, balance)}>{busy ? 'Checking limits' : 'Continue'}</Button>
