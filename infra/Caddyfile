@@ -1,0 +1,4 @@
+# TLS is automatic once API_DOMAIN points at this machine.
+{$API_DOMAIN} {
+	reverse_proxy server:3001
+}

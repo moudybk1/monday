@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+/*
+  Monday design tokens: a trading terminal.
+
+  Grounded in how live terminals are actually built (Hyperliquid, Perpl, Lighter, dYdX measured in
+  the browser, plus Bloomberg's published approach):
+  - Dark first. Long sessions, low light. Near-black, never pure black; four close surface steps.
+  - 12px is the workhorse size. Hierarchy comes from text tone and weight, not from scale.
+  - Numbers are set in a mono face with tabular figures so columns align and digits do not jitter.
+  - Colour is rationed: teal and vermilion mean bid and ask (validated for colour-blind separation;
+    pink-red against green fails it), amber means "this is Monday's", everything else is grey.
+  - Panels have hard edges and scroll inside themselves. The page itself does not scroll on desktop.
+
+  Shape rule: panels 6px, controls 4px, nothing rounder.
+*/
+:root,
+[data-theme="dark"] {
+  --void: #060708;
+  --canvas: #0c0d10;
+  --raised: #14161a;
+  --raised-2: #1e2127;
+  --line: rgb(255 255 255 / 0.075);
+  --line-2: rgb(255 255 255 / 0.15);
+  --fg: #e9ebee;
+  --fg-2: #a3a9b2;
+  --fg-3: #7b828c;
+  --accent: #ffa630;
+  --accent-fg: #0c0d10;
+  --bid: #27a583;
+  --ask: #e0633f;
+  --bid-fg: #45c7a0;
+  --ask-fg: #f28563;
+  --warn: #e9b949;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --void: #e7e9ec;
+  --canvas: #fbfbfc;
+  --raised: #f0f1f3;
+  --raised-2: #e2e4e8;
+  --line: rgb(12 13 16 / 0.1);
+  --line-2: rgb(12 13 16 / 0.24);
+  --fg: #0e1013;
+  --fg-2: #454b53;
+  --fg-3: #666d77;
+  --accent: #b85f00;
+  --accent-fg: #ffffff;
+  --bid: #0b8468;
+  --ask: #d2512a;
+  --bid-fg: #086b54;
+  --ask-fg: #ad3d1c;
+  --warn: #7a5200;
+  color-scheme: light;
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-void: var(--void);
+  --color-canvas: var(--canvas);
+  --color-raised: var(--raised);
+  --color-raised-2: var(--raised-2);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-bid: var(--bid);
+  --color-ask: var(--ask);
+  --color-bid-fg: var(--bid-fg);
+  --color-ask-fg: var(--ask-fg);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-mona), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html {
+    background: var(--void);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100dvh;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  button,
+  [role="tab"],
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0.65);
+  }
+}
+
+@layer components {
+  /* Every figure: mono, tabular, no coding ligatures. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-variant-ligatures: none;
+    letter-spacing: -0.01em;
+  }
+  /* Column heads and status-bar keys. Functional, small, and the only uppercase in the product. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .display {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.03;
+    text-wrap: balance;
+  }
+  .panel {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--canvas);
+  }
+  .scroll {
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--raised-2) transparent;
+  }
+  /* A side that has been pulled: hatched, like a struck line. */
+  .hatch {
+    background-image: repeating-linear-gradient(-45deg, transparent 0 5px, var(--line-2) 5px 6px);
+  }
+}
+
+@keyframes flash-row {
+  from { background-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pulse-dot {
+  50% { opacity: 0.3; }
+}
+/* Motion only confirms that something changed. Nothing loops except the one live indicator. */
+@media (prefers-reduced-motion: no-preference) {
+  .flash { animation: flash-row 0.7s var(--ease-out-expo); }
+  .rise { animation: rise 0.6s var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 60ms); }
+  .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+}

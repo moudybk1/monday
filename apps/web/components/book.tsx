@@ -1,0 +1,90 @@
+'use client';
+
+import { usdCompact, type BookLevel, type MarketState, type QuoteTarget, type Side } from '@monday/core';
+import { fmtPrice, fmtSize } from '@/lib/format';
+import { cx } from './ui';
+
+interface Row {
+  price: number;
+  size: number;
+  mine: boolean;
+  cumUsd: number;
+}
+
+/** Merge Monday's resting quote into one side of the book, best price first. */
+function ladder(levels: BookLevel[], mine: QuoteTarget | null, side: Side, n: number): Row[] {
+  const rows = levels.map((l) => ({ price: l.price, size: l.size, mine: false, cumUsd: 0 }));
+  if (mine) {
+    const i = rows.findIndex((r) => (side === 'bid' ? r.price <= mine.price : r.price >= mine.price));
+    if (i >= 0 && rows[i].price === mine.price) rows[i] = { ...rows[i], size: rows[i].size + mine.size, mine: true };
+    else rows.splice(i < 0 ? rows.length : i, 0, { price: mine.price, size: mine.size, mine: true, cumUsd: 0 });
+  }
+  let acc = 0;
+  for (const r of rows) r.cumUsd = acc += r.price * r.size;
+  // Keep Monday's row visible even when it rests deeper than the rows we have room for.
+  const at = rows.findIndex((r) => r.mine);
+  return at >= n ? [...rows.slice(0, n - 1), rows[at]] : rows.slice(0, n);
+}
+
+// Three columns, nothing else: price, size, cumulative depth. The same rhythm on every row.
+const COLS = 'grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-2.5';
+
+function Level({ r, side, max, m }: { r: Row; side: Side; max: number; m: MarketState }) {
+  return (
+    <li className={cx(COLS, 'num relative h-[21px] text-[12px]', r.mine && 'flash bg-accent/14')}>
+      {/* Depth: a tint anchored to the right edge, behind the figures. */}
+      <span aria-hidden className="absolute inset-y-px right-0" style={{ width: `${(r.cumUsd / max) * 100}%`, background: side === 'bid' ? 'var(--bid)' : 'var(--ask)', opacity: r.mine ? 0 : 0.13 }} />
+      {/* Amber on the leading edge: this level is Monday's order. */}
+      {r.mine && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
+      <span className={cx('relative flex items-center gap-1.5', side === 'bid' ? 'text-bid-fg' : 'text-ask-fg')}>
+        {fmtPrice(r.price, m.spec)}
+        {r.mine && <span className="rounded-[2px] bg-accent px-1 text-[9.5px] font-semibold leading-[14px] tracking-wide text-accent-fg">MONDAY</span>}
+      </span>
+      <span className={cx('relative text-right', r.mine ? 'text-accent' : 'text-fg')}>{fmtSize(r.size, m.spec)}</span>
+      <span className="relative text-right text-fg-3">{usdCompact(r.cumUsd)}</span>
+    </li>
+  );
+}
+
+function Pulled({ side, m, now }: { side: Side; m: MarketState; now: number }) {
+  const left = Math.max(0, Math.round((m.reflex!.until - now) / 1000));
+  return (
+    <li className="hatch num flex h-[21px] items-center justify-between border-y border-line-2 px-2.5 text-[11px]">
+      <span className="font-medium uppercase tracking-wide text-accent">Monday&apos;s {side} pulled</span>
+      <span className="text-fg-2">
+        {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+      </span>
+    </li>
+  );
+}
+
+export function OrderBook({ m, rows = 10, now = Date.now() }: { m: MarketState; rows?: number; now?: number }) {
+  const asks = ladder(m.asks, m.quotes.ask, 'ask', rows);
+  const bids = ladder(m.bids, m.quotes.bid, 'bid', rows);
+  const max = Math.max(asks.at(-1)?.cumUsd ?? 1, bids.at(-1)?.cumUsd ?? 1);
+  const pulled = m.reflex?.action === 'pull' ? m.reflex.side : null;
+  const spreadBps = m.bestBid && m.bestAsk ? ((m.bestAsk - m.bestBid) / m.mark) * 1e4 : null;
+
+  return (
+    <div className="select-none" role="table" aria-label={`${m.sym} order book with Monday's quotes highlighted`}>
+      <div className={cx(COLS, 'label h-6')} role="row">
+        <span>Price</span>
+        <span className="text-right">Size {m.sym}</span>
+        <span className="text-right">Depth</span>
+      </div>
+      <ol aria-label="Asks">
+        {/* Monday's row is keyed by price, so a requote remounts it and the flash plays. */}
+        {[...asks].reverse().map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="ask" max={max} m={m} />)}
+        {pulled === 'ask' && <Pulled side="ask" m={m} now={now} />}
+      </ol>
+      <div className="flex h-8 items-center justify-between border-y border-line bg-raised px-2.5">
+        <span className="num text-[14px] font-semibold tracking-tight">{fmtPrice(m.mark, m.spec)}</span>
+        <span className="label">mark{spreadBps != null && <> / spread {spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps</>}</span>
+      </div>
+      <ol aria-label="Bids">
+        {pulled === 'bid' && <Pulled side="bid" m={m} now={now} />}
+        {bids.map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="bid" max={max} m={m} />)}
+      </ol>
+    </div>
+  );
+}
