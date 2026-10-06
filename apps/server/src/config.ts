@@ -17,7 +17,7 @@ const num = (k: string, d: number) => (Number.isFinite(Number(env(k))) && env(k)
 
 // One switch picks the chain and every Perpl address together, so they cannot disagree.
 // Values checked against Perpl's live /pub/context for each network.
-const NETWORKS = {
+export const NETWORKS = {
   testnet: {
     name: 'Monad testnet', chainId: 10143, rpcUrl: 'https://testnet-rpc.monad.xyz', explorerUrl: 'https://testnet.monadscan.com',
     perplApi: 'https://testnet.perpl.xyz/api', perplWs: 'wss://testnet.perpl.xyz', perplApp: 'https://testnet.perpl.xyz',
@@ -87,6 +87,14 @@ export const config = {
   apiPublicUrl: env('API_PUBLIC_URL', `http://localhost:${num('PORT', 3001)}`),
 
   telegram: { token: env('TELEGRAM_BOT_TOKEN'), chatId: env('TELEGRAM_CHAT_ID') },
+
+  // Public Perpl stats pages. Mainnet by default, whatever network Monday itself trades on: that is where Perpl's users are.
+  stats: {
+    network: (env('STATS_NETWORK', 'mainnet') === 'testnet' ? 'testnet' : 'mainnet') as 'testnet' | 'mainnet',
+    // Envio HyperSync (app.envio.dev/api-tokens): full event history in minutes. Without it the indexer follows the chain
+    // from a few hours back over plain RPC.
+    envioToken: env('ENVIO_API_TOKEN'),
+  },
 };
 
 if (prod && !config.sessionSecret) throw new Error('SESSION_SECRET is required in production.');

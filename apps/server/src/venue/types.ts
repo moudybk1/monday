@@ -33,7 +33,7 @@ export interface MarketFeed {
   stop(): void;
   specs(): Partial<Record<MarketSym, MarketSpec>>;
   snapshot(sym: MarketSym): MarketSnapshot | null;
-  /** 1-minute candles, oldest first. Used for volatility warm-up and the evidence page. */
+  /** 1-minute candles, oldest first. Used for volatility warm-up, the volume cap and the evidence page. */
   candles(sym: MarketSym, fromMs: number, toMs: number): Promise<Candle[]>;
 }
 

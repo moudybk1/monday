@@ -4,8 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { Analytics, Bucket } from '@monday/core';
 import { SignedBars } from '@/components/charts';
-import { Notice, Panel, Skeleton, cx } from '@/components/ui';
-import { api } from '@/lib/api';
+import { Segments } from '@/components/stats-ui';
+import { ButtonLink, Notice, Panel, Skeleton, cx } from '@/components/ui';
+import { ApiError, api } from '@/lib/api';
 import { fmtBps, fmtSigned, fmtUsd } from '@/lib/format';
 
 // Tread-style performance view over Monday's own fills: is the spread paying for the adverse selection,
@@ -16,35 +17,32 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HORIZON: Record<string, string> = { '1s': '1 s', '5s': '5 s', '10s': '10 s', '1m': '1 min', '5m': '5 min' };
 const tone = (n: number | null) => (n == null ? 'text-fg-3' : n > 0.004 ? 'text-bid-fg' : n < -0.004 ? 'text-ask-fg' : 'text-fg');
 const pct = (n: number | null) => (n == null ? 'n/a' : `${Math.round(n * 100)}%`);
-const compact = (n: number) => (Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : Math.abs(n) >= 1e4 ? `$${(n / 1e3).toFixed(1)}k` : fmtUsd(n, 0));
+const compact = (n: number) => (Math.abs(n) >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : Math.abs(n) >= 1e4 ? `$${(n / 1e3).toFixed(1)}k` : fmtUsd(n, 0));
 
-export default function AnalyticsPage() {
+export default function MyMondayPage() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(30);
-  const q = useQuery({ queryKey: ['analytics', days], queryFn: () => api<Analytics>(`/analytics?days=${days}`), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: ['analytics', days], queryFn: () => api<Analytics>(`/analytics?days=${days}`), refetchInterval: 60_000, retry: false });
   useEffect(() => {
-    document.title = 'Analytics - Monday';
+    document.title = 'My Monday - Analytics';
   }, []);
+  const signedOut = q.error instanceof ApiError && q.error.status === 401;
 
   return (
-    <div className="py-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="display text-3xl md:text-4xl">Analytics</h1>
-          <p className="mt-2 max-w-[64ch] text-fg-2">How Monday&apos;s fills have done. Net is realised PnL after fees, per dollar traded. Markout is how price moved after a fill: positive means the fill was good for you.</p>
-        </div>
-        <div role="tablist" aria-label="Range" className="flex rounded-sm border border-line-2">
-          {RANGES.map((d) => (
-            <button key={d} role="tab" aria-selected={d === days} onClick={() => setDays(d)} className={cx('num h-8 px-3 text-[12px]', d === days ? 'bg-fg text-canvas' : 'text-fg-2 hover:bg-raised')}>{d}d</button>
-          ))}
-        </div>
+    <div className="grid gap-1 pt-1">
+      <div className="panel flex-row flex-wrap items-center justify-between gap-2 px-2.5 py-1.5">
+        <p className="text-[12px] text-fg-2">
+          <span className="font-semibold text-fg">Your agent&apos;s fills.</span> Net is realised PnL after fees, per dollar traded. Markout is how price moved after a fill: positive means the fill was good for you.
+        </p>
+        <Segments label="Range" value={days} onChange={setDays} options={RANGES.map((d) => [d, `${d}D`] as const)} />
       </div>
-
       {q.isLoading ? (
-        <div className="mt-6 grid gap-1"><Skeleton className="h-16" /><Skeleton className="h-64" /><Skeleton className="h-48" /></div>
+        <div className="grid gap-1"><Skeleton className="h-16" /><Skeleton className="h-64" /><Skeleton className="h-48" /></div>
+      ) : signedOut ? (
+        <Notice action={<ButtonLink href="/app" size="sm">Open Monday</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
       ) : q.isError || !q.data ? (
-        <div className="mt-6"><Notice tone="warn">Could not load analytics. {q.error instanceof Error ? q.error.message : ''}</Notice></div>
+        <Notice tone="warn">Could not load your analytics. {q.error instanceof Error ? q.error.message : ''}</Notice>
       ) : q.data.summary.fills === 0 ? (
-        <div className="mt-6"><Notice>No fills in the last {days} days. Numbers appear here as takers trade against Monday&apos;s quotes.</Notice></div>
+        <Notice>No fills in the last {days} days. Numbers appear here as takers trade against Monday&apos;s quotes.</Notice>
       ) : (
         <Body a={q.data} />
       )}
@@ -65,7 +63,7 @@ function Body({ a }: { a: Analytics }) {
   ];
 
   return (
-    <div className="mt-6 grid gap-1">
+    <div className="grid gap-1">
       <dl className="panel grid grid-cols-2 gap-px bg-line md:grid-cols-3 xl:grid-cols-6">
         {cells.map(([k, v, hint, t]) => (
           <div key={k} className="bg-canvas px-3 py-2.5">

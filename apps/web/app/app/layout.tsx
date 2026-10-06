@@ -19,7 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 const NAV = [
   { href: '/app', label: 'Terminal' },
-  { href: '/app/analytics', label: 'Analytics' },
+  { href: '/analytics', label: 'Analytics' },
   { href: '/app/policy', label: 'Policy' },
   { href: '/evidence', label: 'Evidence' },
 ];

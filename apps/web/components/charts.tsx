@@ -176,14 +176,15 @@ export function LineChart({ series, height, format, baseline, label, empty = 'Co
   );
 }
 
-/** Bars on a zero baseline, coloured by sign. Used for the z-score decile study. */
-export function SignedBars({ data, height = 220, format, label, lowLabel, highLabel }: {
+/** Bars on a zero baseline, coloured by sign unless `tone` fixes one colour (for values with no good or bad side, like volume). */
+export function SignedBars({ data, height = 220, format, label, lowLabel, highLabel, tone }: {
   data: { key: string; v: number; tip: string }[];
   height?: number;
   format: (v: number) => string;
   label: string;
   lowLabel: string;
   highLabel: string;
+  tone?: Tone;
 }) {
   const [ref, { w }] = useSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -200,10 +201,7 @@ export function SignedBars({ data, height = 220, format, label, lowLabel, highLa
       {w > 0 && (
         <svg width={w} height={height} role="img" aria-label={label} className="block" onPointerLeave={() => setHover(null)}>
           {niceTicks(lo, hi, 4).map((v) => (
-            <g key={v}>
-              <line x1={PAD.l} x2={w - PAD.r} y1={y(v)} y2={y(v)} stroke={v === 0 ? 'var(--line-2)' : 'var(--line)'} />
-              <text x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="10" fill="var(--fg-3)">{format(v)}</text>
-            </g>
+            <line key={v} x1={PAD.l} x2={w - PAD.r} y1={y(v)} y2={y(v)} stroke={v === 0 ? 'var(--line-2)' : 'var(--line)'} />
           ))}
           {data.map((d, i) => {
             const cx0 = PAD.l + slot * i + slot / 2;
@@ -216,10 +214,14 @@ export function SignedBars({ data, height = 220, format, label, lowLabel, highLa
             return (
               <g key={d.key} onPointerEnter={() => setHover(i)}>
                 <rect x={PAD.l + slot * i} y={PAD.t} width={slot} height={height - PAD.t - PAD.b} fill="transparent" />
-                <path d={shape} fill={d.v >= 0 ? 'var(--bid)' : 'var(--ask)'} opacity={hover == null || hover === i ? 1 : 0.4} />
+                <path d={shape} fill={tone ? TONE[tone] : d.v >= 0 ? 'var(--bid)' : 'var(--ask)'} opacity={hover == null || hover === i ? 1 : 0.4} />
               </g>
             );
           })}
+          {/* Tick labels after the bars, with a canvas halo, so dense bars cannot hide them. */}
+          {niceTicks(lo, hi, 4).map((v) => (
+            <text key={v} x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="10" fill="var(--fg-3)" stroke="var(--canvas)" strokeWidth="3" paintOrder="stroke">{format(v)}</text>
+          ))}
           <text x={PAD.l} y={height - 6} fontSize="10.5" fill="var(--fg-3)">{lowLabel}</text>
           <text x={w - PAD.r} y={height - 6} textAnchor="end" fontSize="10.5" fill="var(--fg-3)">{highLabel}</text>
         </svg>

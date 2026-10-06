@@ -9,6 +9,7 @@ import { config } from './config';
 import { db, event, unseal, upsertUser } from './db';
 import { computeEvidence, evidence, nansenK } from './evidence';
 import { startHyperliquid } from './hyperliquid';
+import { startIndexer } from './stats/indexer';
 import { llmEnabled } from './governor';
 import { Runner } from './runner';
 import { createPaperDriver } from './venue/paper';
@@ -59,6 +60,7 @@ if (!world || chainEnabled) await verifyRpc();
 await driver.feed.start();
 await collector.start();
 if (!world) startHyperliquid();
+startIndexer(); // public Perpl stats: on in every mode, it reads Perpl mainnet whatever Monday trades
 
 if (simulatedOrders) {
   // The house account quotes from boot so the landing page shows a live agent (on the real book in paper mode).

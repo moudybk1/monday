@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, limitsForBalance, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
+  PRESETS, analyticsOf, liquidationPrice, walletPerformance, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, limitsForBalance, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   preTradeReject, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
@@ -310,5 +310,35 @@ describe('FR-POL-2 policy sizing', () => {
     }
     expect(limitsForBalance(100, 1)).toMatchObject({ quoteSizeUsd: 33, maxInventoryUsd: 166, maxDailyLossUsd: 16 });
     expect(limitsForBalance(5_000, 1)).toEqual(PRESETS.conservative);
+  });
+});
+
+describe('Perpl stats', () => {
+  it('matches the SDK liquidation price', () => {
+    // Long 1 BTC from 100,000 with 10,000 posted at 25x maintenance: MMR 4,000, so 6,000 of room.
+    expect(liquidationPrice(true, 100_000, 1, 10_000, 0, 25)).toBe(94_000);
+    expect(liquidationPrice(false, 100_000, 1, 10_000, 0, 25)).toBe(106_000);
+    expect(liquidationPrice(true, 100_000, 1, 10_000, 1_000, 25)).toBe(93_000); // funding received adds room
+    expect(liquidationPrice(true, 100, 1, 1_000, 0, 25)).toBe(0); // over-collateralised long never liquidates
+  });
+
+  it('scores a wallet from its trades', () => {
+    const t = (ts: number, kind: PxTrade['kind'], pnl: number, fee = 1, sym = 'BTC'): PxTrade => ({
+      ts, block: ts, idx: 0, sym, role: 'taker', kind, side: 'buy', long: true, price: 100, size: 1, usd: 100, fee, pnl, funding: 0,
+    });
+    const p = walletPerformance([
+      t(0, 'open', 0), t(60_000, 'close', 21), // +20
+      t(120_000, 'open', 0), t(180_000, 'decrease', -9), t(240_000, 'close', -9), // -10, -10
+      t(300_000, 'open', 0, 1, 'ETH'), t(420_000, 'close', 6, 1, 'ETH'), // +5
+    ]);
+    expect(p.closes).toBe(4);
+    expect(p.winRate).toBe(0.5);
+    expect(p.profitFactor).toBeCloseTo(25 / 20);
+    expect(p.netUsd).toBe(2); // 21 - 9 - 9 + 6 = 9 price PnL, minus 7 fees
+    expect(p.longestLoss).toBe(2);
+    expect(p.longestWin).toBe(1);
+    expect(p.maxDrawdownUsd).toBe(22); // peak +19 after the first close, trough -3 after the second loss
+    expect(p.avgHoldMin).toBeCloseTo((1 + 2 + 2) / 3);
+    expect(p.byMarket.map((m) => m.sym)).toEqual(['ETH', 'BTC']);
   });
 });

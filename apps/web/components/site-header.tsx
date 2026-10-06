@@ -12,6 +12,7 @@ export function SiteHeader() {
         <nav className="flex items-center gap-1 text-[13px]" aria-label="Main">
           <Link href="/#how" className="hidden rounded-sm px-3 py-1.5 text-fg-2 hover:bg-raised hover:text-fg md:block">How it works</Link>
           <Link href="/#custody" className="hidden rounded-sm px-3 py-1.5 text-fg-2 hover:bg-raised hover:text-fg md:block">Custody</Link>
+          <Link href="/analytics" className="rounded-sm px-3 py-1.5 text-fg-2 hover:bg-raised hover:text-fg">Analytics</Link>
           <Link href="/evidence" className="rounded-sm px-3 py-1.5 text-fg-2 hover:bg-raised hover:text-fg">Evidence</Link>
           <ThemeToggle />
           <ButtonLink href="/app" size="sm" className="ml-2 h-8 px-3.5 text-[12.5px]">Launch app</ButtonLink>

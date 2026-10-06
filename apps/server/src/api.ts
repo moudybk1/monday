@@ -16,6 +16,7 @@ import { config } from './config';
 import { db, seal, upsertUser } from './db';
 import { evidence } from './evidence';
 import { llmEnabled } from './governor';
+import { registerStats } from './stats/routes';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
 import { VenueError, type Candle, type VenueDriver } from './venue/types';
@@ -357,6 +358,8 @@ export async function buildApi(deps: ApiDeps) {
     deps.world.triggerBurst(b.market, b.direction === 'buy' ? 1 : -1);
     return { ok: true };
   });
+
+  registerStats(app);
 
   // ---- realtime ----
   // The session cookie never leaves the web origin, so the socket authenticates with a one-time ticket.
