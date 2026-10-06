@@ -16,7 +16,7 @@ const base: QuoteInput = {
 describe('FR-ENG-1 quoting model', () => {
   it('quotes symmetric around the reference when flat and calm', () => {
     const q = computeQuotes(base);
-    expect(q.halfBps).toBeCloseTo(4.45);
+    expect(q.halfBps).toBeCloseTo(8.45); // 4 x sigma (2 bps) clears the 4 bps floor, plus the maker fee
     expect(q.bid!.price).toBeLessThan(85_000);
     expect(q.ask!.price).toBeGreaterThan(85_000);
     expect(85_000 - q.bid!.price).toBeCloseTo(q.ask!.price - 85_000, 0);
@@ -299,7 +299,7 @@ describe('FR-POL-2 policy sizing', () => {
       expect(balanceNeededUsd(l, n)).toBeLessThanOrEqual(margin);
       expect(l.maxLeverage).toBe(lev);
     }
-    expect(limitsFromMargin(100, 10, 1)).toMatchObject({ maxDailyLossUsd: 10, maxInventoryUsd: 900, quoteSizeUsd: 180 });
+    expect(limitsFromMargin(100, 10, 1)).toMatchObject({ maxDailyLossUsd: 10, maxInventoryUsd: 900, quoteSizeUsd: 90 });
   });
   it('shrinks limits to fit small balances and never exceeds them', () => {
     for (const [bal, n] of [[100, 1], [10, 1], [100, 3], [57.3, 2]] as const) {
@@ -308,7 +308,7 @@ describe('FR-POL-2 policy sizing', () => {
       expect(l.quoteSizeUsd).toBeLessThanOrEqual(l.maxInventoryUsd);
       expect(l.maxLeverage).toBe(PRESETS.conservative.maxLeverage);
     }
-    expect(limitsForBalance(100, 1)).toMatchObject({ quoteSizeUsd: 33, maxInventoryUsd: 166, maxDailyLossUsd: 16 });
+    expect(limitsForBalance(100, 1)).toMatchObject({ quoteSizeUsd: 16, maxInventoryUsd: 166, maxDailyLossUsd: 16 });
     expect(limitsForBalance(5_000, 1)).toEqual(PRESETS.conservative);
   });
 });

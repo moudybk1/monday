@@ -23,7 +23,9 @@ export interface StrategyConfig {
 
 // PRD 10.6
 export const DEFAULT_CONFIG: StrategyConfig = {
-  a: 1.0,
+  // Half-spread is 4x the 1-minute volatility. At 1x the replay on Perpl's Apr-Jun 2026 BTC/ETH tape lost in 5 of 6
+  // months: quotes only filled when price ran through them. At 4x BTC was positive in all three months, ETH about flat.
+  a: 4,
   gamma: 1.0,
   k: 1.5,
   z1: 1.5,

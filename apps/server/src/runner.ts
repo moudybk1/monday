@@ -106,6 +106,11 @@ export class Runner {
   private lastPnlWrite = 0;
   private disconnectedAt = 0;
   private session: (SessionLimits & { startedAt: number; startEquity: number }) | null = null;
+  /** Cleanup that did not reach Perpl (socket down, or an IOC close left a position). Tick retries it every 10 s. */
+  // ponytail: in memory only. A restart before Perpl is back drops it (killed agents are not resumed); persist it if that matters.
+  private owed: 'cancel' | 'flatten' | null = null;
+  private owedRetryAt = 0;
+  private cleaning = false;
 
   constructor(readonly userId: number, readonly wallet: string, private accountId: number, public policy: Policy, private deps: RunnerDeps) {
     // Restore what the dashboard shows after a process restart.
@@ -148,6 +153,7 @@ export class Runner {
     }
     this.killReason = null;
     this.failures = 0;
+    this.owed = null; // quoting again: the runner manages the book itself
     this.status = 'quoting';
     this.startedAt = Date.now();
     if (limits || !this.session) this.session = { stopLossUsd: null, takeProfitUsd: null, ...limits, startedAt: this.startedAt, startEquity: this.equityNow() };
@@ -161,8 +167,9 @@ export class Runner {
     if (this.status !== 'quoting') return;
     this.status = 'paused';
     this.persist();
-    await this.venue?.cancelAll().catch((e) => this.onVenueError(e));
-    this.alert('info', 'Paused. All orders cancelled, positions kept.');
+    const err = await this.cleanup('cancel');
+    if (err) this.alert('warn', `Paused, but the orders could not be cancelled yet (${err}). Monday retries while Perpl is reachable.`);
+    else this.alert('info', 'Paused. All orders cancelled, positions kept.');
   }
 
   async kill(reason: KillReason) {
@@ -171,17 +178,14 @@ export class Runner {
     this.killReason = reason;
     this.persist();
     const evidence = { at: Date.now(), reason, equityUsd: this.equityNow(), pnlTodayUsd: this.pnlToday(), positions: this.policy.markets.map((s) => ({ market: s, size: this.venue?.position(s).size ?? 0 })) };
-    try {
-      await this.venue?.cancelAll();
-      await this.venue?.flatten();
-    } catch (e) {
-      this.alert('critical', `Could not flatten automatically: ${e instanceof Error ? e.message : e}. Close the position on Perpl.`);
-    }
+    const err = await this.cleanup('flatten');
+    if (err) this.alert('critical', `Could not flatten automatically: ${err}. Monday retries every 10 seconds while Perpl is reachable; you can also close the position on Perpl.`);
     const done = 'All orders were cancelled and positions closed.';
-    const text = reason === 'loss_limit' ? `Daily loss limit of ${usd(this.policy.maxDailyLossUsd)} reached. ${done}`
+    let text = reason === 'loss_limit' ? `Daily loss limit of ${usd(this.policy.maxDailyLossUsd)} reached. ${done}`
       : reason === 'session_loss' && this.session?.stopLossUsd != null ? `Session stop loss of ${cents(this.session.stopLossUsd)} reached. ${done}`
       : reason === 'margin' ? `Equity fell below the ${usd(marginFloorUsd(this.policy, this.policy.markets.length))} of margin this policy needs at ${this.policy.maxLeverage}x. ${done} Lower the limits or deposit more.`
       : KILL_TEXT[reason];
+    if (err) text = text.replace(done, 'Orders and positions could not be closed yet; Monday is retrying.');
     this.session = null;
     this.persist();
     this.logDecision(this.policy.markets[0] ?? 'BTC', 'kill', 'killed', { reason }, text, evidence, null);
@@ -195,12 +199,8 @@ export class Runner {
     this.status = 'paused';
     this.session = null;
     this.persist();
-    try {
-      await this.venue?.cancelAll();
-      await this.venue?.flatten();
-    } catch (e) {
-      this.alert('critical', `Take profit reached but the position could not be closed: ${e instanceof Error ? e.message : e}. Close it on Perpl.`);
-    }
+    const err = await this.cleanup('flatten');
+    if (err) this.alert('critical', `Take profit reached but the position could not be closed yet: ${err}. Monday retries while Perpl is reachable; you can also close it on Perpl.`);
     this.alert('info', `Take profit reached: ${cents(pnlUsd)} this session. Orders cancelled and positions closed.`);
     this.deps.notify(`Monday take profit (${cents(pnlUsd)}) for ${this.wallet.slice(0, 8)}`);
     event(this.userId, 'take_profit', { pnlUsd });
@@ -211,6 +211,23 @@ export class Runner {
     this.policy = p;
     for (const sym of removed) for (const side of ['bid', 'ask'] as const) void this.venue?.setQuote(sym, side, null, p.maxLeverage).catch(() => {});
     for (const sym of p.markets) this.rt(sym).govAsap = true; // new limits apply at the next tick (FR-POL-4)
+  }
+
+  /** Cancel every order and, for 'flatten', close every position. On failure the work stays owed for tick to retry. Returns the error. */
+  private async cleanup(what: 'cancel' | 'flatten'): Promise<string | null> {
+    if (this.owed !== 'flatten') this.owed = what; // a flatten owed by a kill is never downgraded to a cancel
+    this.cleaning = true;
+    try {
+      await this.venue?.cancelAll();
+      if (this.owed === 'flatten') await this.venue?.flatten();
+      this.owed = null;
+      return null;
+    } catch (e) {
+      this.owedRetryAt = Date.now() + 10_000;
+      return e instanceof Error ? e.message : String(e);
+    } finally {
+      this.cleaning = false;
+    }
   }
 
   /** Process is stopping: pull resting orders off the book, but leave the persisted status so boot resumes. */
@@ -320,6 +337,12 @@ export class Runner {
       }
     }
 
+    if (this.owed && !this.cleaning && this.status !== 'quoting' && this.venue?.connected() && now >= this.owedRetryAt) {
+      const what = this.owed;
+      void this.cleanup(what).then((err) => err
+        ? event(this.userId, 'error', { cleanup: what, message: err })
+        : this.alert('info', `Perpl is reachable again: all orders cancelled${what === 'flatten' ? ' and positions closed' : ''}.`));
+    }
     if (this.venue) this.riskAndBooks(now);
     if (this.listeners.size) {
       const s = this.state();

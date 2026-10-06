@@ -25,13 +25,14 @@ export interface Policy extends PolicyLimits {
   preset: PresetName;
 }
 
-// PRD 5.2. Starting defaults for testnet.
+// PRD 5.2. Quote sizes are a tenth of max inventory: the replay's losses scaled linearly with size, so quote small
+// until live markouts are positive.
 export const PRESETS: Record<Exclude<PresetName, 'custom'>, PolicyLimits> = {
-  conservative: { quoteSizeUsd: 50, maxInventoryUsd: 250, minHalfSpreadBps: 6, maxDailyLossUsd: 25, maxLeverage: 2 },
-  balanced: { quoteSizeUsd: 100, maxInventoryUsd: 500, minHalfSpreadBps: 4, maxDailyLossUsd: 50, maxLeverage: 3 },
-  active: { quoteSizeUsd: 200, maxInventoryUsd: 1000, minHalfSpreadBps: 3, maxDailyLossUsd: 100, maxLeverage: 3 },
+  conservative: { quoteSizeUsd: 25, maxInventoryUsd: 250, minHalfSpreadBps: 6, maxDailyLossUsd: 25, maxLeverage: 2 },
+  balanced: { quoteSizeUsd: 50, maxInventoryUsd: 500, minHalfSpreadBps: 4, maxDailyLossUsd: 50, maxLeverage: 3 },
+  active: { quoteSizeUsd: 100, maxInventoryUsd: 1000, minHalfSpreadBps: 3, maxDailyLossUsd: 100, maxLeverage: 3 },
   // Balanced sizes on a fifth of the collateral. 10x fits every market's cap on both networks (testnet SOL stops at 10x).
-  high: { quoteSizeUsd: 100, maxInventoryUsd: 500, minHalfSpreadBps: 4, maxDailyLossUsd: 50, maxLeverage: 10 },
+  high: { quoteSizeUsd: 50, maxInventoryUsd: 500, minHalfSpreadBps: 4, maxDailyLossUsd: 50, maxLeverage: 10 },
 };
 
 /** Margin the policy's full inventory ties up at its leverage. Equity below this is a margin kill (runner). */
@@ -58,12 +59,12 @@ export function limitsForBalance(balanceUsd: number, markets: number): PolicyLim
 
 /**
  * Tread-style sizing: commit `marginUsd` at `leverage`. A tenth of the margin is the daily loss limit; the rest carries
- * inventory at that leverage, split across markets and quoted a fifth at a time. Needs exactly `marginUsd` (rounded down).
+ * inventory at that leverage, split across markets and quoted a tenth at a time. Needs exactly `marginUsd` (rounded down).
  */
 export function limitsFromMargin(marginUsd: number, leverage: number, markets: number, minHalfSpreadBps = 4): PolicyLimits {
   const maxDailyLossUsd = Math.max(1, Math.floor(marginUsd * 0.1));
   const maxInventoryUsd = Math.max(0, Math.floor(((marginUsd - maxDailyLossUsd) * leverage) / markets));
-  return { quoteSizeUsd: Math.floor(maxInventoryUsd / 5), maxInventoryUsd, minHalfSpreadBps, maxDailyLossUsd, maxLeverage: leverage };
+  return { quoteSizeUsd: Math.floor(maxInventoryUsd / 10), maxInventoryUsd, minHalfSpreadBps, maxDailyLossUsd, maxLeverage: leverage };
 }
 
 // PRD 10.4 output schema. Snake case on purpose: this is the object that gets
