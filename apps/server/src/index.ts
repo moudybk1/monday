@@ -95,9 +95,16 @@ const prune = () => {
 prune();
 setInterval(prune, 6 * 3_600_000).unref();
 
-setInterval(() => {
-  house?.tick();
-  for (const r of runners.values()) r.tick();
+// One runner's bug must not stop the others. A quoting runner whose tick throws is killed: fail closed.
+const ticker = setInterval(() => {
+  for (const r of [house, ...runners.values()]) {
+    try {
+      r?.tick();
+    } catch (e) {
+      console.error(JSON.stringify({ service: 'runner', user: r?.userId, event: 'tick_failed', error: e instanceof Error ? e.stack : String(e) }));
+      if (r?.status === 'quoting') void r.kill('order_failures').catch(() => {});
+    }
+  }
 }, 1000);
 
 // Demo runners live in memory; evict the ones nobody has looked at for an hour.
@@ -121,8 +128,19 @@ const app = await buildApi({
 await app.listen({ port: config.port, host: '0.0.0.0' });
 console.log(JSON.stringify({ service: 'monday', event: 'listening', port: config.port, network: config.network, venue: driver.kind, realFunds: config.realFunds, caps: config.caps, smartMoney: collector.kind, llm: llmEnabled, chainLog: chainEnabled }));
 
-// Never leave quotes resting on a book nobody is watching.
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => {
-  setTimeout(() => process.exit(0), 3_000).unref();
-  void Promise.allSettled([...runners.values(), ...(house ? [house] : [])].map((r) => r.shutdown())).then(() => process.exit(0));
+// Never leave quotes resting on a book nobody is watching: on a stop or a crash, cancel first, then exit.
+let stopping = false;
+function stop(code: number) {
+  if (stopping) return;
+  stopping = true;
+  clearInterval(ticker);
+  setTimeout(() => process.exit(code), 10_000).unref(); // a cancel waits for in-flight requests, which end within Perpl's order TTL
+  void Promise.allSettled([...runners.values(), ...(house ? [house] : [])].map((r) => r.shutdown())).then(() => process.exit(code));
+}
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => stop(0));
+process.on('uncaughtException', (e) => {
+  console.error(JSON.stringify({ service: 'monday', event: 'crash', error: e.stack ?? String(e) }));
+  stop(1);
 });
+// A stray rejection (an RPC read, a fetch) is logged, not a reason to drop every runner's book.
+process.on('unhandledRejection', (e) => console.error(JSON.stringify({ service: 'monday', event: 'unhandled_rejection', error: e instanceof Error ? e.stack : String(e) })));

@@ -264,14 +264,22 @@ export async function buildApi(deps: ApiDeps) {
       probe.close();
     }
     const sealed = seal(JSON.stringify({ token: body.apiKeyToken, secret: body.apiKeySecret }));
+    // A new key while quoting: pull the old session's orders first, or they would rest with nobody watching them.
+    await deps.runnerFor(s.uid)?.pause();
     deps.dropRunner(s.uid);
     db.prepare('insert or replace into perpl_credentials (user_id, chain_id, account_id, enc, iv, tag, status, created_at) values (?,?,?,?,?,?,?,?)')
       .run(s.uid, config.perpl.chainId, acct.accountId, sealed.enc, sealed.iv, sealed.tag, 'active', Date.now());
+    void deps.runnerFor(s.uid)?.resumeCleanup(); // whatever the old key could not cancel, the new one does
     return { accountId: acct.accountId, balanceUsd: acct.balanceUsd, tradeScope: true };
   });
   app.delete('/api/credentials', async (req) => {
     const s = need(req);
-    await deps.runnerFor(s.uid)?.pause();
+    const r = deps.runnerFor(s.uid);
+    await r?.pause();
+    // Without the key nothing could ever cancel what is still resting. A revoked key cannot anyway, so it may go.
+    if (r?.owes && db.prepare("select 1 from perpl_credentials where user_id = ? and status = 'active'").get(s.uid)) {
+      throw new HttpError(409, 'cleanup_pending', 'Monday is still cancelling your orders on Perpl. Try again in a few seconds, or cancel them on Perpl first.');
+    }
     deps.dropRunner(s.uid);
     db.prepare('delete from perpl_credentials where user_id = ?').run(s.uid);
     db.prepare("update agents set status = 'idle' where user_id = ?").run(s.uid);

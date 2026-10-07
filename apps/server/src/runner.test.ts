@@ -171,3 +171,41 @@ it('dropping a market from the policy keeps its position in view and works its e
   expect(btc.quotes.ask!.size).toBeLessThanOrEqual(0.002); // only the exit, never a flip
   r.dispose();
 });
+
+it('cash that moves while Monday is stopped is not PnL: a deposit during a restart, a withdrawal while paused and flat', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const v = {
+    balance: 1_000,
+    connect: async () => v.account(), close() {}, on() {}, connected: () => true, quote: () => null, setQuote: async () => {}, cancelAll: async () => {}, flatten: async () => {},
+    account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: 0, entryPrice: 0 }),
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const deps = { driver, collector: new Collector(null), k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xca5', accountId: 1, token: 't', secret: 's' }) };
+  const uid = upsertUser('0xca5');
+  const ticks = (r: InstanceType<typeof Runner>, n = 8) => {
+    for (let i = 0; i < n; i++) {
+      vi.setSystemTime(Date.now() + 1_000);
+      r.tick();
+    }
+  };
+  const before = new Runner(uid, '0xca5', 1, POLICY, deps);
+  await before.start();
+  ticks(before, 2);
+  await before.shutdown(); // Ctrl+C
+
+  v.balance += 100; // deposited while the server was down
+  const after = new Runner(uid, '0xca5', 1, POLICY, deps);
+  await after.start(); // boot resume
+  ticks(after);
+  expect(after.state().pnl).toMatchObject({ depositsUsd: 100, lossLimitUsedPct: 0 });
+  expect(after.state().pnl.todayUsd).toBeCloseTo(0);
+
+  await after.pause();
+  v.balance -= 50; // withdrawn while paused, with no position
+  ticks(after);
+  await after.start();
+  ticks(after, 2);
+  expect(after.state().status).toBe('quoting'); // not a $50 loss against a $50 limit
+  expect(after.state().pnl.lossLimitUsedPct).toBe(0);
+  after.dispose();
+});

@@ -194,7 +194,8 @@ export class Runner {
    * CASH_SETTLE_MS is booked: $1 or more as a deposit or withdrawal, less as funding.
    */
   private cash = { expected: null as number | null, drift: 0, since: 0 };
-  private flows = { dayIn: 0, dayOut: 0, dayFunding: 0, sessionIn: 0, sessionOut: 0 };
+  /** dayOutIdle: withdrawals made while stopped and flat, the only ones the loss limit is sure are not losses. */
+  private flows = { dayIn: 0, dayOut: 0, dayOutIdle: 0, dayFunding: 0, sessionIn: 0, sessionOut: 0 };
   /** Positions as Monday's own records have them, compared with Perpl's after every reconnect. */
   private expectedPos: Partial<Record<MarketSym, number>> = {};
   private wasConnected = false;
@@ -204,6 +205,10 @@ export class Runner {
   private owed: 'cancel' | 'flatten' | null = null;
   private owedRetryAt = 0;
   private cleaning = false;
+  /** Cancel or flatten still owed to Perpl. */
+  get owes() {
+    return this.owed;
+  }
 
   constructor(readonly userId: number, readonly wallet: string, private accountId: number, public policy: Policy, private deps: RunnerDeps) {
     this.policyHash = hashOf(policy);
@@ -230,6 +235,9 @@ export class Runner {
     if (first) {
       this.dayKey = new Date().toISOString().slice(0, 10);
       this.dayStartEquity = first.equity;
+      // The balance before the restart: cash that moved while the server was down is booked as a deposit or withdrawal, not PnL.
+      const last = db.prepare('select balance from pnl_snapshots where user_id = ? and ts >= ? and balance > 0 order by ts desc limit 1').get(userId, dayStart) as { balance: number } | undefined;
+      if (last) this.cash.expected = last.balance;
     }
     const a = db.prepare('select status, kill_reason, started_at, session_sl, session_tp, session_equity, owed from agents where user_id = ?').get(userId) as Record<string, never> | undefined;
     if (a?.session_equity != null) this.session = { startedAt: a.started_at ?? Date.now(), startEquity: a.session_equity, stopLossUsd: a.session_sl, takeProfitUsd: a.session_tp };
@@ -242,6 +250,7 @@ export class Runner {
     const sum = (kind: string, from: number) => (db.prepare('select coalesce(sum(amount), 0) s from journal where user_id = ? and kind = ? and at >= ?').get(userId, kind, from) as { s: number }).s;
     this.flows = {
       dayIn: sum('deposit', dayStart), dayOut: sum('withdrawal', dayStart), dayFunding: sum('funding', dayStart),
+      dayOutIdle: (db.prepare("select coalesce(sum(amount), 0) s from journal where user_id = ? and kind = 'withdrawal' and at >= ? and json_extract(detail, '$.idle') = 1").get(userId, dayStart) as { s: number }).s,
       sessionIn: this.session ? sum('deposit', this.session.startedAt) : 0, sessionOut: this.session ? sum('withdrawal', this.session.startedAt) : 0,
     };
     tapeOf(deps.driver.feed);
@@ -382,7 +391,13 @@ export class Runner {
 
   /** Process is stopping: pull resting orders off the book, but leave the persisted status so boot resumes. */
   async shutdown() {
-    await this.venue?.cancelAll().catch(() => {});
+    this.status = 'idle'; // in memory only: a tick during the cancels must not post a new quote
+    if (this.venue) this.snapshot(Date.now(), this.equityNow());
+    const err = await this.venue?.cancelAll().then(() => null, (e) => (e instanceof Error ? e.message : String(e)));
+    if (err) {
+      console.error(JSON.stringify({ service: 'runner', user: this.userId, event: 'shutdown_cancel_failed', error: err }));
+      this.deps.notify(`Monday stopped but could not cancel the orders of ${this.wallet.slice(0, 8)} (${err}). Check Perpl.`);
+    }
     this.dispose();
   }
 
@@ -498,6 +513,8 @@ export class Runner {
       // A Perpl/Hyperliquid gap far from its usual level: quote wider and smaller until it settles, rather than treat it as an opportunity.
       const gov = { ...rt.params, max_inventory_usd: cap, enabled: inPolicy && rt.params.enabled };
       if (rt.gapAlarm) Object.assign(gov, { spread_mult: gov.spread_mult * 1.5, size_mult: gov.size_mult * 0.5 });
+      // The operator's quote cap holds per order, whatever size multiplier the governor picked.
+      if (config.caps) gov.size_mult = Math.min(gov.size_mult, config.caps.quoteSizeUsd / this.policy.quoteSizeUsd);
       const out = computeQuotes({
         mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S, book: rt.book,
         hlMid: this.hlReference(rt), hourlyVolumeUsd: this.hourlyVolume(sym, now), policy: this.policy, gov, reflex: rt.reflex, spec, cfg: this.cfg(sym),
@@ -514,7 +531,7 @@ export class Runner {
         if (target) {
           const g = riskGate({
             side, target, oracle: snap.oracle, mark: snap.mark, positionSize: pos.size, otherUsd: others, equityUsd: equity, capUsd: cap,
-            accountCapUsd: this.accountCapUsd(), maxOrderUsd: Math.min(this.policy.quoteSizeUsd, config.caps?.quoteSizeUsd ?? Infinity) * 1.5,
+            accountCapUsd: this.accountCapUsd(), maxOrderUsd: Math.min(this.policy.quoteSizeUsd * 1.5, config.caps?.quoteSizeUsd ?? Infinity),
             maxLeverage: this.policy.maxLeverage, sizeStep: spec.sizeStep,
           });
           if ('reject' in g) {
@@ -579,8 +596,7 @@ export class Runner {
 
   /** Send what the budget allows, most urgent first. Cancels may spend the whole reserve, exits half of it, routine work none. */
   private dispatch(wants: Want[], now: number) {
-    const v = this.venue;
-    if (!v) return;
+    if (!this.venue?.connected()) return; // every request would fail at once and only spend budget
     this.turn++;
     for (const w of orderJobs(wants, now, MARKETS, this.turn)) {
       const rt = this.rt(w.sym);
@@ -871,6 +887,7 @@ export class Runner {
         this.logDecision(rt.sym, res.source, res.params.regime, params, reason, { ...evidence, proposed: res.proposed ?? null, clamped: adjusted }, res.llmModel, res.ms ?? null, res.costUsd ?? null);
         if (llmEnabled && llmFailures === 3) this.alert('warn', 'The LLM governor failed three times in a row. Rule-based regimes are in control.');
       })
+      .catch((e) => event(this.userId, 'error', { governor: String(e) }))
       .finally(() => (rt.govBusy = false));
   }
 
@@ -898,6 +915,10 @@ export class Runner {
       if (!this.disconnectedAt) this.disconnectedAt = Date.now();
     } else {
       this.alert('critical', `Perpl closed the trading session: ${e instanceof Error ? e.message : e}`);
+      // The venue stopped itself for good. Drop it so tick opens a fresh session and the owed flatten can land.
+      const v = this.venue;
+      this.venue = null;
+      v?.close();
       void this.kill('order_failures');
     }
   }
@@ -979,7 +1000,10 @@ export class Runner {
     }
     if (now - this.cash.since < CASH_SETTLE_MS) return;
     const kind = Math.abs(d) < DEPOSIT_MIN_USD ? 'funding' : d > 0 ? 'deposit' : 'withdrawal';
-    journal(this.userId, kind, null, d, { balance: bal, expected: this.cash.expected });
+    // Stopped with no position, a drop in cash can only be a withdrawal (no fill, no liquidation, no funding).
+    const idle = kind === 'withdrawal' && this.status !== 'quoting' && MARKETS.every((s) => !this.venue!.position(s).size);
+    journal(this.userId, kind, null, d, { balance: bal, expected: this.cash.expected, ...(idle && { idle: true }) });
+    if (idle) this.flows.dayOutIdle += d;
     if (kind === 'funding') this.flows.dayFunding += d;
     else if (kind === 'deposit') {
       this.flows.dayIn += d;
@@ -1016,16 +1040,16 @@ export class Runner {
   /**
    * What the loss limits see. Deposits are taken out; withdrawals are not, so an unexplained drop in the balance
    * (a liquidation or a fee Monday did not see would look the same) always counts against the limit. Fail closed:
-   * pause Monday before withdrawing.
+   * pause Monday and close positions before withdrawing.
    */
   private riskPnlToday(): number {
-    return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.unexplainedIn() : 0;
+    return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.flows.dayOutIdle - this.unexplainedIn() : 0;
   }
   private sessionPnl(): number {
     return this.session ? this.equityNow() - this.session.startEquity - this.flows.sessionIn - this.flows.sessionOut - this.unexplainedIn() : 0;
   }
   private lossUsedPct(): number {
-    return (Math.max(0, -this.riskPnlToday()) / this.policy.maxDailyLossUsd) * 100;
+    return (Math.max(0, -this.riskPnlToday()) / Math.min(this.policy.maxDailyLossUsd, config.caps?.maxDailyLossUsd ?? Infinity)) * 100;
   }
   /** What closing everything now would cost: taker fee plus half the book's spread, per market. */
   private exitCostUsd(): number {
@@ -1047,7 +1071,7 @@ export class Runner {
       this.dayKey = day;
       this.dayStartEquity = equity;
       this.realized = this.fees = 0;
-      this.flows.dayIn = this.flows.dayOut = this.flows.dayFunding = 0;
+      this.flows.dayIn = this.flows.dayOut = this.flows.dayOutIdle = this.flows.dayFunding = 0;
       this.warned70 = false;
     }
     if (this.venue?.connected()) this.disconnectedAt = 0;
@@ -1103,8 +1127,13 @@ export class Runner {
     }
     if (now - this.lastPnlWrite >= 60_000) {
       this.lastPnlWrite = now;
-      db.prepare('insert or replace into pnl_snapshots (user_id, ts, equity, realized, unrealized, fees) values (?,?,?,?,?,?)').run(this.userId, now, equity, this.realized, this.unrealized(), this.fees);
+      this.snapshot(now, equity);
     }
+  }
+
+  private snapshot(now: number, equity: number) {
+    db.prepare('insert or replace into pnl_snapshots (user_id, ts, equity, realized, unrealized, fees, balance) values (?,?,?,?,?,?,?)')
+      .run(this.userId, now, equity, this.realized, this.unrealized(), this.fees, this.venue?.account().balanceUsd ?? null);
   }
 
   // ---- what happened when nothing filled ----

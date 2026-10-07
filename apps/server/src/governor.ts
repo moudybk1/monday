@@ -191,7 +191,12 @@ function askClaudeCode(user: string): Promise<Answer> {
   const run = () => new Promise<Answer>((resolve, reject) => {
     const child = execFile('claude', args, { cwd: tmpdir(), env, timeout: 90_000, maxBuffer: 4 << 20 }, (err, stdout) => {
       if (err) return reject(err);
-      const out = JSON.parse(stdout) as { is_error?: boolean; subtype?: string; structured_output?: unknown; total_cost_usd?: number };
+      let out: { is_error?: boolean; subtype?: string; structured_output?: unknown; total_cost_usd?: number };
+      try {
+        out = JSON.parse(stdout);
+      } catch {
+        return reject(new Error('claude printed something that is not JSON'));
+      }
       if (out.is_error || !out.structured_output) return reject(new Error(`claude ${out.subtype ?? 'returned no structured output'}`));
       // The CLI reports what the call would cost at API prices; on a subscription login that is notional.
       resolve({ text: JSON.stringify(out.structured_output), costUsd: typeof out.total_cost_usd === 'number' ? out.total_cost_usd : null });

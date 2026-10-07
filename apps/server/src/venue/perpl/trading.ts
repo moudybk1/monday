@@ -266,10 +266,12 @@ export class PerplVenue implements Venue {
     p.sn = ++this.sn; // unique and non-zero, echoed as `cid` on the mt 3
     // head < lb <= head + order_ttl_blocks. Before the first heartbeat, 0 lets the server apply the same ceiling.
     p.lb = p.req.lb ?? (this.head ? this.head + this.ttl(p.req.mkt) : 0);
+    // Cancels and closes are the kill path: lb 0 lets Perpl apply its current TTL, so a TTL cut can never refuse them.
+    const kill = p.req.t === CANCEL || p.req.t === CLOSE_LONG || p.req.t === CLOSE_SHORT;
     this.pending.set(p.rq, p);
     this.acks.set(p.sn, p);
     this.sent++;
-    if (!this.link?.send({ mt: 22, sn: p.sn, rq: p.rq, acc: this.creds.accountId, ...p.req, lb: p.lb })) {
+    if (!this.link?.send({ mt: 22, sn: p.sn, rq: p.rq, acc: this.creds.accountId, ...p.req, lb: p.req.lb ?? (kill ? 0 : p.lb) })) {
       this.finish(p, new VenueError('disconnected', 'trading socket is down'));
     }
   }

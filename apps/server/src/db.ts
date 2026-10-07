@@ -14,6 +14,7 @@ export const db = new DatabaseSync(config.databasePath);
 
 db.exec(`
 pragma journal_mode = wal;
+pragma busy_timeout = 2000;
 create table if not exists users (
   id integer primary key, wallet text unique not null, created_at integer not null
 );
@@ -91,7 +92,7 @@ const added = [
   ['fills', 'markout_1s', 'real'], ['fills', 'markout_5s', 'real'], ['fills', 'markout_10s', 'real'], ['fills', 'half_bps', 'real'],
   ['fills', 'external', 'integer'], ['fills', 'quote_event_id', 'integer'], ['fills', 'ctx', 'text'],
   ['agents', 'session_sl', 'real'], ['agents', 'session_tp', 'real'], ['agents', 'session_equity', 'real'], ['agents', 'owed', 'text'],
-  ['decisions', 'llm_ms', 'real'], ['decisions', 'llm_cost', 'real'],
+  ['decisions', 'llm_ms', 'real'], ['decisions', 'llm_cost', 'real'], ['pnl_snapshots', 'balance', 'real'],
 ];
 for (const [table, col, type] of added) {
   try {

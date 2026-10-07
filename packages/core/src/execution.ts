@@ -29,7 +29,7 @@ export interface GateInput {
  * or an inventory reduction. Returns the order to send, possibly cut down to a pure reduction, or why it must not go.
  */
 export function riskGate(i: GateInput): { target: QuoteTarget } | { reject: GateReason } {
-  if (Math.abs(i.target.price / i.oracle - 1) > 0.01) return { reject: 'price_band' };
+  if (!(Math.abs(i.target.price / i.oracle - 1) <= 0.01)) return { reject: 'price_band' }; // a missing oracle fails too
   if (i.target.price * i.target.size > i.maxOrderUsd * 1.01) return { reject: 'max_order_size' };
   const pos = i.positionSize;
   const signed = i.side === 'bid' ? i.target.size : -i.target.size;

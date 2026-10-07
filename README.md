@@ -123,7 +123,7 @@ Tokens live in `apps/web/app/globals.css`.
 ## Checks
 
 ```bash
-npm test                 # 34 unit tests on the strategy package
+npm test                 # strategy, runner, paper venue, collector, governor, and a replay of Perpl trading frames
 npm run typecheck
 npm run build            # production build of the web app
 cd contracts && forge test                                   # 25 tests incl. fuzz and invariants
@@ -140,7 +140,7 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 | Perpl market data, candles, account lookup | Run against live testnet. Market data and specs also loaded read-only from mainnet. |
 | Perpl trading (sign-in, orders, fills, flatten) | Written from the official docs and replayed offline against documented frames. Key validation (trading sign-in) has succeeded live on mainnet. No order has been placed yet. Expect to debug orders on first use. |
 | Nansen client | Run live with a real key: 7-day backfill and polling. |
-| LLM governor | Run live through an OpenAI-compatible API (b.ai, Kimi models). The Anthropic SDK path has not been called with a key. |
+| LLM governor | Run live through an OpenAI-compatible API (b.ai) and through Claude Code headless (`LLM_PROVIDER=claude-code`, Opus 5.5) in multi-hour paper runs. The Anthropic SDK path has not been called with a key. |
 | On-chain log queue and wallet-signed policy | Written against the contract ABI. Never run against a deployed registry. |
 
 ## Where this differs from the PRD
@@ -153,7 +153,7 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 - **One-Click Trading** is a third prerequisite the PRD does not list.
 - **Policy changes** take effect only after the wallet-signed `setPolicy` is visible on Monad, when a registry is configured (PRD 17.4).
 - **Nansen lean** (`k`) is switched on per market by the event study's own decision rule, and is zero until the study supports it.
-- **Not built:** Follow mode, Ask Monday chat, in-app key enrollment, pooled vault, x402, Envio. All are P1 or P2 in the PRD.
+- **Not built:** Follow mode, Ask Monday chat, in-app key enrollment, pooled vault, x402. All are P1 or P2 in the PRD.
 
 ## Deploy
 
@@ -171,6 +171,7 @@ Deploy `apps/web` to Vercel with `API_URL=https://api.example.com` and `NEXT_PUB
 - Smart-money signals can be wrong or late.
 - The evidence page runs on simulated data until Nansen and Perpl are configured, and says so.
 - The Perpl adapter was written from Perpl's public API docs; no Perpl example code or PerplBot code was copied.
+- AI assistance: the code, tests and docs were written with Claude Code (Anthropic's Claude Opus), directed and reviewed by the author. Commits it helped with carry a `Co-Authored-By: Claude` trailer. At runtime the governor itself is an LLM (see above).
 
 ## License
 
