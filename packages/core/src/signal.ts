@@ -24,11 +24,17 @@ export function median(xs: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** Robust z-score: median and MAD keep one whale trade from breaking the scale. */
+/**
+ * Sparse flow leaves a tiny scale, so one $600k close once scored -46 on the 60-minute window and alone held BTC
+ * in "storm" for an hour (S = 0.2 x 46). Beyond 5 the size of the number says nothing more, so it stops there.
+ */
+export const Z_MAX = 5;
+
+/** Robust z-score: median and MAD keep one whale trade from breaking the scale. Capped at +-Z_MAX. */
 export function robustZ(value: number, baseline: number[]): number {
   if (baseline.length < 12) return 0;
   const { med, scale } = robustScale(baseline);
-  return scale > 0 ? (value - med) / scale : 0;
+  return scale > 0 ? Math.max(-Z_MAX, Math.min(Z_MAX, (value - med) / scale)) : 0;
 }
 
 /** Median and robust sigma of a baseline. */

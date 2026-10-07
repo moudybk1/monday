@@ -11,7 +11,7 @@ import {
   MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, policyForHash, usd,
   type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type MarketSym, type Me, type Policy,
 } from '@monday/core';
-import { agentAddress, chainEnabled, onchainPolicyHash } from './chain';
+import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain';
 import { config } from './config';
 import { db, seal, upsertUser } from './db';
 import { evidence } from './evidence';
@@ -82,6 +82,19 @@ const PolicyBody = z.object({
 const usdLimit = z.number().positive().max(1_000_000).nullable().optional();
 const StartBody = z.object({ stopLossUsd: usdLimit, takeProfitUsd: usdLimit });
 const CredsBody = z.object({ apiKeyToken: z.string().trim().min(1).max(512), apiKeySecret: z.string().trim().min(1).max(512) });
+
+const RES_SEC = [60, 300, 900, 3600, 14_400, 86_400];
+/** Merge candles into `spanMs` buckets aligned to UTC. A no-op on candles that already have that width. */
+function rollUp(cs: Candle[], spanMs: number): Candle[] {
+  const out: Candle[] = [];
+  for (const k of cs) {
+    const t = Math.floor(k.t / spanMs) * spanMs;
+    const last = out[out.length - 1];
+    if (last?.t !== t) out.push({ ...k, t });
+    else Object.assign(last, { h: Math.max(last.h, k.h), l: Math.min(last.l, k.l), c: k.c, v: last.v == null && k.v == null ? undefined : (last.v ?? 0) + (k.v ?? 0) });
+  }
+  return out;
+}
 
 export async function buildApi(deps: ApiDeps) {
   const app = Fastify({ logger: { level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'] } });
@@ -157,15 +170,20 @@ export async function buildApi(deps: ApiDeps) {
   app.get('/api/health', async () => deps.health());
   app.get('/api/evidence', async () => evidence() ?? { pending: true });
   app.get('/api/public/preview', async () => deps.house()?.state() ?? null);
-  // One-minute candles for the price chart. Cached for 30 s, so any number of viewers costs Perpl one request per window.
+  // Candles for the price chart, 1m to 1D. Cached for 30 s, so any number of viewers costs Perpl one request per window.
   const candleCache = new Map<string, { at: number; data: Promise<Candle[]> }>();
   app.get('/api/candles', async (req) => {
-    const q = z.object({ market: z.enum(MARKETS), minutes: z.coerce.number().int().min(30).max(4320).default(360) }).parse(req.query);
-    const key = `${q.market}:${q.minutes}`;
+    const q = z.object({
+      market: z.enum(MARKETS),
+      res: z.coerce.number().int().refine((r) => RES_SEC.includes(r), 'res must be 60, 300, 900, 3600, 14400 or 86400').default(60),
+      bars: z.coerce.number().int().min(30).max(1000).default(500),
+    }).parse(req.query);
+    const key = `${q.market}:${q.res}:${q.bars}`;
     const now = Date.now();
     const hit = candleCache.get(key);
     if (hit && now - hit.at < 30_000) return hit.data;
-    const data = deps.driver.feed.candles(q.market, now - q.minutes * 60_000, now);
+    // The simulator only keeps minutes, so roll them up; Perpl's own candles are already aligned and pass through.
+    const data = deps.driver.feed.candles(q.market, now - q.bars * q.res * 1000, now, q.res).then((cs) => rollUp(cs, q.res * 1000));
     candleCache.set(key, { at: now, data });
     data.catch(() => candleCache.delete(key));
     return data;
@@ -177,6 +195,7 @@ export async function buildApi(deps: ApiDeps) {
     return {
       id: r.id, at: r.at, market: r.market, source: r.source, regime: r.regime, params: JSON.parse(r.params), evidence: JSON.parse(r.evidence), reason: r.reason ?? '',
       paramsHash: r.params_hash, evidenceHash: r.evidence_hash, llmModel: r.llm_model, txHash: r.tx_hash, onchainId: r.onchain_id, wallet: r.wallet,
+      anchor: anchorOf(id)?.status ?? (r.tx_hash ? 'confirmed' : chainEnabled ? 'pending' : 'off'),
     };
   });
 
@@ -344,7 +363,8 @@ export async function buildApi(deps: ApiDeps) {
     const { days } = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) }).parse(req.query);
     const to = Date.now();
     const from = to - days * 86_400_000;
-    const rows = db.prepare('select * from fills where user_id = ? and ts >= ? order by ts').all(s.uid, from) as Record<string, never>[];
+    // Monday's own fills: a trade placed by hand on the same account is not Monday's result.
+    const rows = db.prepare('select * from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 order by ts').all(s.uid, from) as Record<string, never>[];
     return analyticsOf(rows.map((r) => ({
       sym: r.sym, side: r.side, price: r.price, size: r.size, fee: r.fee, isMaker: !!r.is_maker, ts: r.ts, regime: r.regime, realized: r.realized, halfBps: r.half_bps,
       markouts: [r.markout_1s, r.markout_5s, r.markout_10s, r.markout_1m, r.markout_5m],

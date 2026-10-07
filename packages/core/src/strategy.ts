@@ -1,7 +1,11 @@
 // Maker quoting model, reflex and fallback regimes (PRD section 10).
 // Pure functions only: no I/O, no clock, no randomness.
 
+import type { InventoryStage } from './execution';
 import type { BookLevel, GovernorParams, MarketSpec, MarketSym, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
+
+/** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
+export const STRATEGY_VERSION = '2026-10-07.2';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
@@ -16,6 +20,7 @@ export interface StrategyConfig {
   book1: number; // |imbalance| that widens the threatened side
   book2: number; // |imbalance| that pulls it
   bookHoldMs: number;
+  exitFrac: number; // a held reflex lets go only below this share of its entry level (hysteresis)
   blend: number; // weight of Hyperliquid's mid in the reference price (Tread's Blend mode), 0..1
   blendMaxBps: number; // a bigger Perpl/Hyperliquid gap is bad data or a dislocation, not something to lean into
   participation: number; // each quote is at most this share of the market's average hourly volume
@@ -34,9 +39,12 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   reflexHoldMs: 5 * 60_000,
   bigTradeUsd: 250_000,
   kBook: 2,
-  book1: 0.5,
-  book2: 0.75,
+  // Perpl's thin book sits past 0.5 (smoothed top-5 imbalance) a quarter to half of the time, so 0.5/0.75 kept one
+  // side widened or pulled most of a night (2026-10-07). 0.7/0.85 is its tail: an unusually lopsided book only.
+  book1: 0.7,
+  book2: 0.85,
   bookHoldMs: 60_000,
+  exitFrac: 0.8,
   blend: 0.5,
   blendMaxBps: 50,
   participation: 0.05,
@@ -75,6 +83,10 @@ export interface QuoteInput {
   reflex: Pick<ReflexState, 'side' | 'action'> | null;
   spec: Pick<MarketSpec, 'priceTick' | 'sizeStep' | 'makerFeeBps'>;
   cfg?: StrategyConfig;
+  /** Inventory lifecycle (execution.ts). Past normal, Monday stops adding and works the exit. */
+  stage?: InventoryStage;
+  /** Signed position in base units: the exit side never quotes more than it. */
+  positionBase?: number;
 }
 
 export interface QuoteOutput {
@@ -115,11 +127,22 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   // Order-book skew: lean toward the heavy side of Perpl's own book.
   const skewBookBps = cfg.kBook * clamp(i.book ?? 0, -1, 1);
 
-  // 7. Quotes
+  // 7. Quotes. Past the normal stage the exit side (the one that shrinks the position) is worked: tighter when
+  // reducing, at the best price when urgent, and a reflex may widen it but never pull it, because protection
+  // from a signal must not remove the way out of a position the account has to shed.
   const center = ref * (1 + (skewInvBps + skewNanBps + skewBookBps + bias) / 1e4);
-  const widen = (side: Side) => (i.reflex?.action === 'widen' && i.reflex.side === side ? cfg.reflexWiden : 1);
-  let bidPx = floorTo(center * (1 - (h * widen('bid')) / 1e4), tick);
-  let askPx = ceilTo(center * (1 + (h * widen('ask')) / 1e4), tick);
+  const stage = i.stage ?? 'normal';
+  const exit: Side | null = stage === 'normal' ? null : q > 0 ? 'ask' : q < 0 ? 'bid' : null;
+  const reflexOn = (s: Side): ReflexState['action'] | null => {
+    if (!i.reflex || i.reflex.side !== s) return null;
+    if (s === exit) return stage === 'urgent' ? null : 'widen';
+    return i.reflex.action;
+  };
+  const dist = (s: Side) => (s === exit && stage === 'reduce' ? h / 2 : h) * (reflexOn(s) === 'widen' ? cfg.reflexWiden : 1);
+  let bidPx = floorTo(center * (1 - dist('bid') / 1e4), tick);
+  let askPx = ceilTo(center * (1 + dist('ask') / 1e4), tick);
+  if (stage === 'urgent' && exit === 'ask' && i.bestAsk != null) askPx = Math.min(askPx, i.bestBid != null && i.bestAsk - tick > i.bestBid ? ceilTo(i.bestAsk - tick, tick) : i.bestAsk);
+  if (stage === 'urgent' && exit === 'bid' && i.bestBid != null) bidPx = Math.max(bidPx, i.bestAsk != null && i.bestBid + tick < i.bestAsk ? floorTo(i.bestBid + tick, tick) : i.bestBid);
 
   // 8. PostOnly safety: never cross the book, sit one tick behind the opposite best.
   if (i.bestAsk != null && bidPx >= i.bestAsk) bidPx = floorTo(i.bestAsk - tick, tick);
@@ -130,11 +153,13 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   const size = (side: Side, px: number): number => {
     const grows = (side === 'bid' && q > 0) || (side === 'ask' && q < 0);
     const usd = Math.min(sizeCapUsd ?? Infinity, i.policy.quoteSizeUsd * i.gov.size_mult * (grows ? 1 - Math.abs(q) : 1));
-    return floorTo(usd / px, i.spec.sizeStep);
+    const sz = floorTo(usd / px, i.spec.sizeStep);
+    return side === exit && i.positionBase != null ? Math.min(sz, floorTo(Math.abs(i.positionBase), i.spec.sizeStep)) : sz;
   };
   const side = (s: Side, px: number): QuoteTarget | null => {
-    if (!i.gov.enabled) return null;
-    if (i.reflex?.action === 'pull' && i.reflex.side === s) return null;
+    if (exit && s !== exit) return null; // stop adding
+    if (!i.gov.enabled && s !== exit) return null;
+    if (reflexOn(s) === 'pull') return null;
     if (!(px > 0)) return null;
     const sz = size(s, px);
     return sz > 0 ? { price: px, size: sz } : null;
@@ -157,11 +182,15 @@ export function reflexTrigger(
   z5m: number,
   bigTradeDir: 1 | -1 | 0,
   cfg: StrategyConfig = DEFAULT_CONFIG,
+  held: Pick<ReflexState, 'side'> | null = null,
 ): Pick<ReflexState, 'side' | 'action'> | null {
   if (z5m > cfg.z2 || bigTradeDir === 1) return { side: 'ask', action: 'pull' };
   if (z5m < -cfg.z2 || bigTradeDir === -1) return { side: 'bid', action: 'pull' };
   if (z5m > cfg.z1) return { side: 'ask', action: 'widen' };
   if (z5m < -cfg.z1) return { side: 'bid', action: 'widen' };
+  // Hysteresis: a held side stays held while the reading is still above exitFrac of the entry level, so a value
+  // hovering at the threshold cannot switch the quote on and off every few seconds.
+  if (held && (held.side === 'ask' ? z5m : -z5m) > cfg.exitFrac * cfg.z1) return { side: held.side, action: 'widen' };
   return null;
 }
 
@@ -173,13 +202,14 @@ export function bookImbalance(bids: BookLevel[], asks: BookLevel[], levels = 5):
 }
 
 /** The reflex ladder on order-book imbalance: a heavy bid side threatens the ask, and the reverse. */
-export const bookTrigger = (imbalance: number, cfg: StrategyConfig = DEFAULT_CONFIG) =>
-  reflexTrigger(imbalance, 0, { ...cfg, z1: cfg.book1, z2: cfg.book2 });
+export const bookTrigger = (imbalance: number, cfg: StrategyConfig = DEFAULT_CONFIG, held: Pick<ReflexState, 'side'> | null = null) =>
+  reflexTrigger(imbalance, 0, { ...cfg, z1: cfg.book1, z2: cfg.book2 }, held);
 
 /**
  * Fold a trigger into the held reflex. A reflex holds for `reflexHoldMs` after
- * the last trigger; a pull is never downgraded to a widen while it holds.
- * `changed` is true when the action the engine sees is new (worth logging).
+ * the last trigger; a pull is never downgraded to a widen while it holds. When a
+ * pull runs out it steps down to a widen for half the hold, so protection lets go
+ * in stages. `changed` is true when the action the engine sees is new (worth logging).
  */
 export function nextReflex(
   prev: ReflexState | null,
@@ -190,12 +220,15 @@ export function nextReflex(
   cfg: StrategyConfig = DEFAULT_CONFIG,
 ): { state: ReflexState | null; changed: boolean } {
   const held = prev && prev.until > now ? prev : null;
-  if (!trigger) return { state: held, changed: prev !== null && held === null };
+  if (!trigger) {
+    if (!held && prev?.action === 'pull' && !prev.released) return { state: { ...prev, action: 'widen', until: now + cfg.reflexHoldMs / 2, released: true }, changed: true };
+    return { state: held, changed: prev !== null && held === null };
+  }
   const until = now + cfg.reflexHoldMs;
   if (held && held.side === trigger.side) {
     const action = held.action === 'pull' ? 'pull' : trigger.action;
     // A short book hold must not cut a longer smart-money hold.
-    return { state: { ...held, action, until: Math.max(held.until, until), z, triggerHashes, book: trigger.book }, changed: action !== held.action };
+    return { state: { ...held, action, until: Math.max(held.until, until), z, triggerHashes, book: trigger.book, released: false }, changed: action !== held.action };
   }
   return { state: { side: trigger.side, action: trigger.action, until, z, triggerHashes, book: trigger.book }, changed: true };
 }
@@ -216,13 +249,17 @@ const FALLBACK: Record<Regime, { spread_mult: number; size_mult: number; bias: n
   stale: { spread_mult: 2.0, size_mult: 0.5, bias: 0 },
 };
 
-export function fallbackParams(market: MarketSym, regime: Regime, S: number, maxInventoryUsd: number): Omit<GovernorParams, 'reason'> {
+/**
+ * `lean`: the event study supports leaning with the flow (PRD 19.1). Without that evidence Nansen only widens and
+ * shrinks quotes; it never moves their centre, here or in the LLM governor (clampParams).
+ */
+export function fallbackParams(market: MarketSym, regime: Regime, S: number, maxInventoryUsd: number, lean = false): Omit<GovernorParams, 'reason'> {
   const f = FALLBACK[regime];
   return {
     market,
     enabled: true,
     spread_mult: f.spread_mult,
-    skew_bias_bps: f.bias * Math.sign(S),
+    skew_bias_bps: lean ? f.bias * Math.sign(S) : 0,
     size_mult: f.size_mult,
     max_inventory_usd: maxInventoryUsd,
     ttl_min: 15,
@@ -230,13 +267,17 @@ export function fallbackParams(market: MarketSym, regime: Regime, S: number, max
   };
 }
 
-/** Clamp anything (LLM output included) into the bounds of PRD 10.4 and the user's policy. */
-export function clampParams(p: GovernorParams, policyMaxInventoryUsd: number): GovernorParams {
+/**
+ * Clamp anything (LLM output included) into the bounds of PRD 10.4 and the user's policy. Without `lean` evidence the
+ * bias is zero. Against `prev`, tightening applies at once but loosening moves one step per decision (spread at most
+ * 1x narrower, size at most 0.5x bigger), so one odd reply cannot swing the book.
+ */
+export function clampParams(p: GovernorParams, policyMaxInventoryUsd: number, o: { lean?: boolean; prev?: Pick<GovernorParams, 'spread_mult' | 'size_mult'> | null } = {}): GovernorParams {
   return {
     ...p,
-    spread_mult: clamp(p.spread_mult, 1, 4),
-    skew_bias_bps: clamp(p.skew_bias_bps, -10, 10),
-    size_mult: clamp(p.size_mult, 0, 1.5),
+    spread_mult: clamp(p.spread_mult, Math.max(1, o.prev ? o.prev.spread_mult - 1 : 1), 4),
+    skew_bias_bps: o.lean ? clamp(p.skew_bias_bps, -10, 10) : 0,
+    size_mult: clamp(p.size_mult, 0, Math.min(1.5, o.prev ? o.prev.size_mult + 0.5 : 1.5)),
     max_inventory_usd: clamp(p.max_inventory_usd, 0, policyMaxInventoryUsd),
     ttl_min: clamp(Math.round(p.ttl_min), 5, 30),
     reason: p.reason.slice(0, 280),
@@ -247,23 +288,4 @@ export function clampParams(p: GovernorParams, policyMaxInventoryUsd: number): G
 export function markoutBps(side: Side, fillPrice: number, midLater: number): number {
   const m = ((midLater - fillPrice) / fillPrice) * 1e4;
   return side === 'bid' ? m : -m;
-}
-
-/** Pre-trade checks from PRD 17.3. Returns the reason an order must be rejected, or null. */
-export function preTradeReject(
-  target: QuoteTarget,
-  side: Side,
-  oracle: number,
-  positionUsd: number,
-  equityUsd: number,
-  limits: Pick<PolicyLimits, 'maxInventoryUsd' | 'maxLeverage' | 'quoteSizeUsd'>,
-): string | null {
-  if (Math.abs(target.price / oracle - 1) > 0.01) return 'price_band';
-  const orderUsd = target.price * target.size;
-  if (orderUsd > limits.quoteSizeUsd * 1.5 * 1.01) return 'max_order_size';
-  const after = positionUsd + (side === 'bid' ? orderUsd : -orderUsd);
-  const grows = Math.abs(after) > Math.abs(positionUsd);
-  if (grows && Math.abs(after) > limits.maxInventoryUsd * 1.01) return 'max_inventory';
-  if (grows && equityUsd > 0 && Math.abs(after) / equityUsd > limits.maxLeverage) return 'max_leverage';
-  return null;
 }

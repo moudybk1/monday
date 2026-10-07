@@ -32,6 +32,10 @@
   --bid-fg: #45c7a0;
   --ask-fg: #f28563;
   --warn: #e9b949;
+  /* Chart indicator lines. Two hues only: they must stay apart from each other and from teal, vermilion and amber
+     under colour-blind simulation (validated in both themes); further indicators use greys and dash patterns. */
+  --ind-1: #3987e5;
+  --ind-2: #d55181;
   color-scheme: dark;
 }
 [data-theme="light"] {
@@ -51,6 +55,8 @@
   --bid-fg: #086b54;
   --ask-fg: #ad3d1c;
   --warn: #7a5200;
+  --ind-1: #2a78d6;
+  --ind-2: #e87ba4;
   color-scheme: light;
 }
 

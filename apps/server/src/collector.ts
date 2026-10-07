@@ -1,15 +1,25 @@
 // Smart-money collector (PRD 9.1, 10.1, 12). One instance serves every runner,
 // so Nansen credits are spent once.
 
-import { BASELINE_BUCKETS, BUCKET_MS, MARKETS, computeSignal, tradeSign, type MarketSignal, type MarketSym, type SmartTrade } from '@monday/core';
+import { BASELINE_BUCKETS, BUCKET_MS, DEFAULT_CONFIG, MARKETS, computeSignal, tradeSign, type MarketSignal, type MarketSym, type SmartTrade } from '@monday/core';
 import { config } from './config';
 import { db, event } from './db';
+import type { HlTrade } from './hyperliquid';
 import type { SimWorld } from './venue/sim';
 
 const MIN = 60_000;
 const STALE_MS = 15 * MIN;
 const KEEP_RECENT_MS = 6 * 60 * MIN;
 const WEEK_MIN = 7 * 24 * 60;
+/** `type` of a trade seen live on Hyperliquid before Nansen reported it. */
+export const LIVE = 'live';
+/**
+ * One trade counts at most this much in the flow. A bigger one already fires the big-trade reflex on its own; in the
+ * z-scores it would otherwise let one wallet's single close stand for the whole market's flow.
+ */
+// ponytail: per trade, so a wallet splitting one order into many still adds up; cap per wallet per window if that shows up.
+const FLOW_CAP_USD = DEFAULT_CONFIG.bigTradeUsd;
+const flowOf = (t: SmartTrade) => tradeSign(t) * Math.min(t.valueUsd, FLOW_CAP_USD);
 
 interface Source {
   backfill(hours: number): Promise<SmartTrade[]>;
@@ -92,6 +102,14 @@ export class Collector {
   private recent = { BTC: [], ETH: [], SOL: [] } as Record<MarketSym, SmartTrade[]>;
   /** Net flow per one-minute bucket, keyed by minute index. Seven days are kept. */
   private flows = { BTC: new Map(), ETH: new Map(), SOL: new Map() } as Record<MarketSym, Map<number, number>>;
+  /** Wallets Nansen has labelled (lowercase address -> label), learned from every row it sends. */
+  private watch = new Map<string, string>();
+  /** Trades counted live from Hyperliquid, by `${trader}:${hash}`, until Nansen's own row replaces them. */
+  // ponytail: memory only, so a restart drops live trades Nansen never confirmed; persist them if that ever matters.
+  private live = new Map<string, SmartTrade>();
+  /** Hyperliquid fills already counted, by `${coin}:${tid}`: a reconnect replays recent trades. */
+  private seenFills = new Set<string>();
+  liveSeen = 0;
   private lastOkAt = 0;
   private lags: number[] = [];
   private timer: NodeJS.Timeout | null = null;
@@ -145,6 +163,7 @@ export class Collector {
       for (const t of trades) {
         const r = insert.run(t.hash, t.sym, t.action, t.amount, t.side, t.valueUsd, t.priceUsd, t.type, t.trader, t.label, t.ts, t.fetchedAt);
         if (r.changes === 0) continue; // deduplicated on (hash, symbol, action, amount)
+        this.replaceLive(t);
         this.absorb(t);
         if (!backfill) this.lags.push(t.fetchedAt - t.ts);
       }
@@ -162,12 +181,72 @@ export class Collector {
       while (r.length && r[0].ts < now - KEEP_RECENT_MS) r.shift();
       for (const k of this.flows[sym].keys()) if (k < oldest) this.flows[sym].delete(k);
     }
+    // A live trade Nansen has not confirmed in half an hour never will be: it stays counted, it stops waiting.
+    for (const [k, l] of this.live) if (l.ts < now - 30 * MIN) this.live.delete(k);
+  }
+  private addFlow(sym: MarketSym, ts: number, usd: number) {
+    const k = Math.floor(ts / MIN);
+    const f = this.flows[sym];
+    f.set(k, (f.get(k) ?? 0) + usd);
   }
   private absorb(t: SmartTrade) {
-    const k = Math.floor(t.ts / MIN);
-    const f = this.flows[t.sym];
-    f.set(k, (f.get(k) ?? 0) + tradeSign(t) * t.valueUsd);
+    this.addFlow(t.sym, t.ts, flowOf(t));
+    if (t.type !== LIVE) this.watch.set(t.trader.toLowerCase(), t.label);
     if (t.ts > Date.now() - KEEP_RECENT_MS) this.recent[t.sym].push(t);
+  }
+
+  /**
+   * A Hyperliquid fill by a wallet Nansen has labelled. It counts in the signal at once, so the reflex can act within a
+   * second of the trade; Nansen's row for the same trade replaces it when it arrives (see replaceLive).
+   */
+  onHyperliquidTrade(t: HlTrade) {
+    if (Date.now() - t.time > 10_000) return; // replayed on (re)connect: old news, and Nansen may already have it
+    const id = `${t.sym}:${t.tid}`;
+    if (this.seenFills.has(id)) return;
+    this.seenFills.add(id);
+    if (this.seenFills.size > 20_000) for (const k of [...this.seenFills].slice(0, 5_000)) this.seenFills.delete(k); // oldest first
+    const buyer = this.watch.get(t.buyer), seller = this.watch.get(t.seller);
+    if ((buyer === undefined) === (seller === undefined)) return; // no smart side, or smart on both (no net flow)
+    const trader = buyer !== undefined ? t.buyer : t.seller;
+    const usd = t.px * t.sz;
+    const prev = this.live.get(`${trader}:${t.hash}`);
+    if (prev) {
+      // One order fills against several makers. Nansen reports it as one trade, so it is one trade here too.
+      const before = flowOf(prev);
+      prev.valueUsd += usd;
+      prev.amount += t.sz;
+      this.addFlow(prev.sym, prev.ts, flowOf(prev) - before);
+      return;
+    }
+    const s: SmartTrade = {
+      hash: t.hash, sym: t.sym, action: buyer !== undefined ? 'Buy' : 'Sell', side: buyer !== undefined ? 'Long' : 'Short', valueUsd: usd, priceUsd: t.px,
+      amount: t.sz, type: LIVE, trader, label: (buyer ?? seller)!, ts: t.time, fetchedAt: Date.now(),
+    };
+    this.live.set(`${trader}:${t.hash}`, s);
+    this.liveSeen++;
+    this.absorb(s);
+  }
+  /**
+   * Nansen's row for a trade already counted live: take that one live copy out so the flow is not counted twice.
+   * One row replaces one copy (the closest in time, then in size), so two real trades a second apart both stay.
+   */
+  private replaceLive(n: SmartTrade) {
+    const trader = n.trader.toLowerCase();
+    let best: [string, SmartTrade] | null = null;
+    const cost = (l: SmartTrade) => Math.abs(l.ts - n.ts) + Math.abs(Math.log(l.valueUsd / Math.max(n.valueUsd, 1)));
+    for (const e of this.live) {
+      const l = e[1];
+      // Same wallet, market and direction within 3 s: Nansen's timestamp and hash do not always match the fill's.
+      if (l.trader !== trader || l.sym !== n.sym || tradeSign(l) !== tradeSign(n) || Math.abs(l.ts - n.ts) > 3_000) continue;
+      if (!best || cost(l) < cost(best[1])) best = e;
+    }
+    if (!best) return;
+    const [k, l] = best;
+    this.live.delete(k);
+    this.addFlow(l.sym, l.ts, -flowOf(l));
+    const r = this.recent[l.sym];
+    const i = r.indexOf(l);
+    if (i >= 0) r.splice(i, 1);
   }
 
   // ---- read side ----

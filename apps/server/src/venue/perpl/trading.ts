@@ -105,6 +105,8 @@ export class PerplVenue implements Venue {
   private acks = new Map<number, Pending>(); // by sn, until the mt 3 arrives
   private queue = new Map<string, Promise<void>>(); // one quote request in flight per slot
   private seenFills = new Set<string>();
+  private mine = new Set<string>(); // `${mkt}:${oid}` of orders Monday placed or adopted as its quotes; fills of any other order are external
+  private sent = 0; // frames that spend the rate limit: order requests (retries included) and keep-alive pings
   private handlers: { [E in keyof VenueEvents]: VenueEvents[E][] } = { fill: [], error: [] };
 
   constructor(private cfg: PerplConfig, private loadCtx: () => Promise<PerplContext>, private creds: VenueCredentials) {}
@@ -214,6 +216,10 @@ export class PerplVenue implements Venue {
     this.handlers[event].push(cb);
   }
 
+  requests(): number {
+    return this.sent;
+  }
+
   // ---- quotes and requests ----
 
   private applyQuote(m: PerplMarket, side: Side, slot: string, target: QuoteTarget | null, leverage: number): Promise<void> {
@@ -262,6 +268,7 @@ export class PerplVenue implements Venue {
     p.lb = p.req.lb ?? (this.head ? this.head + this.ttl(p.req.mkt) : 0);
     this.pending.set(p.rq, p);
     this.acks.set(p.sn, p);
+    this.sent++;
     if (!this.link?.send({ mt: 22, sn: p.sn, rq: p.rq, acc: this.creds.accountId, ...p.req, lb: p.lb })) {
       this.finish(p, new VenueError('disconnected', 'trading socket is down'));
     }
@@ -358,7 +365,9 @@ export class PerplVenue implements Venue {
     clearTimeout(this.snapGrace);
     this.ready = true;
     this.wasReady = true;
-    this.ping ??= setInterval(() => this.link?.send({ mt: 1, t: Date.now() }), PING_MS);
+    this.ping ??= setInterval(() => {
+      if (this.link?.send({ mt: 1, t: Date.now() })) this.sent++;
+    }, PING_MS);
     // More than one plain order on a side cannot all be "the" quote: keep the first, cancel the rest.
     for (const key of this.strays.splice(0)) void this.cancel(key).catch(() => {});
     this.boot?.resolve();
@@ -395,6 +404,7 @@ export class PerplVenue implements Venue {
     const key = `${o.mkt}:${o.oid}`;
     const gone = o.r === true || o.st === FILLED || o.st === CANCELED || o.st === EXPIRED;
     const p = snapshot ? undefined : this.pending.get(o.rq) ?? this.pendingOn(o, gone);
+    if (p && o.oid) this.remember(key);
     if (gone) this.drop(key);
     else if (o.oid && (snapshot || o.st === OPEN || o.st === PARTIALLY_FILLED || o.st === UNTRIGGERED)) this.track(key, o, p);
     if (p) this.settle(p, o);
@@ -418,9 +428,16 @@ export class PerplVenue implements Venue {
     const side = o.tp ? null : o.t === OPEN_LONG ? 'bid' : o.t === OPEN_SHORT ? 'ask' : null;
     const slot = p?.slot ?? (side ? `${o.mkt}:${side}` : null);
     if (!slot) return;
-    if (p?.slot || !this.slots.has(slot)) this.slots.set(slot, key); // our own request's order, or adoption of an existing one
-    else if (this.ready) void this.cancel(key).catch(() => {}); // a late lander from before a reconnect
+    if (p?.slot || !this.slots.has(slot)) {
+      this.slots.set(slot, key); // our own request's order, or adoption of an existing one
+      this.remember(key);
+    } else if (this.ready) void this.cancel(key).catch(() => {}); // a late lander from before a reconnect
     else this.strays.push(key);
+  }
+
+  private remember(key: string): void {
+    this.mine.add(key);
+    if (this.mine.size > 5_000) for (const k of [...this.mine].slice(0, 1_000)) this.mine.delete(k); // oldest first
   }
 
   private drop(key: string): void {
@@ -454,7 +471,7 @@ export class PerplVenue implements Venue {
     const m = this.ctx?.byId.get(f.mkt);
     const side: Side | null = f.t === OPEN_LONG || f.t === CLOSE_SHORT ? 'bid' : f.t === OPEN_SHORT || f.t === CLOSE_LONG ? 'ask' : null;
     if (!m || !side) return;
-    const id = `${f.at?.txid ?? f.at?.b}:${f.at?.l ?? 0}:${f.oid}`;
+    const id = `perpl:${this.creds.accountId}:${f.at?.txid ?? f.at?.b}:${f.at?.l ?? 0}:${f.oid}`;
     if (this.seenFills.has(id)) return;
     if (this.seenFills.size > 10_000) this.seenFills.clear(); // Coarse bound; a replay would have to span 10k fills to slip through
     this.seenFills.add(id);
@@ -470,6 +487,7 @@ export class PerplVenue implements Venue {
       realizedUsd: this.realize(m, side === 'bid' ? size : -size, price),
       isMaker: f.l === 1,
       ts: f.at?.t ?? Date.now(),
+      external: !this.mine.has(`${f.mkt}:${f.oid}`),
     });
   }
 

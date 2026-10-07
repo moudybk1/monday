@@ -3,12 +3,12 @@
 
 import { PRESETS, type MarketSym, type Policy } from '@monday/core';
 import { buildApi } from './api';
-import { chainEnabled, queueDepth, verifyRpc } from './chain';
+import { chainEnabled, queueDepth, resumeChainLog, verifyRpc } from './chain';
 import { Collector } from './collector';
 import { config } from './config';
-import { db, event, unseal, upsertUser } from './db';
+import { db, event, simStore, unseal, upsertUser } from './db';
 import { computeEvidence, evidence, nansenK } from './evidence';
-import { startHyperliquid } from './hyperliquid';
+import { hlAgeMs, startHyperliquid } from './hyperliquid';
 import { startIndexer } from './stats/indexer';
 import { llmEnabled } from './governor';
 import { Runner } from './runner';
@@ -16,9 +16,10 @@ import { createPaperDriver } from './venue/paper';
 import { SimWorld } from './venue/sim';
 import type { VenueDriver } from './venue/types';
 
-const world = config.venue === 'sim' ? new SimWorld() : null;
+// Simulated accounts keep their balance and positions in SQLite, so a restart does not reset them to $1,000.
+const world = config.venue === 'sim' ? new SimWorld(undefined, simStore) : null;
 const live = world ? null : (await import('./venue/perpl/index')).createPerplDriver(config.perpl);
-const driver: VenueDriver = world ?? (config.venue === 'paper' ? createPaperDriver(live!) : live!);
+const driver: VenueDriver = world ?? (config.venue === 'paper' ? createPaperDriver(live!, simStore) : live!);
 // Demo accounts and the quoting house account exist wherever orders are simulated.
 const simulatedOrders = driver.kind !== 'perpl';
 const collector = new Collector(world);
@@ -59,7 +60,7 @@ function dropRunner(userId: number) {
 if (!world || chainEnabled) await verifyRpc();
 await driver.feed.start();
 await collector.start();
-if (!world) startHyperliquid();
+if (!world) startHyperliquid((t) => collector.onHyperliquidTrade(t)); // mids for the blend, and the smart-money tape
 startIndexer(); // public Perpl stats: on in every mode, it reads Perpl mainnet whatever Monday trades
 
 if (simulatedOrders) {
@@ -79,6 +80,20 @@ for (const a of db.prepare("select user_id from agents where status = 'quoting'"
   const r = runnerFor(a.user_id);
   if (r) void r.start().catch((e) => event(a.user_id, 'error', { resume: String(e) }));
 }
+// A kill or pause whose cancel or flatten never reached Perpl is still owed: finish it, whatever the restart interrupted.
+for (const a of db.prepare("select user_id from agents where owed is not null and status != 'quoting'").all() as { user_id: number }[]) {
+  void runnerFor(a.user_id)?.resumeCleanup();
+}
+resumeChainLog();
+
+// Request and minute records are for tracing and replay; two weeks is plenty.
+const prune = () => {
+  const cut = Date.now() - 14 * 86_400_000;
+  db.prepare('delete from quote_events where sent_at < ?').run(cut);
+  db.prepare('delete from market_minutes where minute < ?').run(Math.floor(cut / 60_000));
+};
+prune();
+setInterval(prune, 6 * 3_600_000).unref();
 
 setInterval(() => {
   house?.tick();
@@ -98,8 +113,8 @@ setInterval(refreshEvidence, 3_600_000).unref();
 const app = await buildApi({
   driver, world, house: () => house, runnerFor, dropRunner,
   health: () => ({
-    ok: true, at: Date.now(), network: config.network, realFunds: config.realFunds, venue: driver.kind, smartMoney: collector.kind, signalAgeMs: Number.isFinite(collector.ageMs) ? collector.ageMs : null, signalStale: collector.stale,
-    collectorError: collector.lastError, marketDataAgeMs: Date.now() - (driver.feed.snapshot('BTC')?.updatedAt ?? 0), runners: runners.size, llm: llmEnabled,
+    ok: true, at: Date.now(), network: config.network, realFunds: config.realFunds, venue: driver.kind, smartMoney: collector.kind, signalAgeMs: Number.isFinite(collector.ageMs) ? collector.ageMs : null, signalStale: collector.stale, smartMoneyLive: collector.liveSeen,
+    collectorError: collector.lastError, hyperliquidAgeMs: world ? null : hlAgeMs(), marketDataAgeMs: Date.now() - (driver.feed.snapshot('BTC')?.updatedAt ?? 0), runners: runners.size, llm: llmEnabled,
     chainLog: chainEnabled, chainQueue: queueDepth(), evidenceAt: evidence()?.at ?? null,
   }),
 });

@@ -57,7 +57,7 @@ export function SmartTape({ m, now, limit = 40 }: { m: MarketState; now: number;
           return (
             <tr key={t.hash + t.action} className={cx('h-[21px] border-t border-line', big && 'bg-accent/10')} title={`${t.label || 'Smart Money'} ${t.trader}`}>
               <td className="num pl-2.5 text-fg-3">{ago(t.ts, now)}</td>
-              <td className={cx('truncate', buy ? 'text-bid-fg' : 'text-ask-fg')}>{/Long|Short/.test(t.action) ? t.action.replace(' - ', ' ') : `${t.action} ${t.side}`}</td>
+              <td className={cx('truncate', buy ? 'text-bid-fg' : 'text-ask-fg')}>{t.type === 'live' ? `${t.action} · live` : /Long|Short/.test(t.action) ? t.action.replace(' - ', ' ') : `${t.action} ${t.side}`}</td>
               <td className="num truncate text-fg-3">{shortAddr(t.trader)}</td>
               <td className={cx('num pr-2.5 text-right', big ? 'font-semibold text-accent' : 'text-fg')}>{usdCompact(t.valueUsd)}</td>
             </tr>

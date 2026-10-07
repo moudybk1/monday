@@ -99,7 +99,7 @@ function replay(sym: MarketSym, spec: MarketSpec, candles: Candle[], flows: numb
     reflex = r.state;
     const storm = Math.abs(S) >= cfg.z2;
     if (i >= nextGov || (storm && !wasStorm)) {
-      gov = fallbackParams(sym, regimeOf(S, sigma, median(sigmas.slice(-DAY_MIN)), false, cfg), S, POLICY.maxInventoryUsd);
+      gov = fallbackParams(sym, regimeOf(S, sigma, median(sigmas.slice(-DAY_MIN)), false, cfg), S, POLICY.maxInventoryUsd, k > 0); // the same no-evidence, no-lean rule as live
       nextGov = i + config.governorIntervalMin;
     }
     wasStorm = storm;

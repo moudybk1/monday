@@ -17,15 +17,17 @@ function summary(d: Decision): string | null {
   return null;
 }
 
-export function Chain({ d, explorerUrl, chainOn }: { d: Pick<Decision, 'txHash'>; explorerUrl?: string; chainOn?: boolean }) {
-  if (d.txHash) {
+/** Where the decision's hash stands on Monad. Only a receipt counts as anchored; until then it says so. */
+export function Chain({ d, explorerUrl }: { d: Pick<Decision, 'txHash' | 'anchor'>; explorerUrl?: string; chainOn?: boolean }) {
+  if (d.txHash && d.anchor !== 'failed') {
     return (
       <a href={`${explorerUrl}/tx/${d.txHash}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-fg-2 underline decoration-line-2 underline-offset-2 hover:text-fg">
         on Monad <ArrowUpRightIcon size={10} />
       </a>
     );
   }
-  return <span>{chainOn ? 'pending' : 'hashed'}</span>;
+  const text = { off: 'hashed', pending: 'waiting for Monad', confirmed: 'on Monad', failed: 'not anchored' }[d.anchor];
+  return <span className={d.anchor === 'failed' ? 'text-warn' : undefined} title={d.anchor === 'pending' ? 'Hashed and queued. It stays queued through restarts until Monad confirms it.' : undefined}>{text}</span>;
 }
 
 /**

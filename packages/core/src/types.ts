@@ -142,6 +142,8 @@ export interface ReflexState {
   triggerHashes: string[];
   /** Perpl's own order book triggered it, not smart-money flow. */
   book?: boolean;
+  /** A pull that ran out and stepped down to a widen before letting go. */
+  released?: boolean;
 }
 
 export interface Fill {
@@ -159,7 +161,12 @@ export interface Fill {
   markout10sBps: number | null;
   markout1mBps: number | null;
   markout5mBps: number | null;
+  /** Not one of Monday's orders: a trade the user placed on Perpl by hand. Counted for risk, left out of Monday's results. */
+  external?: boolean;
 }
+
+/** Monad anchoring of a decision: off (no registry), pending (queued or sent, no receipt yet), confirmed, failed. */
+export type AnchorStatus = 'off' | 'pending' | 'confirmed' | 'failed';
 
 export interface Decision {
   id: number;
@@ -174,6 +181,7 @@ export interface Decision {
   llmModel: string | null;
   txHash: string | null;
   onchainId: number | null;
+  anchor: AnchorStatus;
 }
 
 export interface DecisionRecord extends Decision {
@@ -207,6 +215,17 @@ export interface MarketState {
   signal: MarketSignal | null;
   trades: SmartTrade[];
   priceSeries: { t: number; p: number; bid: number | null; ask: number | null }[];
+  /** False for a market dropped from the policy that still holds a position: Monday only works the exit there. */
+  inPolicy: boolean;
+  stage: 'normal' | 'reduce' | 'urgent';
+  /** One plain sentence: what is keeping Monday from trading, or what it is waiting for. */
+  why: string;
+  /** Share of the last hour with both quotes resting. Null before the first full minute. */
+  quotedPct: number | null;
+  /** How long each resting quote has stood since Perpl last confirmed it. */
+  quoteAgeMs: { bid: number | null; ask: number | null };
+  /** Usual Perpl premium over Hyperliquid, learned live; the blend leans toward Hyperliquid plus this. */
+  basisBps: number | null;
 }
 
 export interface Alert {
@@ -223,13 +242,27 @@ export interface DashboardState {
   paper: boolean;
   status: AgentStatus;
   killReason: KillReason | null;
+  /** Stopped, but orders or positions are not confirmed closed yet. Monday keeps retrying. */
+  closing: boolean;
   startedAt: number | null;
   policy: Policy;
   account: { id: number; balanceUsd: number; equityUsd: number };
-  pnl: { todayUsd: number; realizedUsd: number; unrealizedUsd: number; feesUsd: number; lossLimitUsedPct: number };
+  /**
+   * todayUsd is trading PnL: equity change since the start of the UTC day minus net deposits. Fees and funding are
+   * already inside equity and are not taken off again. realized and fees cover Monday's own fills only.
+   */
+  pnl: { todayUsd: number; realizedUsd: number; unrealizedUsd: number; feesUsd: number; lossLimitUsedPct: number; depositsUsd: number; fundingUsd: number };
   /** Since the last Start: Tread-style per-run stop loss and take profit, on top of the daily loss limit. */
   session: { startedAt: number; pnlUsd: number; stopLossUsd: number | null; takeProfitUsd: number | null } | null;
-  health: { marketDataAgeMs: number; signalAgeMs: number; budgetRemaining: number; budgetPerMin: number; venueConnected: boolean; llm: boolean; llmFailing: boolean; chain: boolean };
+  health: {
+    marketDataAgeMs: number; signalAgeMs: number; budgetRemaining: number; budgetPerMin: number; venueConnected: boolean; llm: boolean; llmFailing: boolean; chain: boolean;
+    /** Age of the last Hyperliquid frame (mids and the live smart-money tape), -1 when it is off. */
+    hlAgeMs: number;
+    /** Median over the last 100 requests: market data to request sent, and to Perpl confirming the change. */
+    latencyMs: { send: number | null; venue: number | null };
+  };
+  /** What running Monday costs. Null means not recorded, never zero. */
+  costs: { llmUsd24h: number | null; llmCalls24h: number; nansenUsd: null; hostingUsd: null; gasUsd: null };
   markets: Partial<Record<MarketSym, MarketState>>;
   equity: { t: number; v: number }[];
   fills: Fill[];

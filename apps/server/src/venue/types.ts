@@ -33,8 +33,20 @@ export interface MarketFeed {
   stop(): void;
   specs(): Partial<Record<MarketSym, MarketSpec>>;
   snapshot(sym: MarketSym): MarketSnapshot | null;
-  /** 1-minute candles, oldest first. Used for volatility warm-up, the volume cap and the evidence page. */
-  candles(sym: MarketSym, fromMs: number, toMs: number): Promise<Candle[]>;
+  /**
+   * Candles, oldest first: 1-minute by default (volatility warm-up, the volume cap, the evidence page). `resSec` asks
+   * for wider ones (the chart's 5m to 1D); a feed that only has minutes may return those, and the API aggregates them.
+   */
+  candles(sym: MarketSym, fromMs: number, toMs: number, resSec?: number): Promise<Candle[]>;
+  /** Real trades as they print, by taker side. Only Perpl's feed has a tape; paper trading fills against it. */
+  onTrade?(cb: (t: TapeTrade) => void): void;
+}
+
+export interface TapeTrade {
+  sym: MarketSym;
+  price: number;
+  size: number; // base units
+  side: 'buy' | 'sell'; // the taker's side
 }
 
 export type VenueErrorCode =
@@ -75,6 +87,8 @@ export interface VenueFill {
   realizedUsd: number; // PnL realised by this fill, before fees
   isMaker: boolean;
   ts: number;
+  /** Not one of Monday's orders (a trade placed by hand on the same account). Only the live venue can tell. */
+  external?: boolean;
 }
 
 export interface VenueEvents {
@@ -106,6 +120,10 @@ export interface Venue {
   /** Close every position with reduce-only market orders. */
   flatten(): Promise<void>;
   on<E extends keyof VenueEvents>(event: E, cb: VenueEvents[E]): void;
+  /** Simulated accounts only: save balance and positions. Called inside the transaction that records a fill. */
+  persist?(): void;
+  /** Requests this venue has sent on its own count since connect: retries, keep-alives, sweeps. They spend the same rate limit. */
+  requests?(): number;
 }
 
 export interface VenueCredentials {

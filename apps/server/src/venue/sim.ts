@@ -3,6 +3,7 @@
 // built so the thing Monday claims to exploit is actually present: smart-money
 // flow moves price over the following minutes.
 
+import { randomUUID } from 'node:crypto';
 import { mulberry32, type MarketSpec, type MarketSym, type QuoteTarget, type Side, type SmartTrade, MARKETS } from '@monday/core';
 import {
   VenueError, type Candle, type MarketFeed, type MarketSnapshot, type Venue, type VenueAccount, type VenueCredentials,
@@ -53,7 +54,7 @@ export class SimWorld implements VenueDriver, MarketFeed {
   private timer: NodeJS.Timeout | null = null;
   private now = 0;
 
-  constructor(seed = 20261005) {
+  constructor(seed = 20261005, private store?: SimStore) {
     this.rnd = mulberry32(seed);
     for (let i = 0; i < 48; i++) this.traders.push({ address: this.hex(40), label: LABELS[Math.floor(this.rnd() * LABELS.length)] });
     const end = Math.floor(Date.now() / 60_000) * 60_000;
@@ -272,13 +273,13 @@ export class SimWorld implements VenueDriver, MarketFeed {
 
   // ---- VenueDriver ----
   async detectAccount(wallet: string) {
-    return { accountId: 1000 + (parseInt(wallet.slice(-4), 16) % 9000), balanceUsd: SIM_BALANCE_USD };
+    return { accountId: 1000 + (parseInt(wallet.slice(-4), 16) % 9000), balanceUsd: this.store?.load(wallet)?.balance ?? SIM_BALANCE_USD };
   }
   minDepositUsd() {
     return 100;
   }
   open(creds: VenueCredentials): Venue {
-    const v = new SimVenue(this, creds, () => this.venues.delete(v));
+    const v = new SimVenue(this, creds, () => this.venues.delete(v), this.store);
     this.venues.add(v);
     return v;
   }
@@ -291,15 +292,32 @@ export interface SimMarket {
   price(sym: MarketSym): number;
 }
 
+/** Where simulated accounts live between restarts. Keyed by wallet; the server backs it with SQLite (db.ts). */
+export interface SimStore {
+  load(wallet: string): { balance: number; positions: Partial<Record<MarketSym, VenuePosition>> } | null;
+  save(wallet: string, balance: number, positions: Partial<Record<MarketSym, VenuePosition>>): void;
+}
+
 export class SimVenue implements Venue {
   private up = false;
   private balance = SIM_BALANCE_USD;
   private pos = {} as Record<MarketSym, VenuePosition>;
   private quotes = new Map<string, QuoteTarget>();
   private handlers: { [E in keyof VenueEvents]?: VenueEvents[E][] } = {};
-  private seq = 0;
 
-  constructor(private world: SimMarket, private creds: VenueCredentials, private onClose: () => void) {}
+  constructor(private world: SimMarket, private creds: VenueCredentials, private onClose: () => void, private store?: SimStore) {
+    // A restart picks the account up where it was: same balance, same positions. Resting quotes are not kept.
+    const saved = store?.load(creds.wallet);
+    if (saved) {
+      this.balance = saved.balance;
+      this.pos = saved.positions as Record<MarketSym, VenuePosition>;
+    }
+  }
+
+  /** Write balance and positions. The runner calls this inside the transaction that records the fill. */
+  persist() {
+    this.store?.save(this.creds.wallet, this.balance, this.pos);
+  }
 
   async connect(): Promise<VenueAccount> {
     // Magic values so every onboarding error state can be exercised without a real key.
@@ -380,7 +398,8 @@ export class SimVenue implements Venue {
         else this.quotes.set(key, { price: q.price, size: left });
       }
     }
-    const f: VenueFill = { id: `sim-${Date.now()}-${++this.seq}`, sym, side, price, size, feeUsd, realizedUsd, isMaker, ts: Date.now() };
+    // Unique across accounts and restarts: the wallet plus a random event id.
+    const f: VenueFill = { id: `sim:${this.creds.wallet.toLowerCase()}:${randomUUID()}`, sym, side, price, size, feeUsd, realizedUsd, isMaker, ts: Date.now() };
     for (const cb of this.handlers.fill ?? []) cb(f);
   }
 }

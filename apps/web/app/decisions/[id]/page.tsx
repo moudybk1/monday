@@ -73,7 +73,12 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
                         {d.txHash} <ArrowUpRightIcon size={12} />
                       </a>
                     ) : (
-                      <span className="text-fg-2">Not anchored. {cfg?.registry ? 'The transaction is queued, or the account owner has not authorised the agent in the registry.' : 'This server has no registry configured, so decisions are hashed but not written on-chain.'}</span>
+                      <span className="text-fg-2">{{
+                        pending: 'Waiting for Monad. The hashes are queued and stay queued through restarts until a receipt confirms them.',
+                        failed: 'Not anchored: the transaction failed after several attempts. The record and its hashes are still here to check.',
+                        confirmed: 'Anchored.',
+                        off: cfg?.registry ? 'Not anchored: the account owner has not authorised the agent in the registry.' : 'This server has no registry configured, so decisions are hashed but not written on-chain.',
+                      }[d.anchor]}</span>
                     )}
                     {d.onchainId != null && <span className="ml-2 text-fg-3">registry decision <span className="num">{d.onchainId}</span></span>}
                   </dd>

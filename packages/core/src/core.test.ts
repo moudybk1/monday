@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, liquidationPrice, walletPerformance, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, limitsForBalance, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  preTradeReject, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
+  riskGate, inventoryStage, orderJobs, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
 
@@ -98,9 +98,21 @@ describe('FR-RFX reflex', () => {
     expect(b.state!.until).toBe(t0 + 60_000 + 300_000);
     const c = nextReflex(b.state, null, t0 + 200_000, 0, []);
     expect(c.state).not.toBeNull();
+    // The pull runs out at t0 + 360 s and steps down to a widen for half a hold before letting go.
     const d = nextReflex(c.state, null, t0 + 361_000, 0, []);
-    expect(d.state).toBeNull();
+    expect(d.state).toMatchObject({ action: 'widen', released: true, until: t0 + 361_000 + 150_000 });
     expect(d.changed).toBe(true);
+    const e = nextReflex(d.state, null, t0 + 512_000, 0, []);
+    expect(e.state).toBeNull();
+    expect(e.changed).toBe(true);
+  });
+
+  it('a held side lets go only below 80% of its entry level', () => {
+    const held = { side: 'ask' as const };
+    expect(reflexTrigger(1.3, 0)).toBeNull();
+    expect(reflexTrigger(1.3, 0, DEFAULT_CONFIG, held)).toEqual({ side: 'ask', action: 'widen' }); // 1.3 > 0.8 x 1.5
+    expect(reflexTrigger(1.1, 0, DEFAULT_CONFIG, held)).toBeNull();
+    expect(bookTrigger(0.6, DEFAULT_CONFIG, held)).toEqual({ side: 'ask', action: 'widen' }); // 0.6 > 0.8 x 0.7
   });
 });
 
@@ -114,9 +126,9 @@ describe('order-book reflex', () => {
   });
 
   it('heavy bids threaten the ask, and the lean follows the heavy side', () => {
-    expect(bookTrigger(0.8)).toEqual({ side: 'ask', action: 'pull' });
-    expect(bookTrigger(-0.6)).toEqual({ side: 'bid', action: 'widen' });
-    expect(bookTrigger(0.3)).toBeNull();
+    expect(bookTrigger(0.9)).toEqual({ side: 'ask', action: 'pull' });
+    expect(bookTrigger(-0.75)).toEqual({ side: 'bid', action: 'widen' });
+    expect(bookTrigger(0.6)).toBeNull(); // a merely lopsided Perpl book is normal
     expect(computeQuotes({ ...base, book: 1 }).skewBookBps).toBe(2);
     expect(computeQuotes({ ...base, book: -0.5 }).center).toBeLessThan(computeQuotes(base).center);
   });
@@ -182,29 +194,93 @@ describe('FR-GOV-2 regimes and clamps', () => {
     expect(regimeOf(2.6, 2, 2, false)).toBe('storm');
     expect(regimeOf(0, 9, 2, false)).toBe('storm');
     expect(regimeOf(3, 2, 2, true)).toBe('stale');
-    expect(fallbackParams('BTC', 'active', -1.2, 500).skew_bias_bps).toBe(-2);
+    expect(fallbackParams('BTC', 'active', -1.2, 500, true).skew_bias_bps).toBe(-2);
+    expect(fallbackParams('BTC', 'active', -1.2, 500).skew_bias_bps).toBe(0); // no evidence, no lean (PRD 19.1)
   });
 
   it('clamps hostile parameters into bounds', () => {
     const p = clampParams(
       { market: 'BTC', enabled: true, spread_mult: 0.1, skew_bias_bps: 500, size_mult: 9, max_inventory_usd: 1e9, ttl_min: 999, regime: 'calm', reason: 'x'.repeat(999) },
-      500,
+      500, { lean: true },
     );
     expect(p).toMatchObject({ spread_mult: 1, skew_bias_bps: 10, size_mult: 1.5, max_inventory_usd: 500, ttl_min: 30 });
     expect(p.reason.length).toBe(280);
   });
+
+  it('keeps the bias at zero without evidence and loosens one step at a time', () => {
+    const p = { market: 'BTC' as const, enabled: true, spread_mult: 1, skew_bias_bps: 8, size_mult: 1.5, max_inventory_usd: 500, ttl_min: 15, regime: 'calm' as const, reason: 'x' };
+    expect(clampParams(p, 500).skew_bias_bps).toBe(0);
+    const stepped = clampParams(p, 500, { prev: { spread_mult: 3, size_mult: 0.4 } });
+    expect([stepped.spread_mult, stepped.size_mult]).toEqual([2, 0.9]);
+    expect(clampParams({ ...p, spread_mult: 4, size_mult: 0 }, 500, { prev: { spread_mult: 1, size_mult: 1 } })).toMatchObject({ spread_mult: 4, size_mult: 0 }); // tightening is immediate
+  });
 });
 
-describe('FR-RSK-3 pre-trade checks', () => {
-  const lim = { maxInventoryUsd: 500, maxLeverage: 3, quoteSizeUsd: 100 };
+describe('FR-RSK-3 final risk gate', () => {
+  const g = { side: 'bid' as const, target: { price: 85_000, size: 0.001 }, oracle: 85_000, mark: 85_000, positionSize: 0, otherUsd: 0, equityUsd: 1000, capUsd: 500, accountCapUsd: 1500, maxOrderUsd: 150, maxLeverage: 3, sizeStep: 0.00001 };
   it('blocks quotes outside the 1% oracle band', () => {
-    expect(preTradeReject({ price: 86_000, size: 0.001 }, 'ask', 85_000, 0, 1000, lim)).toBe('price_band');
-    expect(preTradeReject({ price: 85_040, size: 0.001 }, 'ask', 85_000, 0, 1000, lim)).toBeNull();
+    expect(riskGate({ ...g, side: 'ask', target: { price: 86_000, size: 0.001 } })).toEqual({ reject: 'price_band' });
+    expect(riskGate({ ...g, side: 'ask', target: { price: 85_040, size: 0.001 } })).toHaveProperty('target');
   });
-  it('blocks growth past inventory and leverage but always allows reducing', () => {
-    expect(preTradeReject({ price: 85_000, size: 0.001 }, 'bid', 85_000, 480, 1000, lim)).toBe('max_inventory');
-    expect(preTradeReject({ price: 85_000, size: 0.001 }, 'ask', 85_000, 480, 1000, lim)).toBeNull();
-    expect(preTradeReject({ price: 85_000, size: 0.001 }, 'bid', 85_000, 250, 100, lim)).toBe('max_leverage');
+  it('a governor cap of $10 stops a $50 order', () => {
+    expect(riskGate({ ...g, target: { price: 85_000, size: 50 / 85_000 }, capUsd: 10 })).toEqual({ reject: 'max_inventory' });
+  });
+  it('counts other markets gross, and leverage across the account', () => {
+    expect(riskGate({ ...g, otherUsd: 1_450 })).toEqual({ reject: 'max_account' }); // short ETH does not offset long BTC
+    expect(riskGate({ ...g, positionSize: 250 / 85_000, equityUsd: 100 })).toEqual({ reject: 'max_leverage' });
+  });
+  it('always allows a reduction, and cuts one that would flip into a side over the cap', () => {
+    const long = 480 / 85_000;
+    expect(riskGate({ ...g, positionSize: long })).toEqual({ reject: 'max_inventory' });
+    expect(riskGate({ ...g, side: 'ask', positionSize: long })).toHaveProperty('target');
+    const flip = riskGate({ ...g, side: 'ask', positionSize: 0.0005, target: { price: 85_000, size: 0.01 }, capUsd: 100, maxOrderUsd: 1_000 });
+    expect(flip).toEqual({ target: { price: 85_000, size: 0.0005 } }); // the reduction alone, not the $800 short
+  });
+});
+
+describe('inventory lifecycle', () => {
+  const p = { positionUsd: 100, capUsd: 500, ageMs: 0, unrealizedUsd: 0, dailyLossUsd: 50, inPolicy: true };
+  it('moves from normal to reduce to urgent by size, age and open loss', () => {
+    expect(inventoryStage(p)).toBe('normal');
+    expect(inventoryStage({ ...p, positionUsd: -400 })).toBe('reduce');
+    expect(inventoryStage({ ...p, ageMs: 25 * 60_000 })).toBe('reduce');
+    expect(inventoryStage({ ...p, inPolicy: false })).toBe('reduce'); // dropped from the policy: work the exit
+    expect(inventoryStage({ ...p, positionUsd: 700 })).toBe('urgent'); // limits lowered under the position
+    expect(inventoryStage({ ...p, unrealizedUsd: -13 })).toBe('urgent');
+  });
+  it('stops adding, works the exit, and keeps the exit even when a reflex would pull it', () => {
+    const long = { ...base, positionUsd: 400, positionBase: 400 / 85_000 };
+    const normal = computeQuotes(long);
+    const reduce = computeQuotes({ ...long, stage: 'reduce', reflex: { side: 'ask', action: 'pull' } });
+    expect(reduce.bid).toBeNull();
+    expect(reduce.ask).not.toBeNull(); // widened, not pulled
+    const urgent = computeQuotes({ ...long, stage: 'urgent', reflex: { side: 'ask', action: 'pull' } });
+    expect(urgent.ask!.price).toBe(85_004.9); // one tick inside the best ask
+    expect(urgent.ask!.price).toBeLessThan(normal.ask!.price);
+    const small = computeQuotes({ ...base, positionUsd: 20, positionBase: 20 / 85_000, stage: 'reduce' });
+    expect(small.ask!.size).toBe(0.00023); // the position, rounded down to the size step: never a flip
+  });
+});
+
+describe('request scheduler', () => {
+  const now = 100_000;
+  const mk = ['BTC', 'ETH', 'SOL'];
+  it('serves risk first, then the longest wait, and rotates ties across markets', () => {
+    const jobs = [
+      { sym: 'BTC', side: 'bid' as const, prio: 4 as const, since: now },
+      { sym: 'ETH', side: 'bid' as const, prio: 5 as const, since: now - 30_000 },
+      { sym: 'SOL', side: 'ask' as const, prio: 1 as const, since: now },
+      { sym: 'BTC', side: 'ask' as const, prio: 3 as const, since: now },
+    ];
+    expect(orderJobs(jobs, now, mk, 0).map((j) => `${j.sym}:${j.prio}`)).toEqual(['SOL:1', 'BTC:3', 'ETH:5', 'BTC:4']);
+    const tie = mk.map((sym) => ({ sym, side: 'bid' as const, prio: 4 as const, since: now }));
+    expect(orderJobs(tie, now, mk, 1)[0].sym).toBe('ETH');
+    expect(orderJobs(tie, now, mk, 2)[0].sym).toBe('SOL');
+  });
+  it('never lets waiting routine work overtake risk work', () => {
+    const old = { sym: 'ETH', side: 'bid' as const, prio: 5 as const, since: 0 };
+    const risk = { sym: 'BTC', side: 'bid' as const, prio: 3 as const, since: now };
+    expect(orderJobs([old, risk], now, mk, 0)[0]).toBe(risk);
   });
 });
 
@@ -233,8 +309,9 @@ describe('FR-SIG-2 signal engine', () => {
 
   it('robust z ignores one whale in the baseline', () => {
     const baseline = Array.from({ length: 200 }, (_, i) => ((i * 37) % 21) - 10);
-    const z = robustZ(40, baseline);
-    expect(robustZ(40, [...baseline, 1e9])).toBeCloseTo(z, 0);
+    const z = robustZ(20, baseline);
+    expect(z).toBeLessThan(5); // below the cap, so the comparison means something
+    expect(robustZ(20, [...baseline, 1e9])).toBeCloseTo(z, 0);
     expect(robustZ(5, [1, 1, 1])).toBe(0);
   });
 
@@ -247,8 +324,8 @@ describe('FR-SIG-2 signal engine', () => {
   it('sparse flow still scores: a bucket with flow stands out when most buckets are empty', () => {
     const sparse = Array.from({ length: 2016 }, (_, i) => (i % 3 === 0 ? ((i * 7919) % 41) * 1000 : 0));
     const z = robustZ(1_000_000, sparse);
-    expect(z).toBeGreaterThan(10);
-    expect(Number.isFinite(z)).toBe(true);
+    expect(z).toBe(5); // stands out, but capped
+    expect(robustZ(-1_000_000, sparse)).toBe(-5);
     expect(robustZ(0, sparse)).toBe(0);
     expect(robustZ(5, Array(20).fill(0))).toBe(0);
   });

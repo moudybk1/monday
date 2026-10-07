@@ -63,7 +63,9 @@ export default function Terminal() {
   }, [ready]);
 
   if (!state) return <Loading />;
-  const sym = state.policy.markets.includes(picked) ? picked : state.policy.markets[0];
+  // The policy's markets, plus any market dropped from it that still holds a position Monday is closing.
+  const shown = Object.keys(state.markets) as MarketSym[];
+  const sym = shown.includes(picked) ? picked : shown[0] ?? state.policy.markets[0];
   const m = state.markets[sym];
   const now = state.at;
 
@@ -81,7 +83,7 @@ export default function Terminal() {
 
   const quoting = state.status === 'quoting';
   const start = () => act('/agent/start', { stopLossUsd: usdOrNull(session.sl), takeProfitUsd: usdOrNull(session.tp) });
-  const openPositions = state.policy.markets.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
+  const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
 
@@ -90,7 +92,7 @@ export default function Terminal() {
       {/* Market strip */}
       <div className="panel flex-none flex-row flex-wrap items-stretch">
         <div role="tablist" aria-label="Market" className="flex">
-          {state.policy.markets.map((s) => {
+          {shown.map((s) => {
             const x = state.markets[s];
             return (
               <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-[50px] min-w-[7.25rem] flex-col justify-center gap-0.5 border-r border-line px-3 text-left', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
@@ -119,7 +121,7 @@ export default function Terminal() {
           <span className="mr-1 flex items-center gap-1.5 text-[12px] font-medium">
             {/* The one status dot: it reflects real agent state. */}
             <span aria-hidden className={cx('size-1.5 rounded-full', quoting ? 'live-dot bg-bid' : state.status === 'killed' ? 'bg-ask' : 'bg-fg-3')} />
-            {STATUS[state.status]}
+            {state.closing ? 'Closing' : STATUS[state.status]}
           </span>
           {quoting ? (
             <Button size="sm" variant="ghost" onClick={() => act('/agent/pause')} disabled={busy !== null}><PauseIcon size={12} weight="fill" /> Pause</Button>
@@ -135,12 +137,13 @@ export default function Terminal() {
       <div className="grid flex-none gap-1 empty:hidden">
         {error && <Notice tone="warn">{error}</Notice>}
         {state.status === 'killed' && (
-          <Notice tone="ask" action={<Button size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15" onClick={start}>Review done, restart</Button>}>
-            <strong>Killed.</strong> {state.killReason ? KILL_WHY[state.killReason] : ''} All orders were cancelled and positions closed.
+          <Notice tone="ask" action={state.closing ? undefined : <Button size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15" onClick={start}>Review done, restart</Button>}>
+            <strong>{state.closing ? 'Killed, still closing.' : 'Killed.'}</strong> {state.killReason ? KILL_WHY[state.killReason] : ''}{' '}
+            {state.closing ? 'Perpl has not confirmed that every order is cancelled and every position closed. Monday retries every 10 seconds, also after a restart. You can close them on Perpl too.' : 'All orders were cancelled and positions closed.'}
             {state.killReason === 'key_error' && <> <Link href="/app/onboarding" className="underline">Add a new key</Link>.</>}
           </Notice>
         )}
-        {state.status === 'paused' && <Notice>Paused. Monday&apos;s orders are cancelled and any open position is kept.</Notice>}
+        {state.status === 'paused' && <Notice tone={state.closing ? 'warn' : undefined}>{state.closing ? 'Paused, but Perpl has not confirmed the cancels yet. Monday keeps retrying.' : <>Paused. Monday&apos;s orders are cancelled and any open position is kept.</>}</Notice>}
         {state.status === 'idle' && <Notice>Monday is not running. Press Start to begin quoting under your policy.</Notice>}
         {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes paused. Monday resumes on its own when data returns.</Notice>}
         {/* The newest warning from the agent itself: loss-limit approach, rate limits, blocked orders, disconnects. */}
@@ -265,6 +268,7 @@ function Now({ m, sym }: { m: MarketState; sym: MarketSym }) {
   return (
     <div className="panel flex-none px-3 py-2 text-[12.5px]" role="status">
       <p><span className="font-semibold">Now:</span> <span className="text-fg-2">{what}</span></p>
+      {m.why && <p className="mt-0.5 text-[12px] text-fg-2"><span className="font-medium text-fg">Waiting on:</span> {m.why}</p>}
       {why && <p className="mt-0.5 text-[12px] text-fg-3">Latest reason: {why}</p>}
     </div>
   );
@@ -279,7 +283,7 @@ function Agent({ state, sym, onPick, session, onSession }: { state: DashboardSta
   return (
     <Panel
       title="Agent" className="flex-none" bodyClassName="!overflow-visible"
-      aside={<Tag tone={state.status === 'quoting' ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{STATUS[state.status]}</Tag>}
+      aside={<Tag tone={state.closing ? 'warn' : state.status === 'quoting' ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{state.closing ? 'Closing' : STATUS[state.status]}</Tag>}
     >
       <dl className="grid grid-cols-2 gap-px bg-line">
         <div className={cell}>
@@ -288,9 +292,13 @@ function Agent({ state, sym, onPick, session, onSession }: { state: DashboardSta
           <dd className="num mt-1.5 text-[11px] text-fg-3">acct {state.account.id || 'none'}</dd>
         </div>
         <div className={cell}>
-          <dt className="label">Today</dt>
+          <dt className="label" title="Trading result since 00:00 UTC: equity change minus deposits and withdrawals. Fees and funding are already inside it.">Today</dt>
           <dd className={cx('num mt-1.5 text-[19px] font-medium leading-none tracking-tight', tone(pnl.todayUsd))}>{fmtSigned(pnl.todayUsd)}</dd>
-          <dd className="num mt-1.5 text-[11px] text-fg-3">fees {fmtUsd(pnl.feesUsd, 3)}</dd>
+          <dd className="num mt-1.5 text-[11px] text-fg-3">
+            fees {fmtUsd(pnl.feesUsd, 3)}
+            {Math.abs(pnl.fundingUsd) >= 0.005 && <> · funding {fmtSigned(pnl.fundingUsd)}</>}
+            {Math.abs(pnl.depositsUsd) >= 0.005 && <> · {fmtSigned(pnl.depositsUsd)} moved in or out, not counted</>}
+          </dd>
         </div>
         <div className={cell}>
           <dt className="label">Realised / open</dt>
@@ -337,14 +345,16 @@ function Agent({ state, sym, onPick, session, onSession }: { state: DashboardSta
           </tr>
         </thead>
         <tbody className="num">
-          {policy.markets.map((s) => {
+          {(Object.keys(state.markets) as MarketSym[]).map((s) => {
             const x = state.markets[s];
             if (!x) return null;
             const inv = x.position.notionalUsd;
             const q = (side: 'bid' | 'ask') => (x.quotes[side] ? fmtPrice(x.quotes[side]!.price, x.spec) : x.reflex?.action === 'pull' && x.reflex.side === side ? 'pulled' : 'none');
             return (
               <tr key={s} onClick={() => onPick(s)} className={cx('h-[26px] cursor-pointer border-t border-line', s === sym ? 'bg-raised' : 'hover:bg-raised')}>
-                <td className="pl-2.5 font-sans font-semibold">{s}</td>
+                <td className="pl-2.5 font-sans font-semibold" title={!x.inPolicy ? 'Not in your policy any more: Monday only closes the position here.' : x.stage !== 'normal' ? `Inventory stage: ${x.stage}. Monday has stopped adding and is working the exit.` : undefined}>
+                  {s}{(!x.inPolicy || x.stage !== 'normal') && <span className={cx('ml-1 font-normal', x.stage === 'urgent' ? 'text-ask-fg' : 'text-warn')}>{x.inPolicy ? x.stage : 'exit'}</span>}
+                </td>
                 <td>
                   <span className={cx('inline-block w-[4.5rem]', tone(inv))}>{Math.abs(inv) < 0.5 ? 'flat' : `${inv > 0 ? '+' : '-'}${fmtUsd(Math.abs(inv), 0)}`}</span>
                   <Diverging value={inv / policy.maxInventoryUsd} className="inline-block w-10 align-middle" />
@@ -357,7 +367,18 @@ function Agent({ state, sym, onPick, session, onSession }: { state: DashboardSta
           })}
         </tbody>
       </table>
-      <p className="border-t border-line px-2.5 py-1.5 text-[11px] text-fg-3">Inventory limit {usd(policy.maxInventoryUsd)} each way per market. {usd(policy.quoteSizeUsd)} quoted per side.</p>
+      <p className="border-t border-line px-2.5 py-1.5 text-[11px] text-fg-3">
+        {state.status === 'quoting' && (
+          <span className="block" title="Online is not the same as providing liquidity: this is the share of the last hour with both a bid and an ask resting.">
+            Both sides quoted, last hour:{' '}
+            {(Object.keys(state.markets) as MarketSym[]).map((s, i) => {
+              const q = state.markets[s]?.quotedPct;
+              return <span key={s} className="num">{i ? ' · ' : ''}{s} {q == null ? 'n/a' : `${Math.round(q)}%`}</span>;
+            })}
+          </span>
+        )}
+        Inventory limit {usd(policy.maxInventoryUsd)} each way per market. {usd(policy.quoteSizeUsd)} quoted per side.
+      </p>
     </Panel>
   );
 }
@@ -391,7 +412,7 @@ function Model({ m, quoting, quoteSizeUsd }: { m: MarketState; quoting: boolean;
 
 /** One row per market in the policy: what Monday holds, at what entry, and how it is doing at the live mark. */
 function Positions({ state }: { state: DashboardState }) {
-  const rows = state.policy.markets.map((s) => state.markets[s]).filter((m): m is MarketState => Boolean(m));
+  const rows = Object.values(state.markets).filter((m): m is MarketState => Boolean(m));
   const open = rows.filter((m) => Math.abs(m.position.notionalUsd) >= 0.5);
   const total = open.reduce((a, m) => a + m.position.unrealizedUsd, 0);
   const tone = (n: number) => (n > 0.004 ? 'text-bid-fg' : n < -0.004 ? 'text-ask-fg' : 'text-fg-2');
@@ -471,12 +492,17 @@ function Fills({ state }: { state: DashboardState }) {
 /** Foot of every terminal: is the feed alive, and how old is what I am looking at. */
 function StatusBar({ state, sim, paper, connected }: { state: DashboardState; sim: boolean; paper: boolean; connected: boolean }) {
   const h = state.health;
+  const c = state.costs;
   const items: [string, string, boolean?][] = [
     ['Venue', sim ? 'simulated' : paper ? 'Perpl data, paper orders' : h.venueConnected ? 'Perpl' : 'Perpl down', !sim && !paper && !h.venueConnected],
     ['Data', `${(h.marketDataAgeMs / 1000).toFixed(1)}s`, h.marketDataAgeMs > 5_000],
-    ['Signal', h.signalAgeMs < 0 ? 'none' : `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs < 0 || h.signalAgeMs > 15 * 60_000],
+    // Two separate sources with separate health: Nansen's poll, and Hyperliquid's live tape and mids.
+    ['Nansen', h.signalAgeMs < 0 ? 'none' : `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs < 0 || h.signalAgeMs > 15 * 60_000],
+    ['Hyperliquid', h.hlAgeMs < 0 ? 'off' : `${(h.hlAgeMs / 1000).toFixed(1)}s`, h.hlAgeMs > 5_000],
+    ['Order latency', h.latencyMs.venue == null ? 'n/a' : `${Math.round(h.latencyMs.venue)}ms`, (h.latencyMs.venue ?? 0) > 3_000],
     ['Budget', `${h.budgetRemaining}/${h.budgetPerMin}`, h.budgetRemaining < 8],
     ['Governor', h.llm ? (h.llmFailing ? 'rules, LLM failing' : 'LLM + rules') : 'rules', h.llmFailing],
+    ['LLM 24h', !h.llm ? 'off' : !c.llmCalls24h ? 'no calls yet' : c.llmUsd24h == null ? `${c.llmCalls24h} calls, cost not recorded` : `${c.llmCalls24h} calls, $${c.llmUsd24h.toFixed(2)}`],
     ['Chain log', h.chain ? 'on' : 'off'],
   ];
   return (

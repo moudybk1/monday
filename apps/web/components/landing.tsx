@@ -95,6 +95,7 @@ function scene(step: number): MarketState {
       w5: burst ? win(640_000, 2.9, 14) : win(38_000, 0.3, 4), w15: burst ? win(710_000, 2.2, 22) : win(-21_000, -0.1, 11), w60: burst ? win(820_000, 1.1, 51) : win(96_000, 0.2, 40),
     },
     trades: [], priceSeries: [],
+    inPolicy: true, stage: 'normal', why: '', quotedPct: null, quoteAgeMs: { bid: null, ask: null }, basisBps: null,
   };
 }
 
