@@ -10,7 +10,9 @@ export const fmtSize = (s: number, spec?: Pick<MarketSpec, 'sizeStep'>) => s.toF
 export const fmtUsd = (n: number, digits = 2) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 
 export function fmtSigned(n: number, digits = 2) {
-  const r = Number(n.toFixed(digits)); // -0.001 must not print as "-$0.00"
+  // Small accounts make fractions of a cent per fill: show them rather than "$0.00".
+  if (digits === 2 && n !== 0 && Math.abs(n) < 0.005) digits = 4;
+  const r = Number(n.toFixed(digits)); // -0.00001 must not print as "-$0.0000"
   return `${r > 0 ? '+' : r < 0 ? '-' : ''}$${Math.abs(r).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 

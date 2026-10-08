@@ -543,7 +543,8 @@ export class PerplVenue implements Venue {
     // A close carries no per-request status: whatever was in flight may or may not have landed.
     // The orders snapshot after reconnect is the truth.
     this.failPending(down);
-    const err = code === 1008 ? new VenueError('rate_limited', what)
+    // 1008 is also "ping timeout", "idle timeout" and "too many connections": only "too many requests" is the rate limit.
+    const err = code === 1008 && /too many requests/i.test(reason) ? new VenueError('rate_limited', what)
       : code === 1011 ? new VenueError('fatal', what)
       : code === 3401 ? new VenueError(this.wasReady ? 'revoked' : 'bad_signature', what)
       : down;

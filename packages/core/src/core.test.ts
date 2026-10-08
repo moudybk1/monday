@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PRESETS, analyticsOf, liquidationPrice, walletPerformance, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, limitsForBalance, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
+  PRESETS, analyticsOf, liquidationPrice, walletPerformance, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   riskGate, inventoryStage, orderJobs, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
@@ -16,7 +16,8 @@ const base: QuoteInput = {
 describe('FR-ENG-1 quoting model', () => {
   it('quotes symmetric around the reference when flat and calm', () => {
     const q = computeQuotes(base);
-    expect(q.halfBps).toBeCloseTo(8.45); // 4 x sigma (2 bps) clears the 4 bps floor, plus the maker fee
+    expect(q.halfBps).toBeCloseTo(4.45); // calm: the 4 bps policy floor beats 1.5 x sigma (3 bps), plus the maker fee
+    expect(computeQuotes({ ...base, sigma1mBps: 6 }).halfBps).toBeCloseTo(9.45); // volatile: 1.5 x 6 bps clears the floor
     expect(q.bid!.price).toBeLessThan(85_000);
     expect(q.ask!.price).toBeGreaterThan(85_000);
     expect(85_000 - q.bid!.price).toBeCloseTo(q.ask!.price - 85_000, 0);
@@ -29,12 +30,26 @@ describe('FR-ENG-1 quoting model', () => {
   });
 
   it('long inventory pushes both quotes down and shrinks the bid', () => {
-    const flat = computeQuotes(base);
-    const long = computeQuotes({ ...base, positionUsd: 250 });
+    const cfg = { ...DEFAULT_CONFIG, touchMaxMult: 0 }; // the model alone, without joining the touch
+    const flat = computeQuotes({ ...base, cfg });
+    const long = computeQuotes({ ...base, positionUsd: 250, cfg });
     expect(long.ask!.price).toBeLessThan(flat.ask!.price);
     expect(long.bid!.price).toBeLessThan(flat.bid!.price);
     expect(long.bid!.size).toBeLessThan(flat.bid!.size);
     expect(long.ask!.size).toBe(flat.ask!.size);
+  });
+
+  it('joins the best price when calm, keeps its distance in a storm, under a reflex, or when adding past half the cap', () => {
+    const book = { ...base, bestBid: 84_999.9, bestAsk: 85_000 }; // one tick wide, like mainnet BTC
+    const calm = computeQuotes(book);
+    expect([calm.bid!.price, calm.ask!.price]).toEqual([84_999.9, 85_000]);
+    expect(computeQuotes({ ...book, gov: { ...book.gov, spread_mult: 2.5 } }).bid!.price).toBeLessThan(84_990);
+    const widened = computeQuotes({ ...book, reflex: { side: 'ask', action: 'widen' } });
+    expect(widened.bid!.price).toBe(84_999.9);
+    expect(widened.ask!.price).toBeGreaterThan(85_010);
+    const long = computeQuotes({ ...book, positionUsd: 300 }); // q 0.6: the bid adds, the ask sheds
+    expect(long.bid!.price).toBeLessThan(84_990);
+    expect(long.ask!.price).toBe(85_000);
   });
 
   it('FR-ENG-5 skips the side that would breach max inventory', () => {
@@ -378,15 +393,22 @@ describe('FR-POL-2 policy sizing', () => {
     }
     expect(limitsFromMargin(100, 10, 1)).toMatchObject({ maxDailyLossUsd: 10, maxInventoryUsd: 900, quoteSizeUsd: 90 });
   });
-  it('shrinks limits to fit small balances and never exceeds them', () => {
-    for (const [bal, n] of [[100, 1], [10, 1], [100, 3], [57.3, 2]] as const) {
-      const l = limitsForBalance(bal, n);
-      expect(balanceNeededUsd(l, n)).toBeLessThanOrEqual(bal);
-      expect(l.quoteSizeUsd).toBeLessThanOrEqual(l.maxInventoryUsd);
-      expect(l.maxLeverage).toBe(PRESETS.conservative.maxLeverage);
+  it('shrinks any preset to fit small balances and the caps, never past either', () => {
+    const caps = { quoteSizeUsd: 50, maxInventoryUsd: 250, maxDailyLossUsd: 25 };
+    for (const base of Object.values(PRESETS)) {
+      for (const [bal, n] of [[100, 1], [10, 1], [25.29, 1], [100, 3], [57.3, 2]] as const) {
+        const l = fitLimits(base, bal, n, caps);
+        expect(balanceNeededUsd(l, n)).toBeLessThanOrEqual(bal);
+        expect(l.quoteSizeUsd).toBeLessThanOrEqual(Math.min(l.maxInventoryUsd, caps.quoteSizeUsd));
+        expect(l.maxInventoryUsd).toBeLessThanOrEqual(caps.maxInventoryUsd);
+        expect(Math.min(l.quoteSizeUsd, l.maxInventoryUsd, l.maxDailyLossUsd)).toBeGreaterThanOrEqual(1); // the server's floors
+        expect(l.maxLeverage).toBe(base.maxLeverage);
+      }
     }
-    expect(limitsForBalance(100, 1)).toMatchObject({ quoteSizeUsd: 16, maxInventoryUsd: 166, maxDailyLossUsd: 16 });
-    expect(limitsForBalance(5_000, 1)).toEqual(PRESETS.conservative);
+    expect(fitLimits(PRESETS.conservative, 100, 1)).toMatchObject({ quoteSizeUsd: 16, maxInventoryUsd: 166, maxDailyLossUsd: 16 });
+    expect(fitLimits(PRESETS.conservative, 25.29, 1, caps)).toMatchObject({ quoteSizeUsd: 4, maxInventoryUsd: 42, maxDailyLossUsd: 4 });
+    expect(fitLimits(PRESETS.conservative, 5_000, 1)).toBe(PRESETS.conservative);
+    expect(fitLimits(PRESETS.balanced, 5_000, 1, caps)).toMatchObject({ quoteSizeUsd: 25, maxInventoryUsd: 250, maxDailyLossUsd: 25 });
   });
 });
 

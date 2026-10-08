@@ -8,6 +8,7 @@ import { Collector } from './collector';
 import { config } from './config';
 import { db, event, simStore, unseal, upsertUser } from './db';
 import { computeEvidence, evidence, nansenK } from './evidence';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { hlAgeMs, startHyperliquid } from './hyperliquid';
 import { startIndexer } from './stats/indexer';
 import { llmEnabled } from './governor';
@@ -61,7 +62,18 @@ if (!world || chainEnabled) await verifyRpc();
 await driver.feed.start();
 await collector.start();
 if (!world) startHyperliquid((t) => collector.onHyperliquidTrade(t)); // mids for the blend, and the smart-money tape
-startIndexer(); // public Perpl stats: on in every mode, it reads Perpl mainnet whatever Monday trades
+// Public Perpl stats: it reads Perpl mainnet whatever Monday trades. Not beside real orders: its synchronous SQLite batches
+// can stall the event loop past Perpl's ping timeout (1008), which drops the trading socket.
+// ponytail: off while trading real funds; run the indexer as its own process when the live server needs fresh analytics.
+if (!config.realFunds) startIndexer();
+// A stalled event loop misses Perpl's pings and drops the trading socket. Say so when it happens.
+const loopLag = monitorEventLoopDelay({ resolution: 50 });
+loopLag.enable();
+setInterval(() => {
+  const maxMs = loopLag.max / 1e6;
+  if (maxMs > 1_000) console.error(JSON.stringify({ service: 'monday', event: 'event_loop_stall', maxMs: Math.round(maxMs) }));
+  loopLag.reset();
+}, 30_000).unref();
 
 if (simulatedOrders) {
   // The house account quotes from boot so the landing page shows a live agent (on the real book in paper mode).
@@ -137,7 +149,8 @@ function stop(code: number) {
   setTimeout(() => process.exit(code), 10_000).unref(); // a cancel waits for in-flight requests, which end within Perpl's order TTL
   void Promise.allSettled([...runners.values(), ...(house ? [house] : [])].map((r) => r.shutdown())).then(() => process.exit(code));
 }
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => stop(0));
+// SIGHUP: the terminal running the server was closed (or the app hosting it quit). Cancel first then too.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => stop(0));
 process.on('uncaughtException', (e) => {
   console.error(JSON.stringify({ service: 'monday', event: 'crash', error: e.stack ?? String(e) }));
   stop(1);

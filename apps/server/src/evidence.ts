@@ -8,6 +8,7 @@ import {
   reflexTrigger, regimeOf, robustScale, spearman, spearmanCI, varToBps,
   type EventStudy, type Evidence, type GovernorParams, type MarketSpec, type MarketSym, type ReflexState, type Replay, type ReplayArm,
 } from '@monday/core';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import type { Collector } from './collector';
 import { config } from './config';
 import type { Candle, VenueDriver } from './venue/types';
@@ -180,12 +181,33 @@ export async function computeEvidence(driver: VenueDriver, collector: Collector)
     }
     // Point-in-time rule: a trade counts from the moment we could have seen it.
     const flows = collector.minuteFlows(sym, from - lag, end - lag);
-    const study = eventStudy(sym, flows, closes);
-    out.studies[sym] = study;
     const offset = closes.length - candles.length; // leading minutes with no price yet
-    out.replays[sym] = replay(sym, spec, candles, flows.slice(offset), study.skewEnabled ? DEFAULT_CONFIG.k : 0);
-    await new Promise((r) => setImmediate(r)); // let ticks run between markets
+    const r = await offThread({ sym, spec, candles, closes, flows, offset });
+    out.studies[sym] = r.study;
+    out.replays[sym] = r.replay;
   }
   current = out;
   return out;
 }
+
+interface Job { sym: MarketSym; spec: MarketSpec; candles: Candle[]; closes: (number | null)[]; flows: number[]; offset: number }
+
+function runJob(j: Job): { study: EventStudy; replay: Replay } {
+  const study = eventStudy(j.sym, j.flows, j.closes);
+  return { study, replay: replay(j.sym, j.spec, j.candles, j.flows.slice(j.offset), study.skewEnabled ? DEFAULT_CONFIG.k : 0) };
+}
+
+/**
+ * The study's bootstrap and the replay take seconds of CPU per market. On the main thread that stalled the event loop
+ * for 8.5 s, past Perpl's ping timeout, and the trading socket was dropped (1008). So they run in a worker.
+ */
+function offThread(job: Job): Promise<{ study: EventStudy; replay: Replay }> {
+  return new Promise((resolve, reject) => {
+    const w = new Worker(new URL(import.meta.url), { workerData: { evidenceJob: job } });
+    w.once('message', resolve);
+    w.once('error', reject);
+    w.once('exit', (code) => code && reject(new Error(`evidence worker exited with ${code}`)));
+  });
+}
+
+if (!isMainThread && workerData?.evidenceJob) parentPort!.postMessage(runJob(workerData.evidenceJob as Job));

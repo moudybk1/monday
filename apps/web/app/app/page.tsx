@@ -278,7 +278,7 @@ function Now({ m, sym }: { m: MarketState; sym: MarketSym }) {
 function Agent({ state, sym, onPick, session, onSession }: { state: DashboardState; sym: MarketSym; onPick: (s: MarketSym) => void; session: SessionDraft; onSession: (s: SessionDraft) => void }) {
   const { pnl, policy } = state;
   const live = state.status === 'quoting' ? state.session : null;
-  const tone = (n: number) => (n > 0.004 ? 'text-bid-fg' : n < -0.004 ? 'text-ask-fg' : 'text-fg');
+  const tone = (n: number) => (n >= 0.00005 ? 'text-bid-fg' : n <= -0.00005 ? 'text-ask-fg' : 'text-fg'); // what fmtSigned shows as non-zero
   const cell = 'bg-canvas px-2.5 py-2';
   return (
     <Panel

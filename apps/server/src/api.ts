@@ -8,7 +8,7 @@ import { getAddress, keccak256, toHex, verifyMessage } from 'viem';
 import { generateSiweNonce, parseSiweMessage } from 'viem/siwe';
 import { z } from 'zod';
 import {
-  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, policyForHash, usd,
+  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, policyForHash, usd,
   type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type MarketSym, type Me, type Policy,
 } from '@monday/core';
 import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain';
@@ -72,10 +72,11 @@ const PolicyBody = z.object({
   preset: z.enum(['conservative', 'balanced', 'active', 'high', 'custom']),
   markets: z.array(z.enum(MARKETS)).min(1).max(3),
   limits: z.object({
-    quoteSizeUsd: z.number().min(10).max(5_000),
-    maxInventoryUsd: z.number().min(20).max(50_000),
+    // $1 floors: any deposit can start. A quote below a market's size step simply does not post.
+    quoteSizeUsd: z.number().min(1).max(5_000),
+    maxInventoryUsd: z.number().min(1).max(50_000),
     minHalfSpreadBps: z.number().min(1).max(100),
-    maxDailyLossUsd: z.number().min(5).max(10_000),
+    maxDailyLossUsd: z.number().min(1).max(10_000),
     maxLeverage: z.number().min(1).max(50),
   }).optional(),
 });
@@ -290,7 +291,11 @@ export async function buildApi(deps: ApiDeps) {
   app.put('/api/policy', async (req) => {
     const s = need(req);
     const body = PolicyBody.parse(req.body);
-    const limits = body.preset === 'custom' ? body.limits : PRESETS[body.preset];
+    const markets = MARKETS.filter((m) => body.markets.includes(m));
+    const acct = await deps.driver.detectAccount(s.w);
+    const balance = acct?.balanceUsd ?? 0;
+    // A preset shrinks to what the account and the operator caps allow; custom limits are taken as typed.
+    const limits = body.preset === 'custom' ? body.limits : fitLimits(PRESETS[body.preset], balance, markets.length, config.caps);
     if (!limits) throw new HttpError(400, 'invalid_request', 'Custom policies need limits.', 'limits');
     if (limits.quoteSizeUsd > limits.maxInventoryUsd) throw new HttpError(400, 'invalid_request', 'Quote size cannot exceed max inventory.', 'limits.quoteSizeUsd');
     // On real funds the operator's ceilings win over anything a user asks for.
@@ -300,17 +305,15 @@ export async function buildApi(deps: ApiDeps) {
       if (over) throw new HttpError(400, 'over_cap', `${over[1]} is capped at ${usd(caps[over[0]])} on this server while it trades real funds.`, `limits.${over[0]}`);
     }
     const specs = deps.driver.feed.specs();
-    const markets = MARKETS.filter((m) => body.markets.includes(m));
     // FR-POL-2: validate against each market's leverage cap and the account balance.
     for (const m of markets) {
       const sp = specs[m];
       if (!sp) throw new HttpError(400, 'invalid_request', `${m} is not available on this venue.`, 'markets');
       if (limits.maxLeverage > sp.maxLeverage) throw new HttpError(400, 'invalid_request', `${m} allows at most ${sp.maxLeverage}x leverage.`, 'limits.maxLeverage');
     }
-    const acct = await deps.driver.detectAccount(s.w);
-    const balance = acct?.balanceUsd ?? 0;
+    // Custom limits beyond the balance would trip the margin kill the moment Monday starts.
     if (balanceNeededUsd(limits, markets.length) > balance) {
-      throw new HttpError(400, 'insufficient_balance', `Balance ${usd(balance)} is too small for ${usd(limits.maxInventoryUsd)} of inventory in ${markets.length} market${markets.length > 1 ? 's' : ''} at ${limits.maxLeverage}x. Pick a smaller preset, fewer markets, or deposit more.`, 'preset');
+      throw new HttpError(400, 'insufficient_balance', `Balance ${usd(balance)} is too small for ${usd(limits.maxInventoryUsd)} of inventory in ${markets.length} market${markets.length > 1 ? 's' : ''} at ${limits.maxLeverage}x. Pick a preset (they shrink to fit your balance) or use Fit to my balance.`, 'preset');
     }
     const policy: Policy = { mode: 'maker', markets, preset: body.preset, ...limits };
     const policyHash = keccak256(toHex(canonicalJson(policyForHash(policy))));

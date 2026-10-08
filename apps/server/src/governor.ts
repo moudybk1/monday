@@ -189,8 +189,9 @@ function askClaudeCode(user: string): Promise<Answer> {
   // A clean environment, so the CLI uses the login stored on this machine and never a parent Claude Code session.
   const env = { HOME: process.env.HOME, PATH: process.env.PATH, USER: process.env.USER, TMPDIR: process.env.TMPDIR, LANG: 'en_US.UTF-8' };
   const run = () => new Promise<Answer>((resolve, reject) => {
-    const child = execFile('claude', args, { cwd: tmpdir(), env, timeout: 90_000, maxBuffer: 4 << 20 }, (err, stdout) => {
-      if (err) return reject(err);
+    const child = execFile('claude', args, { cwd: tmpdir(), env, timeout: 90_000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
+      // The message would start with the whole command line (the prompt); the reason is in the exit status and the output.
+      if (err) return reject(new Error(`claude ${err.killed ? 'timed out after 90 s' : `exited ${err.code ?? err.signal}`}: ${(stderr || stdout).trim().slice(-300)}`));
       let out: { is_error?: boolean; subtype?: string; structured_output?: unknown; total_cost_usd?: number };
       try {
         out = JSON.parse(stdout);

@@ -1,11 +1,14 @@
 'use client';
 
+import '@rainbow-me/rainbowkit/styles.css';
+import { RainbowKitAuthenticationProvider, RainbowKitProvider, connectorsForWallets, createAuthenticationAdapter, darkTheme, useConnectModal } from '@rainbow-me/rainbowkit';
+import { coinbaseWallet, injectedWallet, metaMaskWallet, okxWallet, rabbyWallet, walletConnectWallet } from '@rainbow-me/rainbowkit/wallets';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { parseAbi } from 'viem';
 import { monad, monadTestnet } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
-import { WagmiProvider, createConfig, http, injected, useConnect, useConnection, useDisconnect, usePublicClient, useSignMessage, useSwitchChain, useWriteContract } from 'wagmi';
+import { WagmiProvider, createConfig, http, useAccount, useDisconnect, usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
 import { REGISTRY_ABI, type AppConfig, type Me, type Policy } from '@monday/core';
 import { ApiError, api } from './api';
 
@@ -13,20 +16,79 @@ import { ApiError, api } from './api';
 export const chain = process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? monad : monadTestnet;
 // Both chains are registered so the types stay simple; only `chain` is ever used. Your own RPC, if set, serves it.
 const rpc = (id: number) => http(id === chain.id ? process.env.NEXT_PUBLIC_MONAD_RPC_URL : undefined);
+// Browser wallets always; phone wallets over WalletConnect once a project id is set (free at cloud.reown.com).
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
 const wagmiConfig = createConfig({
   chains: [monadTestnet, monad],
-  connectors: [injected()],
+  connectors: connectorsForWallets(
+    [{ groupName: 'Wallets', wallets: [injectedWallet, rabbyWallet, metaMaskWallet, okxWallet, ...(projectId ? [coinbaseWallet, walletConnectWallet] : [])] }],
+    { appName: 'Monday', projectId: projectId || 'unset' },
+  ),
   transports: { [monadTestnet.id]: rpc(monadTestnet.id), [monad.id]: rpc(monad.id) },
   ssr: true,
 });
 export const registryAbi = parseAbi(REGISTRY_ABI);
 
+// The modal wears the app's own tokens, so it follows the light/dark toggle.
+const base = darkTheme({ borderRadius: 'small', overlayBlur: 'none' });
+const theme = {
+  ...base,
+  colors: {
+    ...base.colors,
+    accentColor: 'var(--accent)', accentColorForeground: 'var(--accent-fg)', modalBackground: 'var(--raised)', modalBorder: 'var(--line-2)',
+    modalText: 'var(--fg)', modalTextSecondary: 'var(--fg-2)', modalTextDim: 'var(--fg-3)', generalBorder: 'var(--line)', generalBorderDim: 'var(--line)',
+    actionButtonSecondaryBackground: 'var(--raised-2)', closeButton: 'var(--fg-2)', closeButtonBackground: 'var(--raised-2)', menuItemBackground: 'var(--raised-2)',
+    profileForeground: 'var(--raised)', modalBackdrop: 'rgb(0 0 0 / 0.55)',
+  },
+  fonts: { body: 'var(--font-sans)' },
+};
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [qc] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }));
   return (
     <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      <QueryClientProvider client={qc}>
+        <Auth>{children}</Auth>
+      </QueryClientProvider>
     </WagmiProvider>
+  );
+}
+
+/** Connect and Sign-In with Ethereum in one modal. The session is the server's cookie; the modal only creates it. */
+function Auth({ children }: { children: React.ReactNode }) {
+  const qc = useQueryClient();
+  const me = useMe();
+  const { address } = useAccount();
+  const { disconnect } = useDisconnect();
+  const adapter = useMemo(() => createAuthenticationAdapter({
+    getNonce: async () => (await api<{ nonce: string }>('/auth/nonce', { method: 'POST' })).nonce,
+    // Always Monad's chain id: the server checks it, and signing a message works on any network.
+    createMessage: ({ nonce, address }) => createSiweMessage({
+      address, chainId: chain.id, domain: location.host, nonce, uri: location.origin, version: '1',
+      statement: 'Sign in to Monday. This costs no gas and moves no funds.',
+    }),
+    verify: async ({ message, signature }) => {
+      await api('/auth/verify', { method: 'POST', body: { message, signature } });
+      await qc.invalidateQueries({ queryKey: ['me'] });
+      return true;
+    },
+    signOut: async () => {
+      await api('/auth/logout', { method: 'POST' });
+      qc.clear();
+      await qc.invalidateQueries({ queryKey: ['me'] });
+    },
+  }), [qc]);
+  const wallet = me.data && !me.data.demo ? me.data.wallet.toLowerCase() : null;
+  // Another account picked in the wallet: the session belongs to the old one, so drop both and let the modal sign in again.
+  useEffect(() => {
+    if (wallet && address && address.toLowerCase() !== wallet) void adapter.signOut().then(() => disconnect());
+  }, [wallet, address, adapter, disconnect]);
+  return (
+    <RainbowKitAuthenticationProvider adapter={adapter} status={me.isLoading ? 'loading' : wallet ? 'authenticated' : 'unauthenticated'}>
+      <RainbowKitProvider theme={theme} initialChain={chain} modalSize="compact" appInfo={{ appName: 'Monday' }}>
+        {children}
+      </RainbowKitProvider>
+    </RainbowKitAuthenticationProvider>
   );
 }
 
@@ -45,33 +107,13 @@ export const useMe = () =>
 
 export function useSession() {
   const qc = useQueryClient();
-  const { address } = useConnection();
-  const { connectAsync, connectors } = useConnect();
+  const { openConnectModal } = useConnectModal();
   const { disconnectAsync } = useDisconnect();
-  const { signMessageAsync } = useSignMessage();
-  const { switchChainAsync } = useSwitchChain();
   const done = () => qc.invalidateQueries({ queryKey: ['me'] });
 
   return {
-    hasWallet: typeof window !== 'undefined' && 'ethereum' in window,
-    /** Connect, switch to Monad, then Sign-In with Ethereum. No gas, no funds moved. */
-    async signIn() {
-      let account = address;
-      if (!account) {
-        const connector = connectors[0];
-        if (!connector) throw new Error('No browser wallet found. Install one, or use the demo account.');
-        account = (await connectAsync({ connector, chainId: chain.id })).accounts[0];
-      }
-      await switchChainAsync({ chainId: chain.id }).catch(() => {});
-      const { nonce } = await api<{ nonce: string }>('/auth/nonce', { method: 'POST' });
-      const message = createSiweMessage({
-        address: account, chainId: chain.id, domain: location.host, nonce, uri: location.origin, version: '1',
-        statement: 'Sign in to Monday. This costs no gas and moves no funds.',
-      });
-      const signature = await signMessageAsync({ message });
-      await api('/auth/verify', { method: 'POST', body: { message, signature } });
-      await done();
-    },
+    /** Pick a wallet, then Sign-In with Ethereum, in RainbowKit's modal. No gas, no funds moved. */
+    signIn: () => openConnectModal?.(),
     async demo() {
       await api('/auth/demo', { method: 'POST' });
       await done();
@@ -101,7 +143,7 @@ export interface PolicyView {
 
 /** Publish the policy to MondayRegistry and authorise the agent, from the user's own wallet. */
 export function useRegistry() {
-  const { address } = useConnection();
+  const { address } = useAccount();
   const pub = usePublicClient({ chainId: chain.id });
   const { writeContractAsync } = useWriteContract();
   const { switchChainAsync } = useSwitchChain();

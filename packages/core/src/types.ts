@@ -45,16 +45,18 @@ export const marginFloorUsd = (l: PolicyLimits, markets: number) => (l.maxInvent
  */
 export const balanceNeededUsd = (l: PolicyLimits, markets: number) => marginFloorUsd(l, markets) + l.maxDailyLossUsd;
 
-/** Conservative limits shrunk to what a balance can carry, for accounts below the smallest preset. Whole dollars, rounded down. */
-export function limitsForBalance(balanceUsd: number, markets: number): PolicyLimits {
-  const base = PRESETS.conservative;
-  const f = Math.max(0, Math.min(1, balanceUsd / balanceNeededUsd(base, markets)));
-  return {
-    ...base,
-    maxInventoryUsd: Math.floor(base.maxInventoryUsd * f),
-    quoteSizeUsd: Math.floor(base.quoteSizeUsd * f),
-    maxDailyLossUsd: Math.max(1, Math.floor(base.maxDailyLossUsd * f)),
-  };
+/**
+ * A preset shrunk, in proportion, until the balance can carry it and it sits under the operator's caps, so any deposit
+ * can start. Returns `base` itself when it already fits. Whole dollars, rounded down, never below $1.
+ */
+export function fitLimits(base: PolicyLimits, balanceUsd: number, markets: number, caps?: Pick<PolicyLimits, 'quoteSizeUsd' | 'maxInventoryUsd' | 'maxDailyLossUsd'> | null): PolicyLimits {
+  const f = Math.max(0, Math.min(
+    balanceUsd / balanceNeededUsd(base, markets),
+    ...(caps ? [caps.quoteSizeUsd / base.quoteSizeUsd, caps.maxInventoryUsd / base.maxInventoryUsd, caps.maxDailyLossUsd / base.maxDailyLossUsd] : []),
+  ));
+  if (f >= 1) return base;
+  const down = (v: number) => Math.max(1, Math.floor(v * f));
+  return { ...base, quoteSizeUsd: down(base.quoteSizeUsd), maxInventoryUsd: down(base.maxInventoryUsd), maxDailyLossUsd: down(base.maxDailyLossUsd) };
 }
 
 /**

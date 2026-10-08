@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MARKETS, PRESETS, balanceNeededUsd, limitsForBalance, limitsFromMargin, usd, type MarketSpec, type MarketSym, type PolicyLimits, type PresetName } from '@monday/core';
+import { MARKETS, PRESETS, balanceNeededUsd, fitLimits, limitsFromMargin, usd, type MarketSpec, type MarketSym, type PolicyLimits, type PresetName } from '@monday/core';
 import { INPUT, cx } from './ui';
 
 export type Caps = Pick<PolicyLimits, 'quoteSizeUsd' | 'maxInventoryUsd' | 'maxDailyLossUsd'>;
@@ -33,33 +33,30 @@ const NAMES: { id: PresetName; label: string; note: string }[] = [
   { id: 'custom', label: 'Custom', note: 'Set each limit' },
 ];
 
-// While real funds are at stake the server caps every policy; presets above the cap are shown but locked.
-const overCap = (l: PolicyLimits, caps: Caps | null) => Boolean(caps && (l.quoteSizeUsd > caps.quoteSizeUsd || l.maxInventoryUsd > caps.maxInventoryUsd || l.maxDailyLossUsd > caps.maxDailyLossUsd));
-
 /** Same rule the server applies on save (FR-POL-2). Unknown balance: let the server decide. */
 export const draftFits = (d: PolicyDraft, balance: number | null) => balance == null || balanceNeededUsd(d.limits, d.markets.length) <= balance;
 
-/** A first draft that will save: Balanced, else Conservative, else Conservative shrunk to the balance. */
+/** A first draft that will save: Balanced when the account carries it in full, else Conservative shrunk to fit. */
 export function draftForBalance(balance: number, caps: Caps | null, markets: MarketSym[] = ['BTC']): PolicyDraft {
-  for (const id of ['balanced', 'conservative'] as const) {
-    if (balanceNeededUsd(PRESETS[id], markets.length) <= balance && !overCap(PRESETS[id], caps)) return { preset: id, markets, limits: PRESETS[id] };
-  }
-  return { preset: 'custom', markets, limits: limitsForBalance(balance, markets.length) };
+  const balanced = fitLimits(PRESETS.balanced, balance, markets.length, caps);
+  return balanced === PRESETS.balanced ? { preset: 'balanced', markets, limits: balanced } : { preset: 'conservative', markets, limits: fitLimits(PRESETS.conservative, balance, markets.length, caps) };
 }
 
 export function PolicyForm({ value, onChange, available, caps = null, balance = null, specs = {} }: { value: PolicyDraft; onChange: (d: PolicyDraft) => void; available: MarketSym[]; caps?: Caps | null; balance?: number | null; specs?: Partial<Record<MarketSym, Pick<MarketSpec, 'maxLeverage'>>> }) {
-  const pick = (id: PresetName) => onChange({ ...value, preset: id, limits: id === 'custom' ? value.limits : PRESETS[id] });
+  // Presets shrink to what the balance and the operator caps allow (the server applies the same fit on save).
+  const fitted = (id: Exclude<PresetName, 'custom'>, markets = value.markets.length) => fitLimits(PRESETS[id], balance ?? Infinity, markets, caps);
+  const limitsOf = (id: PresetName) => (id === 'custom' ? value.limits : fitted(id));
+  const pick = (id: PresetName) => onChange({ ...value, preset: id, limits: limitsOf(id) });
   const toggle = (m: MarketSym) => {
     const next = value.markets.includes(m) ? value.markets.filter((x) => x !== m) : [...value.markets, m];
-    if (next.length) onChange({ ...value, markets: MARKETS.filter((x) => next.includes(x)) });
+    if (next.length) onChange({ ...value, markets: MARKETS.filter((x) => next.includes(x)), limits: value.preset === 'custom' ? value.limits : fitted(value.preset, next.length) });
   };
-  const limitsOf = (id: PresetName) => (id === 'custom' ? value.limits : PRESETS[id]);
   const need = (id: PresetName) => balanceNeededUsd(limitsOf(id), value.markets.length);
-  // A preset the account cannot carry is shown with what it needs, and locked like a capped one.
-  const short = (id: PresetName) => balance != null && id !== 'custom' && need(id) > balance;
-  const locked = (id: PresetName) => (id !== 'custom' && overCap(PRESETS[id], caps)) || short(id);
+  // Only a balance too small for even the $1 floors cannot carry a preset.
+  const locked = (id: PresetName) => balance != null && id !== 'custom' && need(id) > balance;
+  const scaled = (id: PresetName) => id !== 'custom' && limitsOf(id) !== PRESETS[id];
   const fits = draftFits(value, balance);
-  const fit = () => balance != null && onChange({ ...value, preset: 'custom', limits: limitsForBalance(balance, value.markets.length) });
+  const fit = () => balance != null && onChange({ ...value, preset: 'custom', limits: fitLimits(PRESETS.conservative, balance, value.markets.length, caps) });
   // The highest leverage every selected market allows.
   const maxLev = Math.min(...value.markets.map((m) => specs[m]?.maxLeverage ?? 10));
 
@@ -98,7 +95,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
                 <span className={cx('px-2 py-3', on && 'bg-accent/12 shadow-[inset_0_2px_0_var(--accent)]')}>
                   <input type="radio" name="preset" className="sr-only" checked={on} disabled={locked(n.id)} onChange={() => pick(n.id)} />
                   <span className={cx('block text-sm font-semibold', on && 'text-accent')}>{n.label}</span>
-                  <span className="block text-[12px] text-fg-3">{short(n.id) ? `Needs ${usd(need(n.id))}` : n.note}</span>
+                  <span className="block text-[12px] text-fg-3">{locked(n.id) ? `Needs ${usd(need(n.id))}` : scaled(n.id) ? 'Fitted to you' : n.note}</span>
                 </span>
                 {ROWS.map((r) => (
                   <span key={r.key} className="num flex items-center justify-center border-t border-line px-2 text-sm">
@@ -123,7 +120,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
             return (
               <label key={n.id} className={cx('block rounded-sm border p-3', locked(n.id) ? 'cursor-not-allowed opacity-40' : 'cursor-pointer', on ? 'border-fg bg-raised' : 'border-line-2')}>
                 <input type="radio" name="preset-m" className="sr-only" checked={on} disabled={locked(n.id)} onChange={() => pick(n.id)} />
-                <span className={cx('text-sm font-semibold', on && 'text-accent')}>{n.label}</span>{short(n.id) && <span className="ml-2 text-[12px] text-fg-3">Needs {usd(need(n.id))}</span>}
+                <span className={cx('text-sm font-semibold', on && 'text-accent')}>{n.label}</span>{(locked(n.id) || scaled(n.id)) && <span className="ml-2 text-[12px] text-fg-3">{locked(n.id) ? `Needs ${usd(need(n.id))}` : 'Fitted to you'}</span>}
                 <span className="num mt-1 block text-[12.5px] text-fg-2">{usd(l.quoteSizeUsd)} per side, up to {usd(l.maxInventoryUsd)}, stop at {usd(-l.maxDailyLossUsd)}</span>
               </label>
             );
@@ -147,7 +144,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
       )}
       {caps && (
         <p className="-mt-4 text-[12.5px] text-fg-3">
-          Real funds: this server caps every policy at {usd(caps.quoteSizeUsd)} per side, {usd(caps.maxInventoryUsd)} of inventory per market and a {usd(caps.maxDailyLossUsd)} daily loss limit. Larger presets are locked until the operator raises the caps.
+          Real funds: this server caps every policy at {usd(caps.quoteSizeUsd)} per side, {usd(caps.maxInventoryUsd)} of inventory per market and a {usd(caps.maxDailyLossUsd)} daily loss limit. Presets shrink to fit under them.
         </p>
       )}
     </div>

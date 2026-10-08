@@ -24,13 +24,17 @@ export interface StrategyConfig {
   blend: number; // weight of Hyperliquid's mid in the reference price (Tread's Blend mode), 0..1
   blendMaxBps: number; // a bigger Perpl/Hyperliquid gap is bad data or a dislocation, not something to lean into
   participation: number; // each quote is at most this share of the market's average hourly volume
+  touchMaxMult: number; // join the best price only while the governor's spread_mult is at most this (calm, active)
+  touchBps: number; // then sit at most this far behind the best price on the quote's own side
 }
 
 // PRD 10.6
 export const DEFAULT_CONFIG: StrategyConfig = {
-  // Half-spread is 4x the 1-minute volatility. At 1x the replay on Perpl's Apr-Jun 2026 BTC/ETH tape lost in 5 of 6
-  // months: quotes only filled when price ran through them. At 4x BTC was positive in all three months, ETH about flat.
-  a: 4,
+  // Half-spread is 1.5x the 1-minute volatility, floored by the policy's min half-spread, so in a calm market the policy
+  // sets the distance and volatility only widens it. History: the Apr-Jun 2026 replay lost at 1x and was positive for
+  // BTC at 4x, but live on mainnet (2026-10-08) 4x put BTC quotes 15 bps out (29 with a book reflex) while BTC moved
+  // ~3.5 bps a minute: 0 fills in over an hour. Recorded minutes put 6 bps at about 7 fills an hour, 4 bps at about 17.
+  a: 1.5,
   gamma: 1.0,
   k: 1.5,
   z1: 1.5,
@@ -48,6 +52,11 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   blend: 0.5,
   blendMaxBps: 50,
   participation: 0.05,
+  // Mainnet BTC is one tick wide and Monday re-centres every second, so a quote even 4 bps behind the best price only
+  // fills on a sweep through every level ahead of it: 0 fills in hours live (2026-10-08). Makers fill at the touch.
+  // Calm (1.0) and active (1.5) join it; storm (2.5) and a stale signal (2.0) keep the model's distance.
+  touchMaxMult: 1.5,
+  touchBps: 0,
 };
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -143,6 +152,14 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   let askPx = ceilTo(center * (1 + dist('ask') / 1e4), tick);
   if (stage === 'urgent' && exit === 'ask' && i.bestAsk != null) askPx = Math.min(askPx, i.bestBid != null && i.bestAsk - tick > i.bestBid ? ceilTo(i.bestAsk - tick, tick) : i.bestAsk);
   if (stage === 'urgent' && exit === 'bid' && i.bestBid != null) bidPx = Math.max(bidPx, i.bestAsk != null && i.bestBid + tick < i.bestAsk ? floorTo(i.bestBid + tick, tick) : i.bestBid);
+
+  // 7b. Join the touch when the market is calm or active and no reflex holds that side. The side that shrinks the position
+  // always may; the side that grows it only while the position is under half its cap, so the inventory skew still works.
+  if (i.gov.spread_mult <= cfg.touchMaxMult) {
+    const may = (s: Side) => !reflexOn(s) && ((s === 'bid' ? q < 0 : q > 0) || Math.abs(q) < 0.5);
+    if (may('bid') && i.bestBid != null) bidPx = Math.max(bidPx, floorTo(i.bestBid * (1 - cfg.touchBps / 1e4), tick));
+    if (may('ask') && i.bestAsk != null) askPx = Math.min(askPx, ceilTo(i.bestAsk * (1 + cfg.touchBps / 1e4), tick));
+  }
 
   // 8. PostOnly safety: never cross the book, sit one tick behind the opposite best.
   if (i.bestAsk != null && bidPx >= i.bestAsk) bidPx = floorTo(i.bestAsk - tick, tick);

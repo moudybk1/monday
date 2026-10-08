@@ -131,6 +131,7 @@ async function hypersync(token: string) {
     setMeta.run('genesis', '1');
   }
   let from = Number(getMeta('cursor') ?? 0);
+  let wait = 5_000;
   for (;;) {
     try {
       const res = await fetch(`${statsNet.hypersync}/query`, {
@@ -159,11 +160,14 @@ async function hypersync(token: string) {
       from = j.next_block;
       setMeta.run('cursor', String(from));
       Object.assign(status, { block: from, head: j.archive_height, error: null });
+      wait = 5_000;
       if (from >= j.archive_height) await sleep(1_000); // caught up: wait for new blocks
     } catch (e) {
-      status.error = e instanceof Error ? e.message : String(e);
-      console.error(JSON.stringify({ service: 'stats', event: 'hypersync_failed', error: status.error }));
-      await sleep(5_000);
+      const error = e instanceof Error ? e.message : String(e);
+      if (error !== status.error) console.error(JSON.stringify({ service: 'stats', event: 'hypersync_failed', error, retryInS: wait / 1000 })); // once per streak
+      status.error = error;
+      await sleep(wait);
+      wait = Math.min(wait * 2, 300_000); // a 429 is Envio's quota: retrying every 5 s only keeps it exhausted
     }
   }
 }

@@ -89,7 +89,9 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
   assert.equal(bounced, 1);
   const errors: string[] = [];
   v.on('error', (e: VenueError) => errors.push(e.code));
+  assert.equal(v.onClosed(1008, 'ping timeout'), true); // a missed pong: reconnect, not a rate limit
+  assert.equal(v.onClosed(1008, 'too many requests'), true);
   assert.equal(v.onClosed(1011, 'failed to process'), false);
-  assert.deepEqual(errors, ['fatal']);
+  assert.deepEqual(errors, ['disconnected', 'rate_limited', 'fatal']);
   assert.equal(v.connected(), false);
 });

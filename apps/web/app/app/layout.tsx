@@ -95,21 +95,18 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
   const session = useSession();
-  const [busy, setBusy] = useState<'wallet' | 'demo' | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasWallet, setHasWallet] = useState(true);
-  useEffect(() => setHasWallet(session.hasWallet), [session.hasWallet]);
 
-  const run = (kind: 'wallet' | 'demo') => async () => {
-    setBusy(kind);
+  const demo = async () => {
+    setBusy(true);
     setError(null);
     try {
-      await (kind === 'wallet' ? session.signIn() : session.demo());
+      await session.demo();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Something went wrong.';
-      setError(/rejected|denied/i.test(msg) ? 'You declined the request in your wallet.' : msg.split('\n')[0]);
+      setError(e instanceof Error ? e.message.split('\n')[0] : 'Something went wrong.');
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -122,10 +119,9 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
           {realFunds && ' This server trades real funds.'}
         </p>
         <div className="mt-8 flex flex-wrap gap-2.5">
-          <Button size="lg" onClick={run('wallet')} disabled={busy !== null || !hasWallet}>{busy === 'wallet' ? 'Check your wallet' : 'Connect wallet'}</Button>
-          {sim && <Button size="lg" variant="ghost" onClick={run('demo')} disabled={busy !== null}>{busy === 'demo' ? 'Opening' : 'Use a demo account'}</Button>}
+          <Button size="lg" onClick={session.signIn} disabled={busy}>Connect wallet</Button>
+          {sim && <Button size="lg" variant="ghost" onClick={demo} disabled={busy}>{busy ? 'Opening' : 'Use a demo account'}</Button>}
         </div>
-        {!hasWallet && <p className="mt-3 text-[12.5px] text-fg-3">No browser wallet detected. Install one that supports Monad{sim ? ', or use a demo account' : ''}.</p>}
         {error && <p role="alert" className="mt-3 text-[12.5px] text-ask-fg">{error}</p>}
       </div>
       <dl className="panel divide-y divide-line self-start text-[13px]">

@@ -61,7 +61,7 @@ export default function Onboarding() {
       </nav>
 
       <div className="max-w-[46rem]">
-        {current === 1 && <AccountStep account={account.data} loading={account.isLoading} retry={() => void account.refetch()} next={() => setStep(2)} />}
+        {current === 1 && <AccountStep wallet={me.demo ? null : me.wallet} account={account.data} loading={account.isLoading} retry={() => void account.refetch()} next={() => setStep(2)} />}
         {current === 2 && <KeyStep sim={Boolean(cfg?.sim || cfg?.paper)} paper={Boolean(cfg?.paper)} perplUrl={cfg?.perplAppUrl ?? ''} hasKey={me.hasKey} revoked={me.keyStatus === 'revoked'} next={async () => { await Promise.all([refresh(), account.refetch()]); setLinked(true); setStep(3); }} />}
         {current === 3 && (
           <LimitsStep
@@ -86,13 +86,13 @@ function Heading({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function AccountStep({ account, loading, retry, next }: { account?: Account; loading: boolean; retry: () => void; next: () => void }) {
+function AccountStep({ wallet, account, loading, retry, next }: { wallet: string | null; account?: Account; loading: boolean; retry: () => void; next: () => void }) {
   if (loading || !account) return <div className="grid gap-4"><Skeleton className="h-10 w-80" /><Skeleton className="h-24" /></div>;
   if (!account.exists) {
     return (
       <div>
         <Heading title="You need a Perpl account first">
-          Monday trades inside your own Perpl exchange account, and this wallet does not have one yet. Open it on Perpl with the same wallet and a deposit of at least {usd(account.minDepositUsd)}.
+          Monday trades inside your own Perpl exchange account, and {wallet ? <span className="num text-fg">{shortAddr(wallet)}</span> : 'this wallet'} does not have one yet. Open it on Perpl with the same wallet and a deposit of at least {usd(account.minDepositUsd)}. Already deposited? Then Perpl holds it under another wallet: sign out and connect that one.
         </Heading>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href={account.depositUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-sm bg-fg px-4 text-sm font-medium text-canvas hover:bg-accent hover:text-accent-fg">Open Perpl <ArrowSquareOutIcon size={14} /></a>
