@@ -9,6 +9,8 @@ try {
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@monday/core'],
+  // next dev would otherwise write AGENTS.md and CLAUDE.md into apps/web on every start.
+  agentRules: false,
   // The same NETWORK switch the server reads decides which chain the wallet talks to.
   env: { NEXT_PUBLIC_NETWORK: process.env.NETWORK === 'mainnet' ? 'mainnet' : 'testnet' },
   turbopack: {

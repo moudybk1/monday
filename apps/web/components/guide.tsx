@@ -7,12 +7,12 @@ const Swatch = ({ tone }: { tone: 'bid' | 'ask' }) => <span aria-hidden classNam
 
 // One line per area, named as it appears on screen, in words a non-trader can act on.
 const AREAS: [string, ReactNode][] = [
-  ['Top bar', <>Whether Monday is running. <b>Pause</b> cancels its offers and keeps any open position. <b>Kill and flatten</b> cancels everything and closes positions.</>],
+  ['Market strip', <>Pick a market. Beside it: price, 24-hour change and volume, the spread (Monday needs a few bps of it to earn anything), and the regime Monday is in.</>],
   ['Chart', <>Candles show the market price. The dashed <Swatch tone="bid" /> line is Monday&apos;s offer to buy, <Swatch tone="ask" /> its offer to sell. Arrows mark its trades. Scroll to zoom, drag to move.</>],
-  ['Order book', <>Every open offer on Perpl. Monday&apos;s own are tagged MONDAY.</>],
-  ['Agent', <>Your money: account value, today&apos;s result after fees, and how much of your daily loss limit is used. At 100% Monday stops for the day.</>],
+  ['Order book', <>Every open offer on Perpl. Monday&apos;s own are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
+  ['Agent', <>Your money and the controls. <b>Pause</b> cancels Monday&apos;s offers and keeps any position. <b>Kill and flatten</b> cancels everything and closes positions. At 100% of the daily loss limit Monday stops on its own.</>],
+  ['Open orders', <>Where each of Monday&apos;s offers sits: at the best price or behind it, and what has to trade before it fills.</>],
   ['Smart money', <>Big trades by wallets Nansen labels as consistently profitable. When they rush one way, Monday steps aside on that side.</>],
-  ['Positions', <>What Monday holds in each market, its entry price, and the open profit or loss at today&apos;s price.</>],
   ['Decisions', <>Every change Monday makes, with the reason in plain words.</>],
 ];
 

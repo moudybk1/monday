@@ -250,8 +250,13 @@ export class Collector {
   }
 
   // ---- read side ----
+  /** A smart-money source is configured (Nansen, or the simulator's). Without one the regime rests on volatility alone. */
+  get hasSource() {
+    return this.source !== null;
+  }
+  /** A configured source has not answered for 15 minutes. With no source at all there is nothing to be late. */
   get stale() {
-    return Date.now() - this.lastOkAt > STALE_MS;
+    return this.source !== null && Date.now() - this.lastOkAt > STALE_MS;
   }
   get ageMs() {
     return this.lastOkAt ? Date.now() - this.lastOkAt : Number.POSITIVE_INFINITY;

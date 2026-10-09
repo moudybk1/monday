@@ -47,6 +47,7 @@ export interface TapeTrade {
   price: number;
   size: number; // base units
   side: 'buy' | 'sell'; // the taker's side
+  ts?: number; // when it printed; the receive time when the feed does not say
 }
 
 export type VenueErrorCode =

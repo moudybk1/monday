@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { mulberry32, type MarketSpec, type MarketSym, type QuoteTarget, type Side, type SmartTrade, MARKETS } from '@monday/core';
 import {
-  VenueError, type Candle, type MarketFeed, type MarketSnapshot, type Venue, type VenueAccount, type VenueCredentials,
+  VenueError, type Candle, type MarketFeed, type MarketSnapshot, type TapeTrade, type Venue, type VenueAccount, type VenueCredentials,
   type VenueDriver, type VenueEvents, type VenueFill, type VenuePosition,
 } from './types';
 
@@ -53,6 +53,7 @@ export class SimWorld implements VenueDriver, MarketFeed {
   private venues = new Set<SimVenue>();
   private timer: NodeJS.Timeout | null = null;
   private now = 0;
+  private tradeCbs: ((t: TapeTrade) => void)[] = [];
 
   constructor(seed = 20261005, private store?: SimStore) {
     this.rnd = mulberry32(seed);
@@ -197,7 +198,10 @@ export class SimWorld implements VenueDriver, MarketFeed {
         const q = v.quote(c.sym, side);
         if (!q) continue;
         // Price moved through the quote: it was picked off.
-        if ((side === 'bid' && c.price <= q.price) || (side === 'ask' && c.price >= q.price)) v.fill(c.sym, side, q.price, q.size, true);
+        if ((side === 'bid' && c.price <= q.price) || (side === 'ask' && c.price >= q.price)) {
+          v.fill(c.sym, side, q.price, q.size, true);
+          this.print(c.sym, side === 'bid' ? 'sell' : 'buy', q.price, q.size);
+        }
       }
     }
     if (this.rnd() > TAKER_RATE) return;
@@ -216,13 +220,25 @@ export class SimWorld implements VenueDriver, MarketFeed {
       const take = Math.min(usd, l.usd);
       usd -= take;
       // The print widens this minute's candle, exactly as it would on a real tape.
-      if (buy) c.cur.h = Math.max(c.cur.h, c.price * (1 + l.dist / 1e4));
-      else c.cur.l = Math.min(c.cur.l, c.price * (1 - l.dist / 1e4));
+      const px = l.q ? l.q.price : Number(((buy ? Math.ceil : Math.floor)((c.price * (1 + ((buy ? 1 : -1) * l.dist) / 1e4)) / spec.priceTick) * spec.priceTick).toFixed(8));
+      if (buy) c.cur.h = Math.max(c.cur.h, px);
+      else c.cur.l = Math.min(c.cur.l, px);
       if (l.venue && l.q) {
         const size = Math.floor(take / l.q.price / spec.sizeStep + 1e-9) * spec.sizeStep;
         if (size > 0) l.venue.fill(c.sym, side, l.q.price, Math.min(size, l.q.size), true);
       }
+      this.print(c.sym, buy ? 'buy' : 'sell', px, take / px);
     }
+  }
+
+  /** The simulator's tape: every print a taker makes, so the dashboard's trades panel works off-line too. */
+  private print(sym: MarketSym, side: 'buy' | 'sell', price: number, size: number) {
+    if (!(size > 0)) return;
+    const t: TapeTrade = { sym, price, size, side, ts: this.now };
+    for (const cb of this.tradeCbs) cb(t);
+  }
+  onTrade(cb: (t: TapeTrade) => void) {
+    this.tradeCbs.push(cb);
   }
 
   // ---- extras the simulator offers beyond the driver interface ----

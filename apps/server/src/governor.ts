@@ -29,6 +29,8 @@ export interface GovernorContext {
   policy: PolicyLimits;
   /** The event study supports leaning with the flow (PRD 19.1). Without it the bias stays zero, whoever proposes it. */
   lean: boolean;
+  /** No smart-money source is configured at all (no Nansen key off the simulator): the regime rests on volatility alone. */
+  noSmartMoney?: boolean;
   /** The parameters in force now: loosening moves one step per decision from these. */
   prev: GovernorParams | null;
   /** How Monday has been doing in this market over the last hour, so the model sees results, not only the signal. */
@@ -222,12 +224,14 @@ export function rulesProposal(ctx: Pick<GovernorContext, 'market' | 'signal' | '
   return fallbackParams(ctx.market, regime, ctx.signal.S, ctx.policy.maxInventoryUsd, ctx.lean);
 }
 
-export function fallbackDecision(ctx: Pick<GovernorContext, 'market' | 'signal' | 'sigma1mBps' | 'sigmaMedianBps' | 'policy' | 'lean'>): GovernorResult {
+export function fallbackDecision(ctx: Pick<GovernorContext, 'market' | 'signal' | 'sigma1mBps' | 'sigmaMedianBps' | 'policy' | 'lean' | 'noSmartMoney'>): GovernorResult {
   const p = rulesProposal(ctx);
   const regime = p.regime;
   const byVol = regime === 'storm' && Math.abs(ctx.signal.S) < 2.5;
   const reason = {
-    calm: `Smart-money flow in ${ctx.market} is quiet. Quoting normal width and full size on both sides.`,
+    calm: ctx.noSmartMoney
+      ? `No smart-money source is configured, so ${ctx.market} is judged on volatility alone, which is normal. Quoting at the best price, full size on both sides.`
+      : `Smart-money flow in ${ctx.market} is quiet. Quoting normal width and full size on both sides.`,
     active: `${flowPhrase(ctx)}. Widening quotes 1.5x and trimming size to 70%${p.skew_bias_bps ? `, leaning 2 bps ${ctx.signal.S >= 0 ? 'up' : 'down'}` : ''}.`,
     storm: byVol
       ? `${ctx.market} is moving about ${(ctx.sigma1mBps / Math.max(ctx.sigmaMedianBps, 0.01)).toFixed(1)}x faster than usual. Widening quotes 2.5x and cutting size to 40%.`

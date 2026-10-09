@@ -156,7 +156,7 @@ export class PerplFeed implements MarketFeed {
         const mk = tracked.get(this.tradeSids.get(m.sid) ?? -1);
         if (!mk) break;
         for (const t of m.d ?? []) {
-          const trade: TapeTrade = { sym: mk.spec.sym, price: t.p / mk.px, size: t.s / mk.sz, side: t.sd === 1 ? 'buy' : 'sell' };
+          const trade: TapeTrade = { sym: mk.spec.sym, price: t.p / mk.px, size: t.s / mk.sz, side: t.sd === 1 ? 'buy' : 'sell', ts: this.lastFrameAt };
           for (const cb of this.tradeCbs) cb(trade);
         }
         break;

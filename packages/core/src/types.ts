@@ -144,6 +144,8 @@ export interface ReflexState {
   triggerHashes: string[];
   /** Perpl's own order book triggered it, not smart-money flow. */
   book?: boolean;
+  /** A move in the reference price (Hyperliquid's mid) triggered it. */
+  ref?: boolean;
   /** A pull that ran out and stepped down to a widen before letting go. */
   released?: boolean;
 }
@@ -205,7 +207,9 @@ export interface MarketState {
   dataAgeMs: number;
   sigma1mBps: number;
   quotes: { bid: QuoteTarget | null; ask: QuoteTarget | null };
-  model: { ref: number; center: number; halfBps: number; skewInvBps: number; skewNanBps: number; skewBookBps: number; q: number; blendBps: number; sizeCapUsd: number | null } | null;
+  model: { ref: number; center: number; halfBps: number; skewInvBps: number; skewNanBps: number; skewBookBps: number; skewTrendBps: number; q: number; blendBps: number; sizeCapUsd: number | null } | null;
+  /** Signed move of the mark over the last five minutes, in bps. */
+  trend5mBps: number;
   /** Hyperliquid mid for the blended reference, null when off, stale or too far from Perpl to trust. */
   hlMid: number | null;
   /** Smoothed top-5-level size imbalance of Perpl's book, -1 (asks) to +1 (bids), Monday's own quotes excluded. */
@@ -228,6 +232,24 @@ export interface MarketState {
   quoteAgeMs: { bid: number | null; ask: number | null };
   /** Usual Perpl premium over Hyperliquid, learned live; the blend leans toward Hyperliquid plus this. */
   basisBps: number | null;
+  /** USD resting ahead of each of Monday's quotes in line: better prices plus the rest of its own level. Null without a quote. */
+  aheadUsd: { bid: number | null; ask: number | null };
+  /** The last real prints in this market, newest first. */
+  tape: TapePrint[];
+  /** 24-hour figures from the candles: traded notional (null where the feed reports none), change from the open, high and low. */
+  day: { volumeUsd: number | null; changePct: number | null; high: number | null; low: number | null };
+  openInterestUsd: number;
+  /** Monday's own maker fills here in the last hour, and their average 1-minute markout where known. */
+  fills1h: number;
+  markout1mBps: number | null;
+}
+
+export interface TapePrint {
+  price: number;
+  size: number;
+  /** The taker's side. */
+  side: 'buy' | 'sell';
+  ts: number;
 }
 
 export interface Alert {

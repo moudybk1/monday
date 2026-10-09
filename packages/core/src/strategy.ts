@@ -5,7 +5,7 @@ import type { InventoryStage } from './execution';
 import type { BookLevel, GovernorParams, MarketSpec, MarketSym, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
-export const STRATEGY_VERSION = '2026-10-07.2';
+export const STRATEGY_VERSION = '2026-10-09.2';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
@@ -25,7 +25,16 @@ export interface StrategyConfig {
   blendMaxBps: number; // a bigger Perpl/Hyperliquid gap is bad data or a dislocation, not something to lean into
   participation: number; // each quote is at most this share of the market's average hourly volume
   touchMaxMult: number; // join the best price only while the governor's spread_mult is at most this (calm, active)
-  touchBps: number; // then sit at most this far behind the best price on the quote's own side
+  touchFloorBps: number; // a touch quote still keeps the maker fee plus this from the reference, so a fill can never lose to the fee alone
+  touchSlackBps: number; // a quote that was at the front of the book keeps its place while it is within this of the best price
+  aheadMaxUsd: number; // but moves back to the front once more than this rests ahead of it
+  refWindowMs: number; // the reference-move guard looks at Hyperliquid's mid over this window
+  refWidenBps: number; // a move this big widens the side the move runs into
+  refPullBps: number; // a move this big pulls it
+  refHoldMs: number; // for this long after the last such move
+  trendMinBps: number; // a move of the mark over the last five minutes smaller than this is noise
+  kTrend: number; // centre shift per bps of trend beyond that
+  trendMaxBps: number; // and at most this (also at most half the half-spread, so the near side keeps clear of the fee)
 }
 
 // PRD 10.6
@@ -44,9 +53,11 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   bigTradeUsd: 250_000,
   kBook: 2,
   // Perpl's thin book sits past 0.5 (smoothed top-5 imbalance) a quarter to half of the time, so 0.5/0.75 kept one
-  // side widened or pulled most of a night (2026-10-07). 0.7/0.85 is its tail: an unusually lopsided book only.
-  book1: 0.7,
-  book2: 0.85,
+  // side widened or pulled most of a night (2026-10-07). Live on mainnet (2026-10-09) 0.7/0.85 still pulled the ask on
+  // BTC and ETH at once: a single $19k ask against $300 of bids reads as 97% one side. The book now only widens the
+  // threatened side, never pulls it (a pull is for smart-money bursts), and only when nine tenths of the depth is one side.
+  book1: 0.8,
+  book2: Infinity,
   bookHoldMs: 60_000,
   exitFrac: 0.8,
   blend: 0.5,
@@ -56,7 +67,26 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   // fills on a sweep through every level ahead of it: 0 fills in hours live (2026-10-08). Makers fill at the touch.
   // Calm (1.0) and active (1.5) join it; storm (2.5) and a stale signal (2.0) keep the model's distance.
   touchMaxMult: 1.5,
-  touchBps: 0,
+  // The touch is joined, or bettered by a tick when the spread leaves room, down to the fee: on mainnet ETH (2.8 bps
+  // wide) and SOL (7.8 bps) that is the front of the queue; on BTC (0.01 bps wide) the fee floor stops 0.45 bps short.
+  touchFloorBps: 0,
+  // A requote goes to the back of the queue, so a quote a few ticks behind the best stays put until it is clearly
+  // behind, or until the depth ahead of it would take a sweep to clear.
+  touchSlackBps: 0.5,
+  aheadMaxUsd: 3_000,
+  // Perpl's mark is a median of Binance, Hyperliquid, OKX and Bybit, so Perpl follows them. When Hyperliquid's mid
+  // jumps, the quote on the side it runs into is stale until Perpl's book catches up, and that is the fill that
+  // loses (the 10-second markout). The guard reads the free Hyperliquid feed and steps that side aside for a moment.
+  refWindowMs: 3_000,
+  refWidenBps: 1.5,
+  refPullBps: 3,
+  refHoldMs: 6_000,
+  // Momentum. In a trending market the side that adds against the trend is the one takers hit, and price keeps going:
+  // on mainnet (2026-10-09, 30 minutes with a 30-70 bps slide) bids filled 29 of 37 times and carried a 5-minute
+  // markout of -12 bps against +7 on asks. Lean with the trend and keep that side off the touch until it settles.
+  trendMinBps: 4,
+  kTrend: 0.5,
+  trendMaxBps: 8,
 };
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -96,6 +126,8 @@ export interface QuoteInput {
   stage?: InventoryStage;
   /** Signed position in base units: the exit side never quotes more than it. */
   positionBase?: number;
+  /** Signed move of the mark over the last five minutes, in bps. Omitted: no trend term. */
+  trendBps?: number;
 }
 
 export interface QuoteOutput {
@@ -107,9 +139,12 @@ export interface QuoteOutput {
   skewInvBps: number;
   skewNanBps: number;
   skewBookBps: number;
+  skewTrendBps: number;
   q: number;
   blendBps: number; // how far Hyperliquid moved the reference
   sizeCapUsd: number | null;
+  /** The side's price is at or inside the best price: it should stay at the front of the queue (see touchRequote). */
+  touch: Record<Side, boolean>;
 }
 
 export function computeQuotes(i: QuoteInput): QuoteOutput {
@@ -135,11 +170,16 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   const bias = clamp(i.gov.skew_bias_bps, -10, 10);
   // Order-book skew: lean toward the heavy side of Perpl's own book.
   const skewBookBps = cfg.kBook * clamp(i.book ?? 0, -1, 1);
+  // Trend skew: lean with a move that is past the noise, never so far that the near side sits inside half the spread.
+  const trend = i.trendBps ?? 0;
+  const against = Math.abs(trend) > cfg.trendMinBps ? trend - Math.sign(trend) * cfg.trendMinBps : 0;
+  const trendCap = Math.min(cfg.trendMaxBps, h / 2);
+  const skewTrendBps = clamp(cfg.kTrend * against, -trendCap, trendCap);
 
   // 7. Quotes. Past the normal stage the exit side (the one that shrinks the position) is worked: tighter when
   // reducing, at the best price when urgent, and a reflex may widen it but never pull it, because protection
   // from a signal must not remove the way out of a position the account has to shed.
-  const center = ref * (1 + (skewInvBps + skewNanBps + skewBookBps + bias) / 1e4);
+  const center = ref * (1 + (skewInvBps + skewNanBps + skewBookBps + skewTrendBps + bias) / 1e4);
   const stage = i.stage ?? 'normal';
   const exit: Side | null = stage === 'normal' ? null : q > 0 ? 'ask' : q < 0 ? 'bid' : null;
   const reflexOn = (s: Side): ReflexState['action'] | null => {
@@ -153,17 +193,23 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   if (stage === 'urgent' && exit === 'ask' && i.bestAsk != null) askPx = Math.min(askPx, i.bestBid != null && i.bestAsk - tick > i.bestBid ? ceilTo(i.bestAsk - tick, tick) : i.bestAsk);
   if (stage === 'urgent' && exit === 'bid' && i.bestBid != null) bidPx = Math.max(bidPx, i.bestAsk != null && i.bestBid + tick < i.bestAsk ? floorTo(i.bestBid + tick, tick) : i.bestBid);
 
-  // 7b. Join the touch when the market is calm or active and no reflex holds that side. The side that shrinks the position
-  // always may; the side that grows it only while the position is under half its cap, so the inventory skew still works.
+  // 7b. Join the touch when the market is calm or active and no reflex holds that side, and better it by one tick when
+  // the spread has room for both sides to (three ticks or more), so the quote is first in line. Never closer to the
+  // reference than the fee: a fill there loses even if price stands still. The side that shrinks the position always
+  // may; the side that grows it only while the position is under half its cap, so the inventory skew still works,
+  // and never the side that would add against a trend: it waits at the model's distance until the move settles.
   if (i.gov.spread_mult <= cfg.touchMaxMult) {
-    const may = (s: Side) => !reflexOn(s) && ((s === 'bid' ? q < 0 : q > 0) || Math.abs(q) < 0.5);
-    if (may('bid') && i.bestBid != null) bidPx = Math.max(bidPx, floorTo(i.bestBid * (1 - cfg.touchBps / 1e4), tick));
-    if (may('ask') && i.bestAsk != null) askPx = Math.min(askPx, ceilTo(i.bestAsk * (1 + cfg.touchBps / 1e4), tick));
+    const may = (s: Side) => !reflexOn(s) && !(s === 'bid' ? against < 0 : against > 0) && ((s === 'bid' ? q < 0 : q > 0) || Math.abs(q) < 0.5);
+    const floor = (i.spec.makerFeeBps + cfg.touchFloorBps) / 1e4;
+    const room = i.bestBid != null && i.bestAsk != null && i.bestAsk - i.bestBid > 2 * tick + EPS;
+    if (may('bid') && i.bestBid != null) bidPx = Math.max(bidPx, floorTo(Math.min(room ? i.bestBid + tick : i.bestBid, ref * (1 - floor)), tick));
+    if (may('ask') && i.bestAsk != null) askPx = Math.min(askPx, ceilTo(Math.max(room ? i.bestAsk - tick : i.bestAsk, ref * (1 + floor)), tick));
   }
 
   // 8. PostOnly safety: never cross the book, sit one tick behind the opposite best.
   if (i.bestAsk != null && bidPx >= i.bestAsk) bidPx = floorTo(i.bestAsk - tick, tick);
   if (i.bestBid != null && askPx <= i.bestBid) askPx = ceilTo(i.bestBid + tick, tick);
+  const touch: Record<Side, boolean> = { bid: i.bestBid != null && bidPx >= i.bestBid - EPS, ask: i.bestAsk != null && askPx <= i.bestAsk + EPS };
 
   // 9. Size. The side that grows inventory shrinks linearly as |q| approaches 1. A quiet market caps it (Tread's participation rate).
   const sizeCapUsd = i.hourlyVolumeUsd ? cfg.participation * i.hourlyVolumeUsd : null;
@@ -182,7 +228,7 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
     return sz > 0 ? { price: px, size: sz } : null;
   };
 
-  return { bid: side('bid', bidPx), ask: side('ask', askPx), ref, center, halfBps: h, skewInvBps, skewNanBps, skewBookBps, q, blendBps: (ref / local - 1) * 1e4, sizeCapUsd };
+  return { bid: side('bid', bidPx), ask: side('ask', askPx), ref, center, halfBps: h, skewInvBps, skewNanBps, skewBookBps, skewTrendBps, q, blendBps: (ref / local - 1) * 1e4, sizeCapUsd, touch };
 }
 
 /** PRD 10.2 step 10: only touch a side when it moved enough to be worth a request. */
@@ -192,6 +238,31 @@ export function shouldRequote(live: QuoteTarget | null, target: QuoteTarget | nu
   const threshold = Math.max(tick, (0.3 * halfBps * target.price) / 1e4);
   if (Math.abs(live.price - target.price) > threshold - EPS) return true;
   return Math.abs(live.size - target.size) / live.size > 0.2;
+}
+
+/**
+ * Base units resting ahead of a maker order on its side of the book: every level at a better price, plus whatever
+ * else sits at its own price (`ownSize` is taken out, since a live book shows the order itself).
+ */
+export function depthAhead(levels: BookLevel[], side: Side, price: number, ownSize = 0): number {
+  let ahead = 0;
+  for (const l of levels) {
+    if (side === 'bid' ? l.price > price + EPS : l.price < price - EPS) ahead += l.size;
+    else if (Math.abs(l.price - price) <= EPS) ahead += Math.max(0, l.size - ownSize);
+  }
+  return ahead;
+}
+
+/**
+ * A quote that was placed at the front of the book has fallen behind the best price. A requote goes to the back of
+ * the queue, so it is only worth one once the quote is clearly behind (touchSlackBps) or the depth ahead of it would
+ * take a sweep to clear (aheadMaxUsd). The ordinary rule (shouldRequote) still catches larger moves.
+ */
+export function touchRequote(live: QuoteTarget, side: Side, best: number | null, aheadUsd: number, cfg: StrategyConfig = DEFAULT_CONFIG): boolean {
+  if (best == null) return false;
+  const behind = side === 'bid' ? best - live.price : live.price - best;
+  if (behind <= EPS) return false;
+  return (behind / best) * 1e4 > cfg.touchSlackBps || aheadUsd > cfg.aheadMaxUsd;
 }
 
 /** PRD 10.3. Which side does smart money threaten right now, and how hard? */
@@ -218,9 +289,13 @@ export function bookImbalance(bids: BookLevel[], asks: BookLevel[], levels = 5):
   return b > 0 && a > 0 ? (b - a) / (b + a) : 0;
 }
 
-/** The reflex ladder on order-book imbalance: a heavy bid side threatens the ask, and the reverse. */
+/** The reflex ladder on order-book imbalance: a heavy bid side threatens the ask, and the reverse. With book2 at Infinity it only ever widens. */
 export const bookTrigger = (imbalance: number, cfg: StrategyConfig = DEFAULT_CONFIG, held: Pick<ReflexState, 'side'> | null = null) =>
   reflexTrigger(imbalance, 0, { ...cfg, z1: cfg.book1, z2: cfg.book2 }, held);
+
+/** The reflex ladder on a reference move: Hyperliquid up runs into the ask, down into the bid. `moveBps` is signed. */
+export const refTrigger = (moveBps: number, cfg: StrategyConfig = DEFAULT_CONFIG, held: Pick<ReflexState, 'side'> | null = null) =>
+  reflexTrigger(moveBps, 0, { ...cfg, z1: cfg.refWidenBps, z2: cfg.refPullBps }, held);
 
 /**
  * Fold a trigger into the held reflex. A reflex holds for `reflexHoldMs` after
@@ -230,7 +305,7 @@ export const bookTrigger = (imbalance: number, cfg: StrategyConfig = DEFAULT_CON
  */
 export function nextReflex(
   prev: ReflexState | null,
-  trigger: Pick<ReflexState, 'side' | 'action' | 'book'> | null,
+  trigger: Pick<ReflexState, 'side' | 'action' | 'book' | 'ref'> | null,
   now: number,
   z: number,
   triggerHashes: string[],
@@ -242,12 +317,15 @@ export function nextReflex(
     return { state: held, changed: prev !== null && held === null };
   }
   const until = now + cfg.reflexHoldMs;
+  // The state carries which kind of trigger it came from (flow, book, reference): the runner reads that to pick the
+  // hold and the release time. A hold extended by a different kind keeps the kind of the trigger that just fired.
+  const kind = { book: trigger.book, ref: trigger.ref };
   if (held && held.side === trigger.side) {
     const action = held.action === 'pull' ? 'pull' : trigger.action;
     // A short book hold must not cut a longer smart-money hold.
-    return { state: { ...held, action, until: Math.max(held.until, until), z, triggerHashes, book: trigger.book, released: false }, changed: action !== held.action };
+    return { state: { ...held, action, until: Math.max(held.until, until), z, triggerHashes, ...kind, released: false }, changed: action !== held.action };
   }
-  return { state: { side: trigger.side, action: trigger.action, until, z, triggerHashes, book: trigger.book }, changed: true };
+  return { state: { side: trigger.side, action: trigger.action, until, z, triggerHashes, ...kind }, changed: true };
 }
 
 export function regimeOf(S: number, sigma1mBps: number, sigmaMedianBps: number, stale: boolean, cfg: StrategyConfig = DEFAULT_CONFIG): Regime {

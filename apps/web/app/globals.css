@@ -166,6 +166,13 @@
 @keyframes flash-row {
   from { background-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 }
+/* A new print on the tape: a tint in the taker's colour that fades out. */
+@keyframes flash-up {
+  from { background-color: color-mix(in oklab, var(--bid) 40%, transparent); }
+}
+@keyframes flash-down {
+  from { background-color: color-mix(in oklab, var(--ask) 40%, transparent); }
+}
 @keyframes rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
@@ -176,6 +183,8 @@
 /* Motion only confirms that something changed. Nothing loops except the one live indicator. */
 @media (prefers-reduced-motion: no-preference) {
   .flash { animation: flash-row 0.7s var(--ease-out-expo); }
+  .flash-up { animation: flash-up 0.9s var(--ease-out-expo); }
+  .flash-down { animation: flash-down 0.9s var(--ease-out-expo); }
   .rise { animation: rise 0.6s var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 60ms); }
   .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 }

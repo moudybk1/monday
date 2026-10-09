@@ -20,7 +20,7 @@ Open http://localhost:3000. With no `.env` the whole thing runs on a simulated m
 - **On the key step**, any token and secret work. A token starting with `read` or a secret starting with `bad` shows the error states.
 - **On the dashboard**, "Buy burst / Sell burst" fires a smart-money burst so you can watch the reflex pull a quote.
 
-To try it on Perpl's real prices without trading, run paper mode. Candles, the order book and Nansen trades are real; Monday's orders are simulated, never reach Perpl, and fill when the real book trades through them. Demo accounts work here too.
+To try it on Perpl's real prices without trading, run paper mode. Candles, the order book, the tape and Nansen trades are real; Monday's orders are simulated and never reach Perpl. They fill the way a real order at that price would: an order joins behind whatever rests at its price, prints at that price work through that queue first, and a print beyond its price fills it outright. Demo accounts work here too.
 
 ```bash
 VENUE=paper NETWORK=mainnet npm run dev
@@ -38,7 +38,7 @@ Copy `.env.example` to `.env`. Each block switches one piece to live; they are i
 | Decision log | Hashed, not anchored | `MONDAY_REGISTRY_ADDRESS` and `AGENT_LOGGER_PRIVATE_KEY` set | Policies are signed by the user's wallet; every decision hash is written to Monad. |
 | Alerts | Off | `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` set | Kill, loss warning and long disconnects go to Telegram. |
 
-Live orders are never driven by simulated signals: with `VENUE=perpl` and no Nansen key, the signal is treated as stale and Monday quotes in its conservative regime.
+Live orders are never driven by simulated signals. With `VENUE=perpl` or `VENUE=paper` and no Nansen key there is no smart-money signal at all: no reflex and no lean. The regime then comes from volatility alone (calm, active, storm) and Monday quotes at the best price in a calm market; the order-book reflex, the risk gate and every limit still apply. Only a Nansen source that stops answering counts as stale.
 
 ### Before a user can trade on Perpl
 
@@ -71,7 +71,7 @@ Guards that apply on real funds:
 | RPC check | At boot the server asks `MONAD_RPC_URL` for its chain id and stops if it is not the network you named. |
 | Policy caps | `CAP_QUOTE_USD`, `CAP_INVENTORY_USD`, `CAP_DAILY_LOSS_USD` bound every user's policy. Defaults: $50, $250, $25. |
 | Acknowledgement | A user must tick "this trades real funds" before the first start. The header shows "Mainnet: real funds" at all times. |
-| No simulated signals | Without a Nansen key the signal counts as stale and Monday quotes in its conservative regime. |
+| No simulated signals | Without a Nansen key there is no smart-money signal: the regime rests on volatility alone, and nothing simulated ever drives a live order. |
 | Collateral rule | A policy needs the margin for its full inventory at its leverage plus the whole daily loss limit. The High leverage preset (10x) and the margin x leverage sizer obey it, so the loss kill fires before Perpl's maintenance margin. |
 | Margin floor | Equity below the margin the policy needs kills and flattens, so losses carried across days cannot walk into a liquidation. |
 | Existing limits | Price band of 1% around the oracle, inventory and leverage checks on every order, daily loss kill, stale-data kill, three-failures kill. |
@@ -85,7 +85,7 @@ Suggested order:
 Things specific to mainnet:
 
 - **Geo-blocking.** Perpl's mainnet context lists blocked countries (at the time of writing: BY, CU, GB, IR, KP, RU, SY, UA, US). Host the server outside them, and do not offer the product to users in them.
-- **Book width.** Mainnet BTC was one tick wide when checked, while Monday's minimum half-spread is 3 to 6 bps. On BTC it will rest behind the top of book and fill mainly on sweeps. ETH and SOL were several bps wide.
+- **Book width.** Mainnet BTC was one tick wide (0.01 bps) when checked. Joining that touch would earn less than the maker fee on every fill, so on BTC Monday stops at the fee floor, 0.45 bps from fair price, and fills on sweeps only. ETH (about 3 bps) and SOL (about 8 bps) were wide enough for Monday to sit one tick inside the best price, first in line; that is where the fills come from.
 - **No taker bot.** The demo taker belongs to testnet only. Trading against your own quotes on mainnet is wash trading.
 - **Other people's money.** Running this for anyone but yourself may bring licensing or regulatory duties where you operate. Get advice before opening it up.
 - **Keys.** `AGENT_LOGGER_PRIVATE_KEY` should be a separate wallet holding only a little MON for gas. `MONDAY_MASTER_KEY` and `SESSION_SECRET` must be unique, long and never committed.
@@ -103,8 +103,8 @@ infra           Dockerfile, docker-compose, Caddyfile
 
 Three layers, as in PRD section 10:
 
-- **Engine**, every second. Fair price (Perpl blended halfway toward Hyperliquid's mid, ignored past a 50 bps gap), spread, inventory skew, smart-money skew, order-book skew, quote size capped at 5% of an average hour's volume, PostOnly safety. Deterministic and unit tested.
-- **Reflex**, next tick after a burst. Pulls or widens the threatened side for five minutes. When smart money is quiet, a lopsided Perpl book (top 5 levels, 75%/87.5% one side) does the same for 60 seconds.
+- **Engine**, every second. Fair price (Perpl blended halfway toward Hyperliquid's mid, ignored past a 50 bps gap), spread, inventory skew, smart-money skew, order-book skew, quote size capped at 5% of an average hour's volume, PostOnly safety. In the calm and active regimes each quote then joins the best price, or betters it by one tick when the spread has room for both sides to, never closer to fair price than the maker fee (0.45 bps). A quote at the front keeps its place in line until it is 0.5 bps behind the best or more than $3,000 rests ahead of it, because every requote goes to the back of the queue. Deterministic and unit tested.
+- **Reflex**, next tick after a burst. Pulls or widens the threatened side for five minutes. Two cheaper guards run under it. A move in the reference price (Hyperliquid's mid, which Perpl follows: 1.5 bps in 3 seconds widens, 3 bps pulls) steps the side the move runs into aside for 6 seconds, before Perpl's book catches up. A trend in the mark over the last five minutes (past 4 bps) leans the centre with it and keeps the side that would add against it off the touch, because in a slide the bids are the fills that keep losing. When smart money is quiet, a lopsided Perpl book (top 5 levels, nine tenths one side) widens the threatened side for 60 seconds; it never pulls it.
 - **Governor**, every 15 minutes. Sets bounded parameters and a plain-language reason. LLM output is schema-validated and clamped; on any failure the rules answer.
 
 The web app only ever talks to its own origin (`/api` is proxied), so the session cookie is httpOnly and SameSite=Strict. The live stream uses a one-time ticket.
@@ -136,6 +136,7 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 | --- | --- |
 | Strategy math, signal engine, statistics | Unit tested. |
 | Full flow on the simulator: onboarding, quoting, fills, markouts, reflex, pause, kill, policy change, evidence | Run end to end in a browser. |
+| Paper mode on mainnet data: best-price quoting, queue position, fills | Run live (2026-10-09): 12 fills in two minutes across BTC, ETH and SOL with no Nansen key. |
 | `MondayRegistry` | 25 Foundry tests pass. Not deployed. |
 | Perpl market data, candles, account lookup | Run against live testnet. Market data and specs also loaded read-only from mainnet. |
 | Perpl trading (sign-in, orders, fills, flatten) | Written from the official docs and replayed offline against documented frames. Key validation (trading sign-in) has succeeded live on mainnet. No order has been placed yet. Expect to debug orders on first use. |

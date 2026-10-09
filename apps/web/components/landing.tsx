@@ -96,6 +96,7 @@ function scene(step: number): MarketState {
     },
     trades: [], priceSeries: [],
     inPolicy: true, stage: 'normal', why: '', quotedPct: null, quoteAgeMs: { bid: null, ask: null }, basisBps: null,
+    aheadUsd: { bid: 2_045, ask: pulled ? null : 1_790 }, tape: [], day: { volumeUsd: null, changePct: null, high: null, low: null }, openInterestUsd: 0, fills1h: 0, markout1mBps: null, trend5mBps: 0,
   };
 }
 

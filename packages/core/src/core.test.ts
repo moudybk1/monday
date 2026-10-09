@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, liquidationPrice, walletPerformance, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  riskGate, inventoryStage, orderJobs, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, regimeOf, robustZ, shouldRequote, spearman, tradeSign, windowSums,
+  riskGate, inventoryStage, orderJobs, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
 
@@ -39,17 +39,32 @@ describe('FR-ENG-1 quoting model', () => {
     expect(long.ask!.size).toBe(flat.ask!.size);
   });
 
-  it('joins the best price when calm, keeps its distance in a storm, under a reflex, or when adding past half the cap', () => {
-    const book = { ...base, bestBid: 84_999.9, bestAsk: 85_000 }; // one tick wide, like mainnet BTC
-    const calm = computeQuotes(book);
-    expect([calm.bid!.price, calm.ask!.price]).toEqual([84_999.9, 85_000]);
-    expect(computeQuotes({ ...book, gov: { ...book.gov, spread_mult: 2.5 } }).bid!.price).toBeLessThan(84_990);
-    const widened = computeQuotes({ ...book, reflex: { side: 'ask', action: 'widen' } });
-    expect(widened.bid!.price).toBe(84_999.9);
+  it('betters the best price by a tick when calm and the spread has room, stops at the fee on a one-tick book, and keeps its distance in a storm, under a reflex, or when adding past half the cap', () => {
+    const wide = { ...base, bestBid: 84_990, bestAsk: 85_010 }; // 2.4 bps wide, like mainnet ETH: one tick inside the best price, first in line
+    const w = computeQuotes(wide);
+    expect([w.bid!.price, w.ask!.price]).toEqual([84_990.1, 85_009.9]);
+    expect(w.touch).toEqual({ bid: true, ask: true });
+    const tight = computeQuotes({ ...base, bestBid: 84_999.9, bestAsk: 85_000 }); // one tick wide, like mainnet BTC: the fee floor (0.45 bps) stops short of the touch
+    expect([tight.bid!.price, tight.ask!.price]).toEqual([84_996.1, 85_003.9]);
+    expect(tight.touch).toEqual({ bid: false, ask: false });
+    expect(computeQuotes({ ...wide, gov: { ...wide.gov, spread_mult: 2.5 } }).bid!.price).toBeLessThan(84_980);
+    const widened = computeQuotes({ ...wide, reflex: { side: 'ask', action: 'widen' } });
+    expect(widened.bid!.price).toBe(84_990.1);
     expect(widened.ask!.price).toBeGreaterThan(85_010);
-    const long = computeQuotes({ ...book, positionUsd: 300 }); // q 0.6: the bid adds, the ask sheds
-    expect(long.bid!.price).toBeLessThan(84_990);
-    expect(long.ask!.price).toBe(85_000);
+    const long = computeQuotes({ ...wide, positionUsd: 300 }); // q 0.6: the bid adds, the ask sheds
+    expect(long.bid!.price).toBeLessThan(84_980);
+    expect(long.ask!.price).toBe(85_009.9);
+  });
+
+  it('leans with a trend and keeps the side that would add against it off the touch', () => {
+    const wide = { ...base, bestBid: 84_990, bestAsk: 85_010 };
+    const down = computeQuotes({ ...wide, trendBps: -12 }); // falling 12 bps over five minutes
+    expect(down.skewTrendBps).toBeLessThan(0);
+    expect(down.bid!.price).toBeLessThan(84_980); // the bid waits at the model's distance
+    expect(down.ask!.price).toBe(85_009.9); // the ask still sits first in line
+    expect(down.touch).toEqual({ bid: false, ask: true });
+    expect(computeQuotes({ ...wide, trendBps: 2 }).skewTrendBps).toBe(0); // noise
+    expect(computeQuotes({ ...wide, trendBps: 40 }).skewTrendBps).toBeCloseTo(4.45 / 2); // capped at half the half-spread
   });
 
   it('FR-ENG-5 skips the side that would breach max inventory', () => {
@@ -127,7 +142,25 @@ describe('FR-RFX reflex', () => {
     expect(reflexTrigger(1.3, 0)).toBeNull();
     expect(reflexTrigger(1.3, 0, DEFAULT_CONFIG, held)).toEqual({ side: 'ask', action: 'widen' }); // 1.3 > 0.8 x 1.5
     expect(reflexTrigger(1.1, 0, DEFAULT_CONFIG, held)).toBeNull();
-    expect(bookTrigger(0.6, DEFAULT_CONFIG, held)).toEqual({ side: 'ask', action: 'widen' }); // 0.6 > 0.8 x 0.7
+    expect(bookTrigger(0.7, DEFAULT_CONFIG, held)).toEqual({ side: 'ask', action: 'widen' }); // 0.7 > 0.8 x 0.8
+    expect(bookTrigger(0.6, DEFAULT_CONFIG, held)).toBeNull();
+  });
+
+  it('a reference move runs into the side it is heading for: Hyperliquid up pulls the ask, a smaller move widens it', () => {
+    expect(refTrigger(3.4)).toEqual({ side: 'ask', action: 'pull' });
+    expect(refTrigger(-1.8)).toEqual({ side: 'bid', action: 'widen' });
+    expect(refTrigger(0.9)).toBeNull();
+  });
+
+  it('the reflex state remembers which kind of trigger it came from, also when a held side is extended by another kind', () => {
+    const t0 = 1_000_000;
+    const short = { ...DEFAULT_CONFIG, reflexHoldMs: 6_000 };
+    const ref = nextReflex(null, { side: 'ask', action: 'pull', ref: true }, t0, 3.2, [], short);
+    expect(ref.state).toMatchObject({ side: 'ask', action: 'pull', ref: true, until: t0 + 6_000 });
+    const book = nextReflex(null, { side: 'ask', action: 'widen', book: true }, t0, 0.85, [], { ...DEFAULT_CONFIG, reflexHoldMs: 60_000 });
+    const extended = nextReflex(book.state, { side: 'ask', action: 'pull', ref: true }, t0 + 1_000, 3.5, [], short);
+    expect(extended.state).toMatchObject({ action: 'pull', ref: true, until: t0 + 60_000 }); // the longer book hold stays, the kind is the reference move
+    expect(extended.state!.book).toBeUndefined();
   });
 });
 
@@ -140,10 +173,11 @@ describe('order-book reflex', () => {
     expect(bookImbalance(lv(5), [])).toBe(0);
   });
 
-  it('heavy bids threaten the ask, and the lean follows the heavy side', () => {
-    expect(bookTrigger(0.9)).toEqual({ side: 'ask', action: 'pull' });
-    expect(bookTrigger(-0.75)).toEqual({ side: 'bid', action: 'widen' });
-    expect(bookTrigger(0.6)).toBeNull(); // a merely lopsided Perpl book is normal
+  it('heavy bids widen the ask and never pull it, and the lean follows the heavy side', () => {
+    expect(bookTrigger(0.9)).toEqual({ side: 'ask', action: 'widen' });
+    expect(bookTrigger(-0.85)).toEqual({ side: 'bid', action: 'widen' });
+    expect(bookTrigger(-0.75)).toBeNull(); // a merely lopsided Perpl book is normal
+    expect(bookTrigger(0.6)).toBeNull();
     expect(computeQuotes({ ...base, book: 1 }).skewBookBps).toBe(2);
     expect(computeQuotes({ ...base, book: -0.5 }).center).toBeLessThan(computeQuotes(base).center);
   });
@@ -199,6 +233,19 @@ describe('FR-ENG-3 requote rule', () => {
     expect(shouldRequote(live, { price: 85_000, size: 0.0007 }, 4.45, 0.1)).toBe(true);
     expect(shouldRequote(live, null, 4.45, 0.1)).toBe(true);
     expect(shouldRequote(null, null, 4.45, 0.1)).toBe(false);
+  });
+
+  it('a quote placed at the front of the book keeps its place a few ticks behind, and moves once clearly behind or buried', () => {
+    const live = { price: 2_486.5, size: 0.02 };
+    expect(touchRequote(live, 'bid', 2_486.5, 0)).toBe(false); // still the best
+    expect(touchRequote(live, 'bid', 2_486.58, 500)).toBe(false); // 0.3 bps behind with $500 ahead: a requote would only lose the place in line
+    expect(touchRequote(live, 'bid', 2_486.7, 500)).toBe(true); // 0.8 bps behind
+    expect(touchRequote(live, 'bid', 2_486.58, 4_000)).toBe(true); // buried under $4k
+    expect(touchRequote(live, 'ask', 2_486.3, 0)).toBe(true);
+    expect(touchRequote(live, 'ask', null, 0)).toBe(false);
+    // Ahead of a bid at 2486.5: the level above it plus the rest of its own level (its own 0.02 taken out).
+    expect(depthAhead([{ price: 2_486.6, size: 1 }, { price: 2_486.5, size: 0.5 }, { price: 2_486.4, size: 9 }], 'bid', 2_486.5, 0.02)).toBeCloseTo(1.48);
+    expect(depthAhead([{ price: 2_486.4, size: 9 }], 'bid', 2_486.5)).toBe(0); // inside the spread: nothing ahead
   });
 });
 
@@ -271,7 +318,8 @@ describe('inventory lifecycle', () => {
     expect(reduce.ask).not.toBeNull(); // widened, not pulled
     const urgent = computeQuotes({ ...long, stage: 'urgent', reflex: { side: 'ask', action: 'pull' } });
     expect(urgent.ask!.price).toBe(85_004.9); // one tick inside the best ask
-    expect(urgent.ask!.price).toBeLessThan(normal.ask!.price);
+    expect(normal.ask!.price).toBe(85_004.9); // the exit side joins the front of the book as soon as there is a position to shed
+    expect(reduce.ask!.price).toBeGreaterThan(normal.ask!.price); // widened by the reflex, not pulled
     const small = computeQuotes({ ...base, positionUsd: 20, positionBase: 20 / 85_000, stage: 'reduce' });
     expect(small.ask!.size).toBe(0.00023); // the position, rounded down to the size step: never a flip
   });

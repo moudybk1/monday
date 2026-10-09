@@ -199,11 +199,12 @@ function runJob(j: Job): { study: EventStudy; replay: Replay } {
 
 /**
  * The study's bootstrap and the replay take seconds of CPU per market. On the main thread that stalled the event loop
- * for 8.5 s, past Perpl's ping timeout, and the trading socket was dropped (1008). So they run in a worker.
+ * for 8.5 s, past Perpl's ping timeout, and the trading socket was dropped (1008). So they run in a worker, started
+ * through evidence-worker.mjs, which registers the TypeScript loader in the thread and then loads this file.
  */
 function offThread(job: Job): Promise<{ study: EventStudy; replay: Replay }> {
   return new Promise((resolve, reject) => {
-    const w = new Worker(new URL(import.meta.url), { workerData: { evidenceJob: job } });
+    const w = new Worker(new URL('./evidence-worker.mjs', import.meta.url), { workerData: { entry: import.meta.url, evidenceJob: job } });
     w.once('message', resolve);
     w.once('error', reject);
     w.once('exit', (code) => code && reject(new Error(`evidence worker exited with ${code}`)));

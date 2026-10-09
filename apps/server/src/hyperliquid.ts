@@ -10,7 +10,10 @@ import { openLink } from './venue/perpl/socket';
 
 const WS_URL = 'wss://api.hyperliquid.xyz/ws';
 const STALE_MS = 5_000;
+const HISTORY_MS = 60_000;
 const mids: Partial<Record<MarketSym, { px: number; at: number }>> = {};
+/** Recent mids per market, oldest first, for the reference-move guard (hlMoveBps). */
+const history: Partial<Record<MarketSym, { px: number; at: number }[]>> = {};
 let lastFrameAt = 0;
 
 export interface HlTrade {
@@ -43,7 +46,11 @@ export function startHyperliquid(onTrade: (t: HlTrade) => void = () => {}) {
         const now = Date.now();
         for (const s of MARKETS) {
           const px = Number(m.data?.mids?.[s]);
-          if (px > 0) mids[s] = { px, at: now };
+          if (!(px > 0)) continue;
+          mids[s] = { px, at: now };
+          const h = (history[s] ??= []);
+          h.push({ px, at: now });
+          while (h.length && h[0].at < now - HISTORY_MS) h.shift();
         }
       } else if (m.channel === 'trades') {
         for (const t of m.data ?? []) {
@@ -60,6 +67,23 @@ export function startHyperliquid(onTrade: (t: HlTrade) => void = () => {}) {
 export function hlMid(sym: MarketSym): number | null {
   const m = mids[sym];
   return m && Date.now() - m.at < STALE_MS ? m.px : null;
+}
+
+/**
+ * How far Hyperliquid's mid moved over the last `windowMs`, in bps (positive is up), against the newest sample at
+ * least that old. Null while the feed is stale or the history is shorter than the window.
+ */
+export function hlMoveBps(sym: MarketSym, windowMs: number): number | null {
+  const h = history[sym];
+  const cur = hlMid(sym);
+  if (!h || cur == null) return null;
+  const since = Date.now() - windowMs;
+  let base: { px: number; at: number } | null = null;
+  for (const p of h) {
+    if (p.at > since) break;
+    base = p;
+  }
+  return base ? (cur / base.px - 1) * 1e4 : null;
 }
 
 /** Milliseconds since the last frame from Hyperliquid, -1 before the first. */

@@ -9,11 +9,11 @@
 // behind it, and a restart does not lose positions, PnL or unfinished cleanup.
 
 import {
-  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, ewmaVar, inventoryStage, marginFloorUsd,
-  markoutBps, median, nextReflex, orderJobs, reflexTrigger, riskGate, shouldRequote, tradeSign, usd, usdCompact, varToBps,
+  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, inventoryStage, marginFloorUsd,
+  markoutBps, median, nextReflex, orderJobs, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
   type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type Priority,
-  type QuoteOutput, type QuoteTarget, type ReflexState, type Side, type StrategyConfig,
+  type QuoteOutput, type QuoteTarget, type ReflexState, type Side, type StrategyConfig, type TapePrint,
 } from '@monday/core';
 import type { Hex } from 'viem';
 import { agentAddress, anchorOf, chainEnabled, enqueue } from './chain';
@@ -21,7 +21,7 @@ import type { Collector } from './collector';
 import { config } from './config';
 import { atomically, db, event, journal } from './db';
 import { decide, fallbackDecision, hashOf, llmEnabled, llmFailures, rulesProposal, type GovernorContext } from './governor';
-import { hlAgeMs, hlMid } from './hyperliquid';
+import { hlAgeMs, hlMid, hlMoveBps } from './hyperliquid';
 import { VenueError, type MarketFeed, type MarketSnapshot, type Venue, type VenueCredentials, type VenueDriver, type VenueFill } from './venue/types';
 
 const MIN_REQUOTE_MS = 1_500;
@@ -125,24 +125,33 @@ export interface SessionLimits {
   takeProfitUsd: number | null;
 }
 
-// Average hourly traded volume over 24 h per market, shared by every runner and refreshed every 10 minutes.
-// Null until known, and always on the simulator, whose candles carry no volume.
-const volume = new Map<MarketSym, { at: number; hourlyUsd: number | null }>();
+// The last 24 hours of candles per market, shared by every runner and refreshed every 10 minutes: average hourly
+// volume (null until known, and always on the simulator, whose candles carry no volume), the day's open, high and low.
+interface Day { at: number; hourlyUsd: number | null; open: number | null; high: number | null; low: number | null }
+const volume = new Map<MarketSym, Day>();
 
-// Perpl's tape per market and minute (high, low, volume), shared by every runner on a feed. The minute records use it
-// to show whether price ever reached Monday's quotes when nothing filled.
-const tapes = new WeakMap<MarketFeed, Map<string, { hi: number; lo: number; usd: number }>>();
-function tapeOf(feed: MarketFeed) {
+// The tape per market, shared by every runner on a feed: each minute's high, low and volume, which the minute records
+// use to show whether price ever reached Monday's quotes when nothing filled, and the last prints for the dashboard.
+const TAPE_PRINTS = 40;
+interface Tape { minutes: Map<string, { hi: number; lo: number; usd: number }>; prints: Map<MarketSym, TapePrint[]> }
+const tapes = new WeakMap<MarketFeed, Tape>();
+function tapeOf(feed: MarketFeed): Tape {
   let t = tapes.get(feed);
   if (!t) {
-    const m = new Map<string, { hi: number; lo: number; usd: number }>();
-    tapes.set(feed, (t = m));
+    const minutes: Tape['minutes'] = new Map();
+    const prints: Tape['prints'] = new Map();
+    tapes.set(feed, (t = { minutes, prints }));
     feed.onTrade?.((tr) => {
-      const k = `${tr.sym}:${Math.floor(Date.now() / 60_000)}`;
-      const a = m.get(k);
+      const ts = tr.ts ?? Date.now();
+      const k = `${tr.sym}:${Math.floor(ts / 60_000)}`;
+      const a = minutes.get(k);
       if (a) Object.assign(a, { hi: Math.max(a.hi, tr.price), lo: Math.min(a.lo, tr.price), usd: a.usd + tr.price * tr.size });
-      else m.set(k, { hi: tr.price, lo: tr.price, usd: tr.price * tr.size });
-      if (m.size > 300) m.delete(m.keys().next().value!);
+      else minutes.set(k, { hi: tr.price, lo: tr.price, usd: tr.price * tr.size });
+      if (minutes.size > 300) minutes.delete(minutes.keys().next().value!);
+      const p = prints.get(tr.sym) ?? [];
+      p.unshift({ price: tr.price, size: tr.size, side: tr.side, ts });
+      if (p.length > TAPE_PRINTS) p.length = TAPE_PRINTS;
+      prints.set(tr.sym, p);
     });
   }
   return t;
@@ -441,16 +450,24 @@ export class Runner {
     const v = this.venue;
     return MARKETS.filter((s) => this.policy.markets.includes(s) || (v && (v.position(s).size !== 0 || v.quote(s, 'bid') || v.quote(s, 'ask'))));
   }
-  private hourlyVolume(sym: MarketSym, now: number): number | null {
+  private day(sym: MarketSym, now: number): Day {
     const hit = volume.get(sym);
     if (!hit || now - hit.at > 10 * 60_000) {
-      volume.set(sym, { at: now, hourlyUsd: hit?.hourlyUsd ?? null }); // one fetch in flight
+      volume.set(sym, { hourlyUsd: null, open: null, high: null, low: null, ...hit, at: now }); // one fetch in flight
       void this.deps.driver.feed.candles(sym, now - 86_400_000, now).then((cs) => {
         const usd = cs.reduce((s, c) => s + (c.v ?? 0), 0);
-        volume.set(sym, { at: now, hourlyUsd: usd > 0 ? usd / 24 : null });
+        let high: number | null = null, low: number | null = null;
+        for (const c of cs) {
+          high = high == null ? c.h : Math.max(high, c.h);
+          low = low == null ? c.l : Math.min(low, c.l);
+        }
+        volume.set(sym, { at: now, hourlyUsd: usd > 0 ? usd / 24 : null, open: cs[0]?.o ?? null, high, low });
       }).catch(() => {});
     }
-    return volume.get(sym)!.hourlyUsd;
+    return volume.get(sym)!;
+  }
+  private hourlyVolume(sym: MarketSym, now: number): number | null {
+    return this.day(sym, now).hourlyUsd;
   }
 
   // ---- the tick (PRD 9.3) ----
@@ -518,7 +535,7 @@ export class Runner {
       const out = computeQuotes({
         mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S, book: rt.book,
         hlMid: this.hlReference(rt), hourlyVolumeUsd: this.hourlyVolume(sym, now), policy: this.policy, gov, reflex: rt.reflex, spec, cfg: this.cfg(sym),
-        stage: rt.stage, positionBase: pos.size,
+        stage: rt.stage, positionBase: pos.size, trendBps: this.trendBps(rt, now, snap.mark),
       });
       rt.model = out;
 
@@ -550,7 +567,7 @@ export class Runner {
           : !gov.enabled ? 'governor'
           : 'size';
         const prio: Priority = !target && (gate || !inPolicy) ? 1 : side === exit ? 2 : 3;
-        this.plan(wants, rt, side, target, out.halfBps, gate ? `risk:${gate}` : side === exit ? `exit:${rt.stage}` : rt.block[side] ?? 'quote', prio, now);
+        this.plan(wants, rt, side, target, out.halfBps, gate ? `risk:${gate}` : side === exit ? `exit:${rt.stage}` : rt.block[side] ?? 'quote', prio, now, out.touch[side] ? snap : null);
       }
       quoted.push([rt, snap, posUsd]);
     }
@@ -582,9 +599,13 @@ export class Runner {
    * is routine (4), a new quote least urgent (5). Targets are rebuilt every tick, so a request that waited for budget
    * goes out with the newest target, and one no longer needed is simply not sent.
    */
-  private plan(wants: Want[], rt: MarketRt, side: Side, target: QuoteTarget | null, halfBps: number, reason: string, prio: Priority, now: number) {
+  private plan(wants: Want[], rt: MarketRt, side: Side, target: QuoteTarget | null, halfBps: number, reason: string, prio: Priority, now: number, front: MarketSnapshot | null = null) {
     const live = this.venue!.quote(rt.sym, side);
-    if (!shouldRequote(live, target, halfBps, this.spec(rt.sym).priceTick)) {
+    let move = shouldRequote(live, target, halfBps, this.spec(rt.sym).priceTick);
+    // The target is the front of the book and the live quote has slipped behind it: back to the front once it is clearly
+    // behind or buried, not on every tick the best price flickers, because each requote gives up its place in line.
+    if (!move && front && live && target) move = touchRequote(live, side, side === 'bid' ? front.bestBid : front.bestAsk, this.aheadUsd(front, side, live), this.cfg(rt.sym));
+    if (!move) {
       rt.since[side] = 0;
       rt.held[side] = null;
       return;
@@ -723,6 +744,24 @@ export class Runner {
     return hl == null ? null : hl * (1 + rt.basis.bps / 1e4);
   }
 
+  /** Signed move of the mark over the last five minutes (less while the series is shorter), in bps. Zero under a minute of data. */
+  private trendBps(rt: MarketRt, now: number, mark: number): number {
+    const s = rt.series; // one sample every 5 s
+    if (s.length < 12) return 0;
+    const since = now - 5 * 60_000;
+    let base = s[0];
+    for (const p of s) {
+      if (p.t > since) break;
+      base = p;
+    }
+    return base.p > 0 ? (mark / base.p - 1) * 1e4 : 0;
+  }
+
+  /** USD resting ahead of one of Monday's quotes on its side. Only the live book shows the quote itself, which is taken out. */
+  private aheadUsd(snap: MarketSnapshot, side: Side, q: QuoteTarget): number {
+    return depthAhead(side === 'bid' ? snap.bids : snap.asks, side, q.price, this.deps.driver.kind === 'perpl' ? q.size : 0) * q.price;
+  }
+
   /** Top-of-book imbalance. Only the live book carries Monday's own resting quotes; leave them out so it cannot chase itself. */
   private bookNow(sym: MarketSym, snap: MarketSnapshot): number {
     const tick = this.spec(sym).priceTick;
@@ -788,21 +827,30 @@ export class Runner {
     if (big) rt.lastBigTs = Math.max(rt.lastBigTs, big.ts) + 1;
     const z = sig.stale ? 0 : sig.w5.z;
     const held = rt.reflex && rt.reflex.until > now ? rt.reflex : null;
-    const flow = reflexTrigger(z, big ? tradeSign(big) : 0, cfg, held && !held.book ? held : null);
-    // Smart-money flow wins; the book only acts when flow is quiet, and holds for less time.
+    const flow = reflexTrigger(z, big ? tradeSign(big) : 0, cfg, held && !held.book && !held.ref ? held : null);
+    // Smart-money flow wins; then a move in the reference price, then the book. Each holds for its own time.
+    const move = this.deps.driver.kind === 'sim' ? null : hlMoveBps(sym, cfg.refWindowMs);
+    const onRef = move == null ? null : refTrigger(move, cfg, held?.ref ? held : null);
     const onBook = bookTrigger(rt.book, cfg, held?.book ? held : null);
-    const trig = flow ?? (onBook && { ...onBook, book: true });
-    const holdCfg = flow ? cfg : { ...cfg, reflexHoldMs: cfg.bookHoldMs };
+    const trig = flow ?? (onRef && { ...onRef, ref: true }) ?? (onBook && { ...onBook, book: true });
+    // With no trigger the hold that is running out decides how long its release lasts.
+    const kind = trig ? (flow ? 'flow' : onRef ? 'ref' : 'book') : rt.reflex?.ref ? 'ref' : rt.reflex?.book ? 'book' : 'flow';
+    const holdCfg = kind === 'flow' ? cfg : { ...cfg, reflexHoldMs: kind === 'ref' ? cfg.refHoldMs : cfg.bookHoldMs };
     const dir = trig?.side === 'ask' ? 1 : -1;
     const culprits = flow ? this.deps.collector.recentTrades(sym, now - 5 * 60_000).filter((t) => tradeSign(t) === dir).sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 12) : [];
-    const { state, changed } = nextReflex(rt.reflex, trig, now, flow ? z : rt.book, culprits.map((t) => t.hash), holdCfg);
+    const { state, changed } = nextReflex(rt.reflex, trig, now, flow ? z : onRef ? move! : rt.book, culprits.map((t) => t.hash), holdCfg);
     const before = rt.reflex;
     rt.reflex = state;
     if (!changed) return;
-    if (!state?.book) rt.govAsap = true; // book flicker is not worth an early governor run
+    if (!state?.book && !state?.ref) rt.govAsap = true; // book flicker and a few seconds of reference move are not worth an early governor run
     const holdMin = cfg.reflexHoldMs / 60_000;
     if (state?.released) {
-      this.logDecision(sym, 'reflex', 'reflex', { widen: state.side, release: true }, `${state.book ? 'The book has evened out' : 'Flow has cooled'}. The ${state.side} is back, still widened for now.`, { z5m: z, bookImbalance: rt.book, at: now }, null);
+      const what = state.ref ? 'Perpl has had time to catch up with Hyperliquid' : state.book ? 'The book has evened out' : 'Flow has cooled';
+      this.logDecision(sym, 'reflex', 'reflex', { widen: state.side, release: true }, `${what}. The ${state.side} is back, still widened for now.`, { z5m: z, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
+    } else if (state?.ref) {
+      const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
+      const reason = `Hyperliquid's ${sym} mid moved ${move! >= 0 ? 'up' : 'down'} ${Math.abs(move!).toFixed(1)} bps in ${cfg.refWindowMs / 1000} seconds and Perpl's book has not caught up. ${what} for ${cfg.refHoldMs / 1000} seconds.`;
+      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.refHoldMs / 1000, trigger: 'reference' }, reason, { hlMoveBps: move, windowMs: cfg.refWindowMs, hlMid: hlMid(sym), perplMid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, at: now }, null);
     } else if (state?.book) {
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
       const heavy = state.side === 'ask' ? 'bids' : 'asks';
@@ -817,7 +865,8 @@ export class Runner {
       const signalAgeMs = now - (culprits[0]?.fetchedAt ?? now);
       this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_min: holdMin }, reason, { z5m: z, netUsd5m: sig.w5.netUsd, nansenTx: state.triggerHashes, signalAgeMs, at: now }, null);
     } else if (before) {
-      this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `${before.book ? 'The book has evened out' : 'Flow has cooled'}. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, bookImbalance: rt.book, at: now }, null);
+      const what = before.ref ? 'Perpl has caught up with Hyperliquid' : before.book ? 'The book has evened out' : 'Flow has cooled';
+      this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `${what}. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
     }
   }
 
@@ -826,7 +875,7 @@ export class Runner {
     const recent = this.fills.filter((f) => f.sym === rt.sym && f.ts > hourAgo);
     const marks = recent.filter((f) => f.markout1mBps != null).map((f) => f.markout1mBps!);
     const lean = this.deps.k(rt.sym) > 0;
-    const base = { market: rt.sym, signal: sig, sigma1mBps: varToBps(rt.var1m), sigmaMedianBps: median(rt.sigmaHist), policy: this.policy, lean };
+    const base = { market: rt.sym, signal: sig, sigma1mBps: varToBps(rt.var1m), sigmaMedianBps: median(rt.sigmaHist), policy: this.policy, lean, noSmartMoney: !this.deps.collector.hasSource };
     return {
       ...base,
       topTrades: this.deps.collector.recentTrades(rt.sym, hourAgo).sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 5),
@@ -1168,7 +1217,7 @@ export class Runner {
     rt.min = null;
     rt.bothHist.push(a.both / Math.max(1, a.ticks));
     if (rt.bothHist.length > 60) rt.bothHist.shift();
-    const tape = tapeOf(this.deps.driver.feed).get(`${rt.sym}:${a.k}`);
+    const tape = tapeOf(this.deps.driver.feed).minutes.get(`${rt.sym}:${a.k}`);
     const why = [...a.why].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
     const snap = this.deps.driver.feed.snapshot(rt.sym);
     insMinute.run(
@@ -1192,7 +1241,7 @@ export class Runner {
       if (b?.startsWith('risk:')) return `${word[side]} is blocked because ${GATE_TEXT[b.slice(5) as GateReason]}.`;
       if (b === 'exit') return `Adding to the ${posUsd > 0 ? 'long' : 'short'} is stopped; Monday is working its ${usd(Math.abs(posUsd))} exit${rt.stage === 'urgent' ? ' at the best price' : ''}.`;
       if (b === 'not in policy') return `${rt.sym} is no longer in your policy; Monday only closes what it holds there.`;
-      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `smart money is ${side === 'ask' ? 'buying' : 'selling'}`}.`;
+      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.ref ? `Hyperliquid just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `smart money is ${side === 'ask' ? 'buying' : 'selling'}`}.`;
       if (b === 'governor') return `The governor turned quoting off: ${rt.params.reason}`;
       if (b === 'size') return `The ${side} rounds to zero size (quote size, volume cap or inventory skew).`;
       if (rt.held[side] === 'budget') return `Waiting for request budget to move the ${side}.`;
@@ -1201,7 +1250,15 @@ export class Runner {
     };
     if (bq && aq) {
       const gap = rt.gapAlarm ? ' Perpl and Hyperliquid disagree more than usual, so quotes are wider and smaller.' : '';
-      return `Quoting both sides, ${(((mid - bq.price) / mid) * 1e4).toFixed(1)} bps below and ${(((aq.price - mid) / mid) * 1e4).toFixed(1)} bps above mid. Waiting for a trade to reach them.${gap}`;
+      // At the front of the book the question is how much is queued ahead; behind it, how far away it sits.
+      const where = (side: Side, q: QuoteTarget): string => {
+        const best = side === 'bid' ? snap.bestBid : snap.bestAsk;
+        const front = best != null && (side === 'bid' ? q.price >= best : q.price <= best);
+        const ahead = this.aheadUsd(snap, side, q);
+        if (front) return `${side} at the best price${ahead >= 1 ? `, ${usd(ahead, 0)} queued ahead of it` : ', first in line'}`;
+        return `${side} ${(Math.abs(q.price - mid) / mid * 1e4).toFixed(1)} bps ${side === 'bid' ? 'below' : 'above'} mid`;
+      };
+      return `Quoting both sides: ${where('bid', bq)}; ${where('ask', aq)}. Waiting for a taker.${gap}`;
     }
     const reasons = [...new Set([sideWhy('bid'), sideWhy('ask')].filter(Boolean))];
     return reasons.join(' ') || 'Placing quotes.';
@@ -1260,17 +1317,28 @@ export class Runner {
       worstAge = Math.max(worstAge, age);
       const quoting = this.status === 'quoting';
       const ageOf = (side: Side) => (this.venue?.quote(sym, side) && rt.ackedAt[side] ? now - rt.ackedAt[side] : null);
+      const aheadOf = (side: Side) => {
+        const q = this.venue?.quote(sym, side);
+        return q ? this.aheadUsd(snap, side, q) : null;
+      };
+      const day = this.day(sym, now);
+      const hour = this.fills.filter((f) => f.sym === sym && f.isMaker && f.ts > now - 3_600_000);
+      const marks = hour.filter((f) => f.markout1mBps != null).map((f) => f.markout1mBps!);
       markets[sym] = {
         sym, spec, mark: snap.mark, oracle: snap.oracle, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk,
         bids: snap.bids.slice(0, 12), asks: snap.asks.slice(0, 12), fundingRate: snap.fundingRate, dataAgeMs: age, sigma1mBps: varToBps(rt.var1m),
         quotes: { bid: this.venue?.quote(sym, 'bid') ?? null, ask: this.venue?.quote(sym, 'ask') ?? null },
-        model: quoting && rt.model ? { ref: rt.model.ref, center: rt.model.center, halfBps: rt.model.halfBps, skewInvBps: rt.model.skewInvBps, skewNanBps: rt.model.skewNanBps, skewBookBps: rt.model.skewBookBps, q: rt.model.q, blendBps: rt.model.blendBps, sizeCapUsd: rt.model.sizeCapUsd } : null, book: rt.book,
+        model: quoting && rt.model ? { ref: rt.model.ref, center: rt.model.center, halfBps: rt.model.halfBps, skewInvBps: rt.model.skewInvBps, skewNanBps: rt.model.skewNanBps, skewBookBps: rt.model.skewBookBps, skewTrendBps: rt.model.skewTrendBps, q: rt.model.q, blendBps: rt.model.blendBps, sizeCapUsd: rt.model.sizeCapUsd } : null, book: rt.book,
+        trend5mBps: this.trendBps(rt, now, snap.mark),
         hlMid: this.hlShown(sym, snap.mark),
         position: { size: pos.size, entryPrice: pos.entryPrice, notionalUsd: pos.size * snap.mark, unrealizedUsd: pos.size ? pos.size * (snap.mark - pos.entryPrice) : 0 },
         params: rt.params, paramsSource: rt.paramsSource, reflex: quoting && rt.reflex && rt.reflex.until > now ? rt.reflex : null,
         signal: this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(sym), trades: this.deps.collector.latestTrades(sym, 14), priceSeries: rt.series,
         inPolicy: this.policy.markets.includes(sym), stage: rt.stage, why: rt.why, quotedPct: this.quotedPct(rt), quoteAgeMs: { bid: ageOf('bid'), ask: ageOf('ask') },
         basisBps: rt.basis.n ? rt.basis.bps : null,
+        aheadUsd: { bid: aheadOf('bid'), ask: aheadOf('ask') }, tape: tapeOf(feed).prints.get(sym) ?? [],
+        day: { volumeUsd: day.hourlyUsd == null ? null : day.hourlyUsd * 24, changePct: day.open ? (snap.mark / day.open - 1) * 100 : null, high: day.high, low: day.low },
+        openInterestUsd: snap.openInterest * snap.mark, fills1h: hour.length, markout1mBps: marks.length ? marks.reduce((a, b) => a + b, 0) / marks.length : null,
       };
     }
     const acct = this.venue?.account();

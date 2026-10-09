@@ -104,6 +104,8 @@ if (realFunds && env('ALLOW_REAL_FUNDS') !== 'yes') {
   throw new Error('NETWORK=mainnet with VENUE=perpl places real orders with real funds. Set ALLOW_REAL_FUNDS=yes to confirm, or use NETWORK=testnet.');
 }
 if (realFunds && !env('SESSION_SECRET')) throw new Error('SESSION_SECRET is required when trading real funds.');
-if (!config.masterKey) config.masterKey = randomBytes(32).toString('base64'); // sim only: keys die with the process
+// Simulated orders only (never the live venue, which refuses to start without a key): a fixed development key, so the
+// demo keys stored in a paper database still open after a restart. In production a random key dies with the process.
+if (!config.masterKey) config.masterKey = prod ? randomBytes(32).toString('base64') : 'monday-dev-master-key-simulated-orders-only';
 
 export type Config = typeof config;

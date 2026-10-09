@@ -27,9 +27,9 @@ function ladder(levels: BookLevel[], mine: QuoteTarget | null, side: Side, n: nu
 }
 
 // Three columns, nothing else: price, size, cumulative depth. The same rhythm on every row.
-const COLS = 'grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-2.5';
+const COLS = 'grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-center gap-2 px-2.5';
 
-function Level({ r, side, max, m }: { r: Row; side: Side; max: number; m: MarketState }) {
+function Level({ r, side, max, m, ahead }: { r: Row; side: Side; max: number; m: MarketState; ahead: number | null }) {
   return (
     <li className={cx(COLS, 'num relative h-[21px] text-[12px]', r.mine && 'flash bg-accent/14')}>
       {/* Depth: a tint anchored to the right edge, behind the figures. */}
@@ -41,7 +41,10 @@ function Level({ r, side, max, m }: { r: Row; side: Side; max: number; m: Market
         {r.mine && <span className="rounded-[2px] bg-accent px-1 text-[9.5px] font-semibold leading-[14px] tracking-wide text-accent-fg">MONDAY</span>}
       </span>
       <span className={cx('relative text-right', r.mine ? 'text-accent' : 'text-fg')}>{fmtSize(r.size, m.spec)}</span>
-      <span className="relative text-right text-fg-3">{usdCompact(r.cumUsd)}</span>
+      {/* On Monday's row the useful number is not the depth but the queue: how much must trade before its order does. */}
+      {r.mine && ahead != null
+        ? <span className="relative whitespace-nowrap text-right text-[11px] text-accent" title="Resting ahead of Monday's order in line at this side">{ahead < 1 ? '1st in line' : `${usdCompact(ahead)} ahead`}</span>
+        : <span className="relative text-right text-fg-3">{usdCompact(r.cumUsd)}</span>}
     </li>
   );
 }
@@ -64,26 +67,30 @@ export function OrderBook({ m, rows = 10, now = Date.now() }: { m: MarketState; 
   const max = Math.max(asks.at(-1)?.cumUsd ?? 1, bids.at(-1)?.cumUsd ?? 1);
   const pulled = m.reflex?.action === 'pull' ? m.reflex.side : null;
   const spreadBps = m.bestBid && m.bestAsk ? ((m.bestAsk - m.bestBid) / m.mark) * 1e4 : null;
+  const spread = m.bestBid && m.bestAsk ? m.bestAsk - m.bestBid : null;
 
   return (
     <div className="select-none" role="table" aria-label={`${m.sym} order book with Monday's quotes highlighted`}>
       <div className={cx(COLS, 'label h-6')} role="row">
         <span>Price</span>
         <span className="text-right">Size {m.sym}</span>
-        <span className="text-right">Depth</span>
+        <span className="text-right">Total</span>
       </div>
       <ol aria-label="Asks">
         {/* Monday's row is keyed by price, so a requote remounts it and the flash plays. */}
-        {[...asks].reverse().map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="ask" max={max} m={m} />)}
+        {[...asks].reverse().map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="ask" max={max} m={m} ahead={m.aheadUsd.ask} />)}
         {pulled === 'ask' && <Pulled side="ask" m={m} now={now} />}
       </ol>
-      <div className="flex h-8 items-center justify-between border-y border-line bg-raised px-2.5">
-        <span className="num text-[14px] font-semibold tracking-tight">{fmtPrice(m.mark, m.spec)}</span>
-        <span className="label">mark{spreadBps != null && <> / spread {spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps</>}</span>
+      {/* The spread row every terminal has: the gap in ticks and bps, and the mark beside it. */}
+      <div className="flex h-7 items-center justify-between border-y border-line bg-raised px-2.5">
+        <span className="num text-[13px] font-semibold tracking-tight">{fmtPrice(m.mark, m.spec)}</span>
+        <span className="num text-[11px] text-fg-3">
+          {spread != null && spreadBps != null ? <>spread {fmtPrice(spread, m.spec)} <span className="text-fg-2">{spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps</span></> : 'no book'}
+        </span>
       </div>
       <ol aria-label="Bids">
         {pulled === 'bid' && <Pulled side="bid" m={m} now={now} />}
-        {bids.map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="bid" max={max} m={m} />)}
+        {bids.map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="bid" max={max} m={m} ahead={m.aheadUsd.bid} />)}
       </ol>
     </div>
   );
