@@ -1,11 +1,15 @@
 'use client';
 
+import { CircleIcon, TriangleIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
-import type { CandlestickData, IChartApi, IPriceLine, ISeriesApi, ISeriesMarkersPluginApi, MouseEventParams, SeriesType, Time, UTCTimestamp } from 'lightweight-charts';
-import { usdCompact, type Fill, type MarketState, type MarketSym } from '@monday/core';
+import type {
+  CandlestickData, IChartApi, IPriceLine, IPrimitivePaneRenderer, ISeriesApi, ISeriesMarkersPluginApi, ISeriesPrimitive, ITextWatermarkPluginApi,
+  MouseEventParams, SeriesAttachedParameter, SeriesMarker, SeriesType, Time, UTCTimestamp,
+} from 'lightweight-charts';
+import { DEFAULT_CONFIG, tradeSign, usdCompact, type Fill, type MarketState, type MarketSym, type SmartTrade } from '@monday/core';
 import { api } from '@/lib/api';
 import { bollinger, ema, macd, rsi, vwap } from '@/lib/indicators';
-import { Panel, cx } from './ui';
+import { Panel, Skeleton, cx } from './ui';
 
 interface Candle { t: number; o: number; h: number; l: number; c: number; v?: number }
 type Lw = typeof import('lightweight-charts');
@@ -44,14 +48,66 @@ function palette(el: HTMLElement) {
     return String(ctx.fillStyle);
   };
   const soft = (hex: string) => `${hex}59`; // 35% alpha: volume and MACD bars sit behind the lines
-  const bid = color('--bid'), ask = color('--ask');
+  const bid = color('--bid'), ask = color('--ask'), accent = color('--accent'), fg = color('--fg');
   return {
-    text: color('--fg-3'), fg: color('--fg'), fg2: color('--fg-2'), line: color('--line'), line2: color('--line-2'), raised: color('--raised-2'),
+    text: color('--fg-3'), fg, fg2: color('--fg-2'), line: color('--line'), line2: color('--line-2'), raised: color('--raised-2'),
     bid, ask, bidSoft: soft(bid), askSoft: soft(ask), ind1: color('--ind-1'), ind2: color('--ind-2'), font: getComputedStyle(el).fontFamily,
+    // Amber is Monday's own: its fills and the spread it quotes. Smart money keeps the bid and ask colours.
+    accent, band: `${accent}1f`, bidDot: `${bid}b3`, askDot: `${ask}b3`, watermark: `${fg}0f`,
   };
 }
 type Palette = ReturnType<typeof palette>;
 type Pt = { time: Time; value?: number; color?: string };
+
+/** What happened inside one candle: smart-money flow in dollars and trades, and Monday's own fills. */
+type Flow = { buyUsd: number; sellUsd: number; buys: number; sells: number; mBought: number; mSold: number };
+/** Marker size from a dollar amount: $1k is small, $1M about the largest the library draws well. */
+const dotSize = (usd: number) => Math.min(2.2, Math.max(0.6, 0.6 + Math.log10(Math.max(1, usd / 1000)) * 0.5));
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(sec).padStart(2, '0')}`;
+};
+
+type Target = Parameters<IPrimitivePaneRenderer['draw']>[0];
+/** Monday's quoted spread: a tint from its buy price to its sell price, drawn under the candles. */
+class SpreadBand implements ISeriesPrimitive<Time> {
+  private series: SeriesAttachedParameter<Time>['series'] | null = null;
+  private redraw = () => {};
+  private lo: number | null = null;
+  private hi: number | null = null;
+  private color = 'transparent';
+  attached(p: SeriesAttachedParameter<Time>) {
+    this.series = p.series;
+    this.redraw = p.requestUpdate;
+  }
+  detached() {
+    this.series = null;
+  }
+  set(lo: number | null, hi: number | null, color: string) {
+    this.lo = lo;
+    this.hi = hi;
+    this.color = color;
+    this.redraw();
+  }
+  paneViews() {
+    return [{
+      zOrder: () => 'bottom' as const,
+      renderer: () => ({
+        draw: (target: Target) => {
+          const s = this.series;
+          if (!s || this.lo == null || this.hi == null) return;
+          const top = s.priceToCoordinate(this.hi), bottom = s.priceToCoordinate(this.lo);
+          if (top == null || bottom == null) return;
+          target.useBitmapCoordinateSpace(({ context, bitmapSize, verticalPixelRatio: r }) => {
+            context.fillStyle = this.color;
+            context.fillRect(0, Math.round(top * r), bitmapSize.width, Math.max(1, Math.round((bottom - top) * r)));
+          });
+        },
+      }),
+    }];
+  }
+}
 
 /** Every enabled indicator's points, one per candle (whitespace while it warms up). */
 function indicatorPoints(bars: Candle[], on: readonly Ind[], p: Palette): Record<string, Pt[]> {
@@ -79,16 +135,25 @@ function indicatorPoints(bars: Candle[], on: readonly Ind[], p: Palette): Record
 }
 
 /**
- * Candlestick chart of one market with Monday drawn on it: its resting offers as price lines and its fills as
- * arrows, plus the indicators this viewer picked. History comes from /api/candles; the live mark keeps the last
- * candle (and every indicator's last point) moving.
+ * Candlestick chart of one market with Monday drawn on it: its resting offers as price lines with the spread between
+ * them tinted, its fills as amber arrows, and smart-money trades as dots sized by value, plus the indicators this
+ * viewer picked. History comes from /api/candles; the live mark keeps the last candle (and every indicator's last
+ * point) moving.
  */
 export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sym: MarketSym; m: MarketState; fills: Fill[]; now: number; className?: string; wheel?: boolean }) {
   const [frame, setFrame] = useState<Frame>('1m');
   const [on, setOn] = useState<Ind[]>(DEFAULT_IND);
   const box = useRef<HTMLDivElement>(null);
-  const legend = useRef<HTMLDivElement>(null);
+  const legend = useRef<HTMLSpanElement>(null);
   const indLegend = useRef<HTMLDivElement>(null);
+  const flowLegend = useRef<HTMLDivElement>(null);
+  const band = useRef<SpreadBand | null>(null);
+  const watermark = useRef<ITextWatermarkPluginApi<Time> | null>(null);
+  // Smart-money trades seen since the chart opened, every market. The live state carries only the newest few per market.
+  // ponytail: grows for as long as the page stays open; serve the collector's six hours from the API if that matters.
+  const smart = useRef(new Map<string, SmartTrade>());
+  const flows = useRef(new Map<number, Flow>()); // chart time of a candle -> what happened in it, for the hover legend
+  const lastUp = useRef<boolean | null>(null);
   const menu = useRef<HTMLDetailsElement>(null);
   const lw = useRef<Lw | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -186,9 +251,32 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
       return item;
     }));
   };
+  /** Smart money and Monday inside the hovered candle; empty when nothing happened there. */
+  const showFlow = (time: Time | null) => {
+    const el = flowLegend.current;
+    if (!el) return;
+    const f = time == null ? undefined : flows.current.get(time as number);
+    const part = (text: string, color: string) => {
+      const s = document.createElement('span');
+      s.textContent = text;
+      s.style.color = color;
+      return s;
+    };
+    const items: HTMLElement[] = [];
+    if (f && (f.buys || f.sells)) {
+      items.push(part('Smart money', 'var(--fg-3)'));
+      if (f.buys) items.push(part(`buy ${usdCompact(f.buyUsd)} (${f.buys})`, 'var(--bid-fg)'));
+      if (f.sells) items.push(part(`sell ${usdCompact(f.sellUsd)} (${f.sells})`, 'var(--ask-fg)'));
+    }
+    if (f && (f.mBought || f.mSold)) {
+      items.push(part('Monday', 'var(--fg-3)'));
+      items.push(part([f.mBought && `bought ${f.mBought}`, f.mSold && `sold ${f.mSold}`].filter(Boolean).join(', '), 'var(--accent)'));
+    }
+    el.replaceChildren(...items);
+  };
   const latest = (key: string) => points.current[key]?.at(-1)?.value;
-  const showRef = useRef({ showLegend, showIndicators, latest });
-  showRef.current = { showLegend, showIndicators, latest };
+  const showRef = useRef({ showLegend, showIndicators, showFlow, latest });
+  showRef.current = { showLegend, showIndicators, showFlow, latest };
 
   // Create the chart once. The library touches the DOM, so it loads in the browser only.
   useEffect(() => {
@@ -220,20 +308,27 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
           crosshair: { mode: mod.CrosshairMode.Normal, vertLine: { color: p.line2, labelBackgroundColor: p.raised }, horzLine: { color: p.line2, labelBackgroundColor: p.raised } },
           // On a scrolling page the wheel must keep scrolling the page; drag and pinch still pan and zoom.
           handleScroll: wheel ? true : { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-          handleScale: wheel ? true : { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
+          // Wheel zoom is ours (eased, below); the library's jumps a whole step per notch.
+          handleScale: { mouseWheel: false },
+          // A drag that is let go keeps gliding, as on any terminal.
+          kineticScroll: { mouse: true, touch: true },
         });
-        s.applyOptions({ upColor: p.bid, downColor: p.ask, wickUpColor: p.bid, wickDownColor: p.ask, priceLineColor: p.text });
+        s.applyOptions({ upColor: p.bid, downColor: p.ask, wickUpColor: p.bid, wickDownColor: p.ask, priceLineColor: lastUp.current == null ? p.text : lastUp.current ? p.bid : p.ask });
         lines.current.bid?.applyOptions({ color: p.bid });
-        lines.current.ask?.applyOptions({ color: p.ask });
-        setThemeTick((n) => n + 1); // indicator series are rebuilt in the new colours
+        lines.current.ask?.applyOptions({ color: p.ask });        setThemeTick((n) => n + 1); // indicator series are rebuilt in the new colours
       };
+      // The market and interval, faint behind the candles, as on every terminal. Text is set by the effect below.
+      watermark.current = mod.createTextWatermark(c.panes()[0], { horzAlign: 'center', vertAlign: 'center', lines: [] });
+      band.current = new SpreadBand();
+      s.attachPrimitive(band.current);
       theme();
       const onMove = (param: MouseEventParams<Time>) => {
         const bar = param.seriesData.get(s) as CandlestickData<Time> | undefined;
         hovering.current = Boolean(bar);
-        const { showLegend, showIndicators, latest } = showRef.current;
+        const { showLegend, showIndicators, showFlow, latest } = showRef.current;
         showLegend(bar ? { t: 0, o: bar.open, h: bar.high, l: bar.low, c: bar.close } : bars.current.at(-1) ?? null);
         showIndicators(bar ? (key) => (param.seriesData.get(ind.current.get(key)!) as { value?: number } | undefined)?.value : latest);
+        showFlow(bar ? bar.time : null);
       };
       c.subscribeCrosshairMove(onMove);
       // Follow the theme toggle and the system setting.
@@ -256,10 +351,67 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
       dead = true;
       cleanup();
       chart.current = series.current = markers.current = null;
+      watermark.current = band.current = null;
       ind.current.clear();
       lines.current = { bid: null, ask: null };
     };
   }, [wheel]);
+
+  // Smooth wheel and trackpad zoom around the pointer: each notch moves a target range, and the visible range eases
+  // toward it frame by frame. Horizontal swipes are left to the library, which pans.
+  useEffect(() => {
+    const c = chart.current, el = box.current;
+    if (!c || !el || !wheel) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let target: { from: number; to: number } | null = null;
+    let raf = 0;
+    let frames = 0;
+    const step = () => {
+      const ts = c.timeScale();
+      const cur = ts.getVisibleLogicalRange();
+      // The library clamps ranges it cannot show; stop after a while instead of chasing one forever.
+      if (!cur || !target || ++frames > 40) return void ((raf = 0), (target = null));
+      const k = reduce ? 1 : 0.3;
+      const from = cur.from + (target.from - cur.from) * k, to = cur.to + (target.to - cur.to) * k;
+      const done = Math.abs(target.from - from) < 0.02 && Math.abs(target.to - to) < 0.02;
+      ts.setVisibleLogicalRange(done ? target : { from, to });
+      if (done) return void ((raf = 0), (target = null));
+      raf = requestAnimationFrame(step);
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      const ts = c.timeScale();
+      const base = target ?? ts.getVisibleLogicalRange();
+      if (!base) return;
+      const anchor = ts.coordinateToLogical(e.clientX - el.getBoundingClientRect().left) ?? base.to;
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // Firefox reports lines
+      // A mouse notch is about 100 px (about 20% zoom); a pinch arrives as many small ctrl+wheel steps.
+      const factor = Math.exp(dy * (e.ctrlKey ? 0.01 : 0.002));
+      const span = base.to - base.from;
+      const width = Math.min(Math.max(span * factor, 12), Math.max(60, bars.current.length * 1.5));
+      const at = (anchor - base.from) / span;
+      target = { from: anchor - at * width, to: anchor + (1 - at) * width };
+      frames = 0;
+      if (!raf) raf = requestAnimationFrame(step);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      cancelAnimationFrame(raf);
+    };
+  }, [ready, wheel]);
+
+  useEffect(() => {
+    const p = pal.current;
+    if (!watermark.current || !p) return;
+    watermark.current.applyOptions({
+      lines: [
+        { text: `${sym} perp`, color: p.watermark, fontSize: 44, fontStyle: '600', fontFamily: p.font, lineHeight: 52 },
+        { text: `Perpl ${frame}`, color: p.watermark, fontSize: 15, fontFamily: p.font, lineHeight: 22 },
+      ],
+    });
+  }, [ready, sym, frame, themeTick]);
 
   // Price precision follows the market's tick; dates alone on the daily axis.
   useEffect(() => {
@@ -357,6 +509,12 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
     if (t > k.t) bars.current.push(cur);
     else bars.current[bars.current.length - 1] = cur;
     s.update(toBar(cur));
+    // The last-price line takes the colour of the candle it belongs to.
+    const up = cur.c >= cur.o;
+    if (up !== lastUp.current && pal.current) {
+      lastUp.current = up;
+      s.applyOptions({ priceLineColor: up ? pal.current.bid : pal.current.ask });
+    }
     pushIndicators(false);
     if (!hovering.current) showLegend(cur);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -369,6 +527,7 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
     if (!s || !mod || !box.current) return;
     const p = palette(box.current);
     offers.current = [m.quotes.bid?.price, m.quotes.ask?.price].filter((x): x is number => x != null);
+    band.current?.set(m.quotes.bid?.price ?? null, m.quotes.ask?.price ?? null, p.band);
     for (const side of ['bid', 'ask'] as const) {
       const q = m.quotes[side];
       const line = lines.current[side];
@@ -384,24 +543,43 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
     }
   }, [ready, m.quotes]);
 
-  // Monday's fills as arrows on the candle they happened in.
+  const tradesKey = m.trades[0] ? m.trades[0].hash + m.trades[0].action : '';
+
+  // Per candle: Monday's fills as amber arrows next to the bar, smart money as dots beyond them, sized by dollars.
   useEffect(() => {
     if (!markers.current || !box.current || !candles.data?.length) return;
     const p = palette(box.current);
     const from = candles.data[0].t;
-    markers.current.setMarkers(
-      fills
-        .filter((f) => f.sym === sym && f.ts >= from)
-        .sort((a, b) => a.ts - b.ts)
-        .map((f) => ({
-          time: toTime(Math.floor(f.ts / span) * span),
-          position: f.side === 'bid' ? 'belowBar' : 'aboveBar',
-          shape: f.side === 'bid' ? 'arrowUp' : 'arrowDown',
-          color: f.side === 'bid' ? p.bid : p.ask,
-          size: 0.6,
-        })),
-    );
-  }, [ready, fills, sym, span, candles.data]);
+    const by = new Map<number, Flow>();
+    const at = (ts: number) => {
+      const k = Math.floor(ts / span) * span;
+      let f = by.get(k);
+      if (!f) by.set(k, (f = { buyUsd: 0, sellUsd: 0, buys: 0, sells: 0, mBought: 0, mSold: 0 }));
+      return f;
+    };
+    for (const f of fills) if (f.sym === sym && f.ts >= from) f.side === 'bid' ? at(f.ts).mBought++ : at(f.ts).mSold++;
+    for (const t of m.trades) smart.current.set(t.hash + t.action, t);
+    for (const t of smart.current.values()) {
+      if (t.sym !== sym || t.ts < from) continue;
+      const f = at(t.ts);
+      if (tradeSign(t) > 0) (f.buyUsd += t.valueUsd), f.buys++;
+      else (f.sellUsd += t.valueUsd), f.sells++;
+    }
+    const big = DEFAULT_CONFIG.bigTradeUsd;
+    const out: SeriesMarker<Time>[] = [];
+    flows.current = new Map();
+    for (const [k, f] of [...by].sort((a, b) => a[0] - b[0])) {
+      const time = toTime(k);
+      flows.current.set(time, f);
+      // Within one candle, markers stack outward in array order: Monday's own sit closest to the bar.
+      if (f.mBought) out.push({ time, position: 'belowBar', shape: 'arrowUp', color: p.accent, size: 0.9, text: f.mBought > 1 ? String(f.mBought) : undefined });
+      if (f.mSold) out.push({ time, position: 'aboveBar', shape: 'arrowDown', color: p.accent, size: 0.9, text: f.mSold > 1 ? String(f.mSold) : undefined });
+      if (f.buys) out.push({ time, position: 'belowBar', shape: 'circle', color: p.bidDot, size: dotSize(f.buyUsd), text: f.buyUsd >= big ? usdCompact(f.buyUsd) : undefined });
+      if (f.sells) out.push({ time, position: 'aboveBar', shape: 'circle', color: p.askDot, size: dotSize(f.sellUsd), text: f.sellUsd >= big ? usdCompact(f.sellUsd) : undefined });
+    }
+    markers.current.setMarkers(out);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, fills, sym, span, candles.data, tradesKey, themeTick]);
 
   const toggle = (id: Ind) => {
     const next = INDICATORS.map((d) => d.id).filter((x) => (x === id ? !on.includes(x) : on.includes(x)));
@@ -415,7 +593,16 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
 
   return (
     <Panel
-      title={<>{sym} perp <span className="font-normal text-fg-3">price, Monday&apos;s offers and trades</span></>}
+      title={
+        <span className="flex items-center gap-3">
+          <span>{sym} perp</span>
+          {/* The key to what is drawn: Monday in amber, smart money in the side colours. */}
+          <span className="hidden items-center gap-3 font-normal text-fg-3 sm:flex">
+            <span className="flex items-center gap-1"><TriangleIcon size={9} weight="fill" className="text-accent" />Monday fills</span>
+            <span className="flex items-center gap-1"><CircleIcon size={8} weight="fill" className="text-bid" /><CircleIcon size={8} weight="fill" className="-ml-0.5 text-ask" />Smart money</span>
+          </span>
+        </span>
+      }
       aside={
         <>
           <div role="tablist" aria-label="Candle interval" className="flex">
@@ -445,10 +632,19 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
     >
       <div ref={box} className="num absolute inset-0" aria-label={`${sym} candlestick chart with Monday's offers and trades`} role="img" />
       <div className="pointer-events-none absolute left-2 right-16 top-1.5 z-[2] flex flex-col gap-0.5">
-        <div ref={legend} className="num text-[11px]" />
+        <div className="num flex flex-wrap items-baseline gap-x-3 text-[11px]">
+          <span ref={legend} />
+          {candles.data && <span className="text-fg-3" title="Time until this candle closes">closes in {clock(span - (now % span))}</span>}
+        </div>
         <div ref={indLegend} className="num flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10.5px] text-fg-2" />
+        <div ref={flowLegend} className="num flex flex-wrap gap-x-2 text-[10.5px] empty:hidden" />
       </div>
-      {!candles.data && <p className="absolute inset-0 grid place-items-center text-[12px] text-fg-3">{candles.failed ? 'Price history is unavailable right now.' : 'Loading price history'}</p>}
+      {!candles.data && (
+        <div className="absolute inset-0 grid place-items-center">
+          {!candles.failed && <Skeleton className="absolute inset-3" />}
+          <p className="relative text-[12px] text-fg-3">{candles.failed ? 'Price history is unavailable right now.' : 'Loading price history'}</p>
+        </div>
+      )}
     </Panel>
   );
 }

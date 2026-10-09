@@ -132,7 +132,8 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
         <tbody className="num">
           {(Object.keys(state.markets) as MarketSym[]).map((s) => {
             const x = state.markets[s];
-            if (!x) return null;
+            // Only what Monday looks after: the policy's markets and any it is still exiting.
+            if (!x || !(x.inPolicy || x.position.size !== 0 || x.quotes.bid || x.quotes.ask)) return null;
             const inv = x.position.notionalUsd;
             const q = (side: Side) => {
               const st = quoteStanding(x, side);
@@ -168,7 +169,7 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
       {/* One plain sentence from the engine on what the selected market is doing or waiting for. */}
       {m && (
         <p className="border-t border-line px-2.5 py-1.5 text-[11.5px] leading-snug text-fg-2" role="status">
-          <span className="font-semibold text-fg">{sym}</span> {m.why || (quoting ? 'Placing quotes.' : 'Not quoting.')}
+          <span className="font-semibold text-fg">{sym}</span> {m.why || (!m.inPolicy ? 'Not in your policy. Trade it from the market strip.' : quoting ? 'Placing quotes.' : 'Not quoting.')}
         </p>
       )}
     </section>

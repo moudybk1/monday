@@ -51,7 +51,7 @@ export function OpenOrders({ state }: { state: DashboardState }) {
 
 /** One row per market in the policy: what Monday holds, at what entry, and how it is doing at the live mark. */
 export function Positions({ state }: { state: DashboardState }) {
-  const rows = Object.values(state.markets).filter((m): m is MarketState => Boolean(m));
+  const rows = Object.values(state.markets).filter((m): m is MarketState => Boolean(m) && (m!.inPolicy || m!.position.size !== 0));
   const open = rows.filter((m) => Math.abs(m.position.notionalUsd) >= 0.5);
   const total = open.reduce((a, m) => a + m.position.unrealizedUsd, 0);
   return (

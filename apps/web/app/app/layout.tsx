@@ -1,11 +1,10 @@
 'use client';
 
 import { SignOutIcon } from '@phosphor-icons/react';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { Button, Notice, Skeleton, Tag, Wordmark, cx } from '@/components/ui';
+import { AppHeader } from '@/components/app-header';
+import { Button, Notice, Skeleton, Tag, cx } from '@/components/ui';
 import { shortAddr } from '@/lib/format';
 import { Providers, chain, useAppConfig, useMe, useSession } from '@/lib/wallet';
 
@@ -16,13 +15,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </Providers>
   );
 }
-
-const NAV = [
-  { href: '/app', label: 'Terminal' },
-  { href: '/analytics', label: 'Analytics' },
-  { href: '/app/policy', label: 'Policy' },
-  { href: '/evidence', label: 'Evidence' },
-];
 
 function Shell({ children }: { children: React.ReactNode }) {
   const me = useMe();
@@ -40,30 +32,19 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
-      <header className="sticky top-0 z-30 flex h-11 flex-none items-stretch gap-2 border-b border-line bg-canvas px-3 sm:gap-4">
-        <div className="flex items-center"><Wordmark size={18} compact={onboarded} /></div>
-        {onboarded && (
-          <nav className="flex items-stretch" aria-label="App">
-            {NAV.map((n) => (
-              <Link key={n.href} href={n.href} aria-current={pathname === n.href ? 'page' : undefined} className={cx('flex items-center px-2.5 text-[12.5px] sm:px-3', pathname === n.href ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
-                {n.label}
-              </Link>
-            ))}
-          </nav>
-        )}
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          {/* Always say what kind of money is on the line. Real funds is never hidden, even on a phone. */}
-          {cfg.data?.realFunds ? <Tag tone="ask">Mainnet: real funds</Tag>
-            : cfg.data && <span className="hidden sm:block"><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
-          {me.data && <span className={cx('hidden text-[12px] text-fg-2 sm:inline', !me.data.demo && 'num')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>}
-          <ThemeToggle />
-          {me.data && (
-            <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" className="grid size-7 place-items-center rounded-sm text-fg-2 hover:bg-raised hover:text-fg">
-              <SignOutIcon size={15} />
+      <AppHeader nav={onboarded}>
+        {/* Always say what kind of money is on the line. Real funds is never hidden, even on a phone. */}
+        {cfg.data?.realFunds ? <Tag tone="ask">Mainnet: real funds</Tag>
+          : cfg.data && <span className="hidden sm:block"><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
+        {me.data && (
+          <span className="flex h-7 items-center rounded-sm border border-line-2">
+            <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[12px] text-fg-2 sm:inline', !me.data.demo && 'num')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
+            <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" title="Sign out" className="grid h-full w-7 place-items-center text-fg-2 hover:bg-raised hover:text-fg">
+              <SignOutIcon size={14} />
             </button>
-          )}
-        </div>
-      </header>
+          </span>
+        )}
+      </AppHeader>
       <main className={cx('w-full flex-1', !terminal && 'mx-auto max-w-[1180px] px-4 sm:px-6')}>
         {me.isLoading ? (
           <div className="grid gap-3 p-6">

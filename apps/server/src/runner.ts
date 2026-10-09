@@ -1306,8 +1306,8 @@ export class Runner {
     const feed = this.deps.driver.feed;
     const markets: DashboardState['markets'] = {};
     let worstAge = 0;
-    const shown = MARKETS.filter((s) => this.policy.markets.includes(s) || (this.venue?.position(s).size ?? 0) !== 0);
-    for (const sym of shown) {
+    // Every market the feed carries, so the terminal can show one before the policy trades it; inPolicy tells them apart.
+    for (const sym of MARKETS) {
       const snap = feed.snapshot(sym);
       const spec = this.spec(sym);
       if (!snap || !spec) continue;

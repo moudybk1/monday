@@ -49,12 +49,11 @@ export function Mark({ size = 20 }: { size?: number }) {
   );
 }
 
-export function Wordmark({ href = '/', size = 20, compact = false }: { href?: string; size?: number; compact?: boolean }) {
+export function Wordmark({ href = '/', size = 20 }: { href?: string; size?: number }) {
   return (
     <Link href={href} className="inline-flex items-center gap-2 text-fg" aria-label="Monday home">
       <Mark size={size} />
-      {/* In the app header on a phone the mark alone leaves room for the tabs. */}
-      <span className={cx('text-[17px] font-semibold tracking-[-0.03em]', compact && 'hidden sm:inline')}>Monday</span>
+      <span className="text-[17px] font-semibold tracking-[-0.03em]">Monday</span>
     </Link>
   );
 }

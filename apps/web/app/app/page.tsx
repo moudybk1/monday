@@ -1,6 +1,6 @@
 'use client';
 
-import { QuestionIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, QuestionIcon } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -10,15 +10,16 @@ import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
 import { LineChart } from '@/components/charts';
 import { Guide } from '@/components/guide';
+import { draftFrom, toBody } from '@/components/policy-form';
 import { PriceChart } from '@/components/price-chart';
 import { FlowBars, SmartTape } from '@/components/smart-money';
 import { Tape } from '@/components/tape';
 import { DecisionLog } from '@/components/timeline';
-import { Button, Notice, Panel, Skeleton, cx } from '@/components/ui';
+import { Button, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtPrice, fmtTime, fmtUsd } from '@/lib/format';
 import { useLive } from '@/lib/live';
-import { useAppConfig } from '@/lib/wallet';
+import { useAppConfig, useRegistry, type PolicyView } from '@/lib/wallet';
 
 // The layout every live terminal shares, measured on Hyperliquid and Tread: a market strip on top, the chart largest
 // and left, the book and the tape beside it, the ticket column on the right (here the agent, since Monday trades for
@@ -42,6 +43,7 @@ export default function Terminal() {
   // If the server drops this session's runner, re-check who we are; the shell then routes to onboarding.
   const { state, connected } = useLive('auth', () => void qc.invalidateQueries({ queryKey: ['me'] }));
   const cfg = useAppConfig().data;
+  const registry = useRegistry();
   const [picked, setPicked] = useState<MarketSym>('BTC');
   const [tab, setTab] = useState<Tab>('orders');
   const [side, setSide] = useState<'book' | 'trades'>('book');
@@ -64,11 +66,12 @@ export default function Terminal() {
   }, [ready]);
 
   if (!state) return <Loading />;
-  // The policy's markets, plus any market dropped from it that still holds a position Monday is closing.
+  // Every market Perpl lists; the policy's are the ones Monday trades.
   const shown = Object.keys(state.markets) as MarketSym[];
-  const sym = shown.includes(picked) ? picked : shown[0] ?? state.policy.markets[0];
+  const sym = shown.includes(picked) ? picked : state.policy.markets[0] ?? shown[0];
   const m = state.markets[sym];
   const now = state.at;
+  const trading = state.policy.markets.includes(sym);
 
   const act = async (path: string, body?: unknown) => {
     setBusy(path);
@@ -77,6 +80,21 @@ export default function Terminal() {
       await api(path, { method: 'POST', body });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Request failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  // Same save as the policy page: presets refit to the new market count, and a registry asks the wallet to sign.
+  const toggleMarket = async () => {
+    const markets = trading ? state.policy.markets.filter((s) => s !== sym) : [...state.policy.markets, sym];
+    setBusy('policy');
+    setError(null);
+    try {
+      const res = await api<PolicyView>('/policy', { method: 'PUT', body: toBody({ ...draftFrom(state.policy), markets }) });
+      if (res.pending?.onchain) await registry.publish(res.pending.onchain, () => {});
+      await qc.invalidateQueries({ queryKey: ['policy'] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message.split('\n')[0] : 'Could not change markets.');
     } finally {
       setBusy(null);
     }
@@ -96,27 +114,20 @@ export default function Terminal() {
   return (
     <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-2.75rem)]">
       {/* Market strip */}
-      <div className="panel flex-none flex-row flex-wrap items-stretch">
-        <div role="tablist" aria-label="Market" className="flex">
-          {shown.map((s) => {
-            const x = state.markets[s];
-            const chg = x?.day.changePct;
-            return (
-              <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-[50px] min-w-[8.25rem] flex-col justify-center gap-0.5 border-r border-line px-3 text-left', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
-                <span className="flex items-center gap-1.5 text-[12.5px] font-semibold">
-                  {s}<span className="font-normal text-fg-3">perp</span>
-                  {quoting && x?.reflex && <span className="size-1.5 rounded-full bg-ask" title={`${x.reflex.side} ${x.reflex.action === 'pull' ? 'pulled' : 'widened'}`} />}
-                </span>
-                <span className="num flex items-baseline gap-2 text-[12px]">
-                  <span className="text-fg">{x ? fmtPrice(x.mark, x.spec) : 'no data'}</span>
-                  {chg != null && <span className={cx('text-[11px]', chg >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{chg >= 0 ? '+' : ''}{chg.toFixed(2)}%</span>}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      {/* Visible overflow so the market picker can drop below the strip. */}
+      <div className="panel flex-none flex-row flex-wrap items-stretch overflow-visible">
+        <MarketPicker state={state} sym={sym} onPick={setPicked} />
         {m && <Stats m={m} quoting={quoting} />}
         <div className="ml-auto flex items-center gap-2 px-2.5 py-2">
+          {/* The last market cannot be dropped: a policy always trades one. Pause stops trading altogether. */}
+          {!(trading && state.policy.markets.length === 1) && (
+            <Button
+              size="sm" variant={trading ? 'ghost' : 'primary'} onClick={() => void toggleMarket()} disabled={busy !== null}
+              title={trading ? `Stop quoting ${sym}. Monday cancels its ${sym} orders and works any open position out.` : `Add ${sym} to your policy. ${quoting ? 'Monday starts quoting it on the next tick.' : 'Monday quotes it once you start.'}`}
+            >
+              {busy === 'policy' ? 'Saving' : trading ? `Stop ${sym}` : `Trade ${sym}`}
+            </Button>
+          )}
           <Button size="sm" variant="quiet" onClick={() => guide.current?.showModal()}><QuestionIcon size={12} weight="bold" /> Guide</Button>
           <span className="flex items-center gap-1.5 text-[12px] font-medium">
             {/* The one status dot: it reflects real agent state. */}
@@ -245,6 +256,73 @@ export default function Terminal() {
   );
 }
 
+/** Market as agent state: traded by the policy, dropped but still holding a position, or only watched. */
+const agentTag = (x: MarketState) => (x.inPolicy ? 'trading' : x.position.size !== 0 ? 'exit' : 'off');
+const pct = (n: number | null) => (n == null ? '-' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`);
+const PICK_COLS = 'grid grid-cols-[minmax(0,1.3fr)_1fr_0.8fr] items-center gap-x-3 sm:grid-cols-[minmax(0,1.3fr)_1fr_0.8fr_0.8fr_0.9fr_0.9fr]';
+
+/** The selected market and a dropdown of every market, as on Hyperliquid: price, change, funding, volume, interest. */
+function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: MarketSym; onPick: (s: MarketSym) => void }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  // Closes on a click elsewhere or Escape, like the chart's indicator menu.
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.open = false;
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, []);
+  const x = state.markets[sym];
+  const chg = x?.day.changePct ?? null;
+  const tag = x && agentTag(x);
+  return (
+    <details ref={menu} className="relative flex-none border-r border-line" onKeyDown={(e) => e.key === 'Escape' && menu.current && (menu.current.open = false)}>
+      <summary aria-label={`Market: ${sym}. Change market`} className="flex h-[50px] min-w-[9.5rem] cursor-pointer list-none flex-col justify-center gap-0.5 px-3 hover:bg-raised [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+          {sym}<span className="font-normal text-fg-3">perp</span>
+          <CaretDownIcon size={11} weight="bold" className="text-fg-3" />
+          {tag && tag !== 'trading' && <span className="text-[10.5px] font-normal text-fg-3">{tag}</span>}
+          {state.status === 'quoting' && x?.reflex && <span className="size-1.5 rounded-full bg-ask" title={`${x.reflex.side} ${x.reflex.action === 'pull' ? 'pulled' : 'widened'}`} />}
+        </span>
+        <span className="num flex items-baseline gap-2 text-[12px]">
+          <span className="text-fg">{x ? fmtPrice(x.mark, x.spec) : 'no data'}</span>
+          {chg != null && <span className={cx('text-[11px]', chg >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{pct(chg)}</span>}
+        </span>
+      </summary>
+      <div className="absolute left-0 top-full z-20 mt-1 w-[calc(100vw-1rem)] max-w-[40rem] rounded-sm border border-line-2 bg-raised py-1 shadow-lg">
+        <div className={cx(PICK_COLS, 'label h-7 whitespace-nowrap px-3 [&>span:not(:first-child)]:text-right')}>
+          <span>Market</span><span>Last price</span><span>24h change</span>
+          <span className="hidden sm:block">Funding</span><span className="hidden sm:block">24h volume</span><span className="hidden sm:block">Open interest</span>
+        </div>
+        {(Object.keys(state.markets) as MarketSym[]).map((s) => {
+          const r = state.markets[s];
+          if (!r) return null;
+          const t = agentTag(r);
+          const c = r.day.changePct;
+          return (
+            <button
+              key={s} aria-current={s === sym}
+              onClick={() => { onPick(s); if (menu.current) menu.current.open = false; }}
+              className={cx(PICK_COLS, 'num h-8 w-full px-3 text-left text-[12px] hover:bg-raised-2 [&>span:not(:first-child)]:text-right', s === sym && 'bg-raised-2')}
+            >
+              <span className="flex items-center gap-1.5 font-sans">
+                <span className="font-semibold">{s}</span><span className="text-fg-3">perp</span>
+                <Tag tone={t === 'trading' ? 'bid' : t === 'exit' ? 'warn' : 'neutral'}>{t}</Tag>
+              </span>
+              <span>{fmtPrice(r.mark, r.spec)}</span>
+              <span className={c == null ? 'text-fg-3' : c >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{pct(c)}</span>
+              <span className="hidden sm:block">{(r.fundingRate * 100).toFixed(4)}%</span>
+              <span className="hidden sm:block">{r.day.volumeUsd == null ? '-' : usdCompact(r.day.volumeUsd)}</span>
+              <span className="hidden sm:block">{r.openInterestUsd > 0 ? usdCompact(r.openInterestUsd) : '-'}</span>
+            </button>
+          );
+        })}
+        <p className="border-t border-line px-3 pb-1 pt-2 text-[11px] text-fg-3">Pick a market to watch it. Trade adds it to your policy; Monday then quotes it.</p>
+      </div>
+    </details>
+  );
+}
+
 /** The figures a trader reads off the strip before anything else, for the selected market. */
 function Stats({ m, quoting }: { m: MarketState; quoting: boolean }) {
   const spreadBps = m.bestBid && m.bestAsk ? ((m.bestAsk - m.bestBid) / m.mark) * 1e4 : null;
@@ -257,10 +335,10 @@ function Stats({ m, quoting }: { m: MarketState; quoting: boolean }) {
     { k: 'Open interest', v: m.openInterestUsd > 0 ? usdCompact(m.openInterestUsd) : '-', hint: 'Notional of all open positions in this market.' },
     { k: 'Funding', v: `${(m.fundingRate * 100).toFixed(4)}%`, hint: 'A periodic payment between longs and shorts. Positive means longs pay shorts.' },
     { k: 'Spread', v: spreadBps == null ? '-' : `${spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps`, hint: "The gap between the best bid and the best ask. Monday's edge has to fit inside it: a one-tick book cannot be won, a few bps can." },
-    { k: 'Vol 1m', v: `${m.sigma1mBps.toFixed(1)} bps`, hint: 'How much the price typically moves in a minute. 1 bp is 0.01%.' },
+    { k: 'Vol 1m', v: m.sigma1mBps ? `${m.sigma1mBps.toFixed(1)} bps` : '-', hint: 'How much the price typically moves in a minute. 1 bp is 0.01%.' },
     { k: 'Hyperliquid', v: m.hlMid != null ? fmtPrice(m.hlMid, m.spec) : 'off', hint: "Hyperliquid's mid, where these perps are priced. Monday centres halfway between Perpl and Hyperliquid." },
     { k: 'Signal', v: m.signal ? m.signal.S.toFixed(2) : 'none', hint: 'How unusual smart-money flow is right now. Beyond 2.5 either way, Monday treats it as a burst.', tone: m.signal && Math.abs(m.signal.S) >= 2.5 ? 'accent' : undefined },
-    { k: 'Regime', v: quoting ? m.params.regime : 'off', hint: "Monday's mode. Calm: at the best price. Active: cautious. Storm: very defensive. Stale: smart-money data is late.", tone: quoting && m.params.regime === 'storm' ? 'accent' : undefined },
+    { k: 'Regime', v: quoting && m.inPolicy ? m.params.regime : 'off', hint: "Monday's mode. Calm: at the best price. Active: cautious. Storm: very defensive. Stale: smart-money data is late.", tone: quoting && m.params.regime === 'storm' ? 'accent' : undefined },
   ];
   return (
     <dl className="scroll hidden items-center overflow-x-auto md:flex">

@@ -6,19 +6,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { PxOverview } from '@monday/core';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { Tag, Wordmark, cx } from '@/components/ui';
+import { AppHeader } from '@/components/app-header';
+import { Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 
 // Analytics, one place: Perpl's protocol and any wallet on it (public, no sign-in, so anyone can open a link),
 // side-by-side wallets, and the signed-in user's own Monday fills. The header matches the app's.
 
-const MAIN = [
-  { href: '/app', label: 'Terminal' },
-  { href: '/analytics', label: 'Analytics' },
-  { href: '/app/policy', label: 'Policy' },
-  { href: '/evidence', label: 'Evidence' },
-];
 const TABS = [
   { href: '/analytics', label: 'Perpl', on: (p: string) => p === '/analytics' || p.startsWith('/analytics/wallet') },
   { href: '/analytics/compare', label: 'Compare', on: (p: string) => p.startsWith('/analytics/compare') },
@@ -46,24 +40,13 @@ function Header() {
   const ix = ov.data?.indexer;
   const live = ix && ix.lagSec != null && ix.lagSec < 120;
   return (
-    <header className="sticky top-0 z-30 flex h-11 flex-none items-stretch gap-2 border-b border-line bg-canvas px-3 sm:gap-4">
-      <div className="flex items-center"><Wordmark size={18} compact /></div>
-      <nav className="flex items-stretch" aria-label="App">
-        {MAIN.map((n) => (
-          <Link key={n.href} href={n.href} aria-current={n.href === '/analytics' ? 'page' : undefined} className={cx('flex items-center px-2.5 text-[12.5px] sm:px-3', n.href === '/analytics' ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
-            {n.label}
-          </Link>
-        ))}
-      </nav>
-      <div className="ml-auto flex items-center gap-2">
-        <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex" title={ix ? `Perpl events indexed to block ${ix.block.toLocaleString('en-US')} via ${ix.source === 'hypersync' ? 'Envio HyperSync' : 'Monad RPC'}` : undefined}>
-          <span aria-hidden className={cx('size-1.5 rounded-full', live ? 'live-dot bg-bid' : 'bg-warn')} />
-          {!ix ? 'connecting' : live ? 'live' : ix.lagSec == null ? 'indexing' : 'catching up'}
-        </span>
-        <span className="hidden sm:inline"><Tag tone="neutral">Perpl {ov.data?.network ?? 'mainnet'}</Tag></span>
-        <ThemeToggle />
-      </div>
-    </header>
+    <AppHeader>
+      <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex" title={ix ? `Perpl events indexed to block ${ix.block.toLocaleString('en-US')} via ${ix.source === 'hypersync' ? 'Envio HyperSync' : 'Monad RPC'}` : undefined}>
+        <span aria-hidden className={cx('size-1.5 rounded-full', live ? 'live-dot bg-bid' : 'bg-warn')} />
+        {!ix ? 'connecting' : live ? 'live' : ix.lagSec == null ? 'indexing' : 'catching up'}
+      </span>
+      <span className="hidden sm:inline"><Tag tone="neutral">Perpl {ov.data?.network ?? 'mainnet'}</Tag></span>
+    </AppHeader>
   );
 }
 
