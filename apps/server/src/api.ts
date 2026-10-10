@@ -16,7 +16,6 @@ import { config } from './config';
 import { db, seal, upsertUser } from './db';
 import { evidence } from './evidence';
 import { llmEnabled } from './governor';
-import { registerStats } from './stats/routes';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
 import { VenueError, type Candle, type VenueDriver } from './venue/types';
@@ -137,7 +136,7 @@ export async function buildApi(deps: ApiDeps) {
   // 60 requests per minute per signed-in wallet, else per address (PRD 15.3). Public reads served from a shared cache are
   // exempt: their cost does not grow with viewers, and behind the web app's proxy every anonymous viewer has the proxy's
   // address, so counting them would let a handful of dashboard tabs lock everyone out, sign-in included.
-  const CACHED_READS = /^\/api\/(stats\/(overview|risk|liquidations|traders)|public\/preview|config|health|evidence|candles)(\?|$)/;
+  const CACHED_READS = /^\/api\/(public\/preview|config|health|evidence|candles)(\?|$)/;
   // Emergency controls are never rate limited: a dashboard's polling must not stand between a user and Stop or Kill.
   // Both are authenticated and idempotent (a second Kill or Stop does nothing).
   const EMERGENCY = /^\/api\/agent\/(kill|pause)(\?|$)/;
@@ -436,7 +435,7 @@ export async function buildApi(deps: ApiDeps) {
     return { ok: true };
   });
 
-  registerStats(app);
+  // Public Perpl stats (/api/stats/*) are served by the stats process (stats/run.ts), never by this trading server.
 
   // ---- realtime ----
   // The session cookie never leaves the web origin, so the socket authenticates with a one-time ticket.

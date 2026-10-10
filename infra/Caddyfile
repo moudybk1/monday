@@ -1,6 +1,10 @@
-# One domain for everything, TLS automatic once DOMAIN points at this machine. The API and its WebSocket go to the
-# server; every other path is the web app. Same origin, so the session cookie stays first-party.
+# TLS is automatic once DOMAIN and analytics.DOMAIN point at this machine. Public stats go to the stats process, the
+# rest of the API and its WebSocket to the trading server, every other path to the web app. One origin per site, so the
+# session cookie stays first-party.
 {$DOMAIN} {
+	handle /api/stats/* {
+		reverse_proxy stats:3002
+	}
 	handle /api/* {
 		reverse_proxy server:3001
 	}
@@ -8,6 +12,19 @@
 		reverse_proxy server:3001
 	}
 	handle {
+		reverse_proxy web:3000
+	}
+}
+
+# The public analytics on their own address. Signing in, the trading app and a user's own analytics need the session,
+# which belongs to the main domain, so those paths go there.
+analytics.{$DOMAIN} {
+	@session path /app /app/* /analytics/monday /analytics/monday/*
+	route {
+		reverse_proxy /api/stats/* stats:3002
+		reverse_proxy /api/* server:3001
+		redir @session https://{$DOMAIN}{uri}
+		redir / /analytics
 		reverse_proxy web:3000
 	}
 }

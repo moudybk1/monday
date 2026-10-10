@@ -158,7 +158,8 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 
 ## Deploy
 
-One machine runs everything: the server (API and agents), the Perpl stats indexer, the web app, and Caddy for TLS.
+One machine runs everything: the trading server (API and agents), the stats process (Perpl indexer and the public
+`/api/stats` API, kept apart so heavy analytics never stalls trading), the web app, and Caddy for TLS.
 Host it where Perpl serves users (not the US or the UK, for example; Singapore or Tokyo work).
 
 ```bash
@@ -167,7 +168,8 @@ cp .env.example .env     # fill it in: DOMAIN, WEB_ORIGIN and API_PUBLIC_URL (ht
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 ```
 
-Point the domain's A record at the machine and open ports 80 and 443; Caddy fetches the certificate. Data lives in
+Point A records for both `DOMAIN` and `analytics.DOMAIN` at the machine and open ports 80 and 443; Caddy fetches the
+certificates. `analytics.DOMAIN` serves the public analytics; sign-in and the trading app stay on `DOMAIN`. Data lives in
 `apps/server/data` on the host, so a rebuild keeps it.
 
 Moving a running Monday (a laptop, say): stop it there first, then copy `apps/server/data/monday-<network>.sqlite` to

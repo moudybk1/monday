@@ -1,4 +1,5 @@
-# Monday on one machine: API and agents, the Perpl stats indexer, the web app, and Caddy for TLS.
+# Monday on one machine: API and agents, the Perpl stats process, the web app, and Caddy for TLS on DOMAIN and
+# analytics.DOMAIN (point both at this machine).
 #   docker compose --env-file .env -f infra/docker-compose.yml up -d --build      (from the repo root)
 # DOMAIN in .env must point at this machine. Never run a second Monday (a laptop, say) on the same Perpl accounts.
 services:
@@ -19,8 +20,8 @@ services:
       timeout: 5s
       retries: 3
 
-  # With real funds the stats indexer is its own process, so its SQLite batches never stall the trading socket.
-  indexer:
+  # Public Perpl stats: the indexer and the /api/stats API in their own process, so heavy analytics never stalls trading.
+  stats:
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -28,7 +29,14 @@ services:
     env_file: ../.env
     volumes:
       - ../apps/server/data:/app/apps/server/data
-    restart: on-failure # without real funds it exits at once (the server indexes in-process); a crash restarts it
+    restart: always
+    expose:
+      - "3002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/api/stats/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   web:
     build:

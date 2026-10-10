@@ -22,7 +22,11 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: root,
   // The browser only ever talks to this origin, so the session cookie stays first-party and SameSite=Strict.
   async rewrites() {
-    return [{ source: '/api/:path*', destination: `${process.env.API_URL ?? 'http://localhost:3001'}/api/:path*` }];
+    // Public stats come from their own process (npm run indexer), everything else from the trading server.
+    return [
+      { source: '/api/stats/:path*', destination: `${process.env.STATS_URL ?? 'http://localhost:3002'}/api/stats/:path*` },
+      { source: '/api/:path*', destination: `${process.env.API_URL ?? 'http://localhost:3001'}/api/:path*` },
+    ];
   },
 };
 

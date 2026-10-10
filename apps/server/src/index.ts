@@ -10,7 +10,6 @@ import { db, simStore, unseal, upsertUser } from './db';
 import { computeEvidence, evidence, nansenK } from './evidence';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { hlAgeMs, startHyperliquid } from './hyperliquid';
-import { startIndexer } from './stats/indexer';
 import { llmEnabled } from './governor';
 import { Runner } from './runner';
 import { createPaperDriver } from './venue/paper';
@@ -62,10 +61,8 @@ if (!world || chainEnabled) await verifyRpc();
 await driver.feed.start();
 await collector.start();
 if (!world) startHyperliquid((t) => collector.onHyperliquidTrade(t)); // mids for the blend, and the smart-money tape
-// Public Perpl stats: it reads Perpl mainnet whatever Monday trades. Not beside real orders: its synchronous SQLite batches
-// can stall the event loop past Perpl's ping timeout (1008), which drops the trading socket.
-// With real funds the indexer runs as its own process (npm run indexer, also started by npm run dev and npm start).
-if (!config.realFunds) startIndexer();
+// Public Perpl stats (indexing and /api/stats) run in their own process, stats/run.ts (npm run indexer, also started by
+// npm run dev and npm start): their synchronous SQLite work must never stall this event loop past Perpl's ping (1008).
 // A stalled event loop misses Perpl's pings and drops the trading socket. Say so when it happens.
 const loopLag = monitorEventLoopDelay({ resolution: 50 });
 loopLag.enable();
