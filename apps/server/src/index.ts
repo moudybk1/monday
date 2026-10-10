@@ -154,5 +154,7 @@ const app = await buildApi({
   }),
 });
 await app.listen({ port: config.port, host: '0.0.0.0' });
+// On a VPS nobody watches the terminal: a start you did not cause is a crash or a reboot, and agents that were quoting resume.
+notify(`Monday server started on ${config.networkName}${config.realFunds ? ' with real funds' : ''}. Agents that were quoting resume.`);
 console.log(JSON.stringify({ service: 'monday', event: 'listening', port: config.port, network: config.network, venue: driver.kind, realFunds: config.realFunds, caps: config.caps, smartMoney: collector.kind, llm: llmEnabled, chainLog: chainEnabled }));
 

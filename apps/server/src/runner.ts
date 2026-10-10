@@ -1001,6 +1001,7 @@ export class Runner {
       if (!this.disconnectedAt) this.disconnectedAt = Date.now();
     } else {
       this.alert('critical', `Perpl closed the trading session: ${e instanceof Error ? e.message : e}`);
+      this.deps.notify(`Monday: Perpl closed the trading session of ${this.wallet.slice(0, 8)} (${e instanceof Error ? e.message : e}). Reconnecting.`);
       // The venue stopped itself for good. Drop it so tick opens a fresh session and any owed cleanup can land.
       this.dropVenue();
       if (this.status === 'quoting') void this.kill('order_failures');
