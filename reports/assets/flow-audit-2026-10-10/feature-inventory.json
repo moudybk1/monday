@@ -1,0 +1,538 @@
+[
+  {
+    "id": "T01",
+    "group": "Publik dan akses",
+    "control": "Navigasi Home, How it works, Custody, Analytics, Evidence, Launch app",
+    "purpose": "Menghubungkan penjelasan produk, bukti, data publik, dan aplikasi.",
+    "status": "UI dan kode",
+    "result": "Halaman tujuan utama terbuka; anchor informasional tidak melakukan trading."
+  },
+  {
+    "id": "T02",
+    "group": "Publik dan akses",
+    "control": "Preview market di landing",
+    "purpose": "Menampilkan kondisi market publik yang dipilih.",
+    "status": "UI sebagian",
+    "result": "Preview BTC terlihat; semua variasi market landing belum dioperasikan. Pemilih market terminal diuji terpisah."
+  },
+  {
+    "id": "T03",
+    "group": "Publik dan akses",
+    "control": "Ilustrasi How it works",
+    "purpose": "Menjelaskan deteksi aliran dan perubahan perilaku quote.",
+    "status": "UI sebagian",
+    "result": "Detect dan Step aside berganti tampilan; ilustrasi bukan bukti transaksi akun pengguna."
+  },
+  {
+    "id": "T04",
+    "group": "Publik dan akses",
+    "control": "Theme",
+    "purpose": "Mengganti tema terang dan gelap.",
+    "status": "UI",
+    "result": "Tema berganti dan dikembalikan; diuji pada origin simulator."
+  },
+  {
+    "id": "T05",
+    "group": "Publik dan akses",
+    "control": "Connect wallet dan Close modal",
+    "purpose": "Membuka pemilihan wallet dan membatalkannya.",
+    "status": "UI sebagian",
+    "result": "Modal menampilkan Browser Wallet, Rabby, MetaMask, dan OKX. Koneksi ekstensi dan signature nyata tidak dijalankan."
+  },
+  {
+    "id": "T06",
+    "group": "Publik dan akses",
+    "control": "SIWE sign in",
+    "purpose": "Mengautentikasi pemilik wallet melalui pesan.",
+    "status": "Kode",
+    "result": "Validasi nonce, domain, chain, dan signature dibaca. Belum diuji dengan wallet nyata pada pemeriksaan ini."
+  },
+  {
+    "id": "T07",
+    "group": "Publik dan akses",
+    "control": "Use a demo account",
+    "purpose": "Membuat sesi simulasi untuk mencoba aplikasi.",
+    "status": "UI",
+    "result": "Dua akun demo dapat masuk dan menyelesaikan setup; pergantian akun mengungkap F01."
+  },
+  {
+    "id": "T08",
+    "group": "Onboarding",
+    "control": "Perpl account dan balance",
+    "purpose": "Memastikan akun dan dana yang dibutuhkan tersedia.",
+    "status": "UI simulator",
+    "result": "Akun ditemukan dengan balance 1000 dan Continue aktif. Kondisi API gagal tercatat dalam audit sebelumnya."
+  },
+  {
+    "id": "T09",
+    "group": "Onboarding",
+    "control": "Open Perpl dan Check now",
+    "purpose": "Membuka tempat deposit serta memeriksa ulang akun.",
+    "status": "Kode",
+    "result": "Tujuan tautan dan refetch dibaca. Deposit, withdraw, dan akun yang baru didanai tidak diuji langsung."
+  },
+  {
+    "id": "T10",
+    "group": "Onboarding",
+    "control": "Navigasi langkah setup",
+    "purpose": "Menampilkan langkah yang tersedia sesuai prasyarat.",
+    "status": "UI sebagian",
+    "result": "Alur maju selesai. Semua kombinasi kembali, refresh, dan deep link belum diuji; label mobile dibahas dalam A12."
+  },
+  {
+    "id": "T11",
+    "group": "Onboarding",
+    "control": "Perpl API keys page",
+    "purpose": "Membuka pengelolaan key di Perpl.",
+    "status": "Kode",
+    "result": "Merupakan tujuan eksternal; pembuatan dan pencabutan key nyata tidak dilakukan."
+  },
+  {
+    "id": "T12",
+    "group": "Onboarding",
+    "control": "Fill a demo key",
+    "purpose": "Mengisi pasangan key khusus simulator.",
+    "status": "UI",
+    "result": "Field terisi dan bisa diteruskan ke validasi."
+  },
+  {
+    "id": "T13",
+    "group": "Onboarding",
+    "control": "Validate key",
+    "purpose": "Memeriksa kredensial lalu menghubungkannya dengan akun.",
+    "status": "UI simulator",
+    "result": "Key demo valid melanjutkan ke Limits. Penolakan jenis token dibahas dalam audit sebelumnya."
+  },
+  {
+    "id": "T14",
+    "group": "Policy dan risiko",
+    "control": "Preset risiko",
+    "purpose": "Mengisi batas dari pilihan preset.",
+    "status": "UI sebagian dan kode",
+    "result": "Balanced dan Custom digunakan, Conservative muncul melalui Fit. Seluruh preset dan batas operator belum diuji kombinasinya."
+  },
+  {
+    "id": "T15",
+    "group": "Policy dan risiko",
+    "control": "Pilihan market pada Limits",
+    "purpose": "Menentukan market yang boleh diperdagangkan.",
+    "status": "UI sebagian dan kode",
+    "result": "Perubahan market juga diuji melalui Trade ETH dan Stop ETH di terminal. Perlu memperlihatkan pengaruh jumlah market terhadap margin."
+  },
+  {
+    "id": "T16",
+    "group": "Policy dan risiko",
+    "control": "Custom limits",
+    "purpose": "Mengatur quote size, inventory, spread, daily loss, dan leverage.",
+    "status": "UI",
+    "result": "Input dapat diubah; draft yang tidak sesuai balance menonaktifkan Continue."
+  },
+  {
+    "id": "T17",
+    "group": "Policy dan risiko",
+    "control": "Margin calculator dan slider leverage",
+    "purpose": "Menghitung batas dari margin serta leverage.",
+    "status": "UI, F03",
+    "result": "Angka turunannya berubah, tetapi label aktif dan pemulihan input setelah reload tidak konsisten."
+  },
+  {
+    "id": "T18",
+    "group": "Policy dan risiko",
+    "control": "Fit to my balance",
+    "purpose": "Menyesuaikan draft agar sesuai kapasitas dana.",
+    "status": "UI, F04",
+    "result": "Menggunakan Conservative sehingga pilihan lain ikut berubah. Guard kebutuhan margin tetap berfungsi."
+  },
+  {
+    "id": "T19",
+    "group": "Policy dan risiko",
+    "control": "Continue dari Limits",
+    "purpose": "Memvalidasi dan menyimpan draft untuk Review.",
+    "status": "UI simulator",
+    "result": "Draft valid tersimpan dan Review dapat dibuka."
+  },
+  {
+    "id": "T20",
+    "group": "Policy dan risiko",
+    "control": "Review dan persetujuan real funds",
+    "purpose": "Menampilkan rangkuman sebelum menjalankan agent.",
+    "status": "UI simulator dan kode",
+    "result": "Rangkuman tampil. Gate persetujuan dana nyata dibaca dari kode, tidak dieksekusi."
+  },
+  {
+    "id": "T21",
+    "group": "Policy dan risiko",
+    "control": "Sign on Monad",
+    "purpose": "Mempublikasikan policy serta mengotorisasi agent bila diperlukan.",
+    "status": "Kode, F08 dan A05",
+    "result": "Dapat memerlukan dua transaksi. Penolakan signature, salah chain, dan reconnect perlu diuji pada staging."
+  },
+  {
+    "id": "T22",
+    "group": "Policy dan risiko",
+    "control": "Save policy",
+    "purpose": "Menyimpan perubahan batas dari halaman Policy.",
+    "status": "UI simulator",
+    "result": "Pesan sukses terlihat dan nilai policy tetap ada setelah reload. Masalah input kalkulator dibedakan dari keberhasilan penyimpanan."
+  },
+  {
+    "id": "T23",
+    "group": "Policy dan risiko",
+    "control": "Tautan transaksi policy",
+    "purpose": "Membuka bukti publikasi di explorer.",
+    "status": "Kode",
+    "result": "Hanya bermakna ketika hash transaksi tersedia. Tidak ada publikasi onchain baru dalam audit."
+  },
+  {
+    "id": "T24",
+    "group": "Terminal",
+    "control": "Start Monday, Start quoting, Start again",
+    "purpose": "Menjalankan atau melanjutkan agent.",
+    "status": "UI simulator",
+    "result": "Quote dan state Quoting muncul. Uji Start bersamaan dengan Kill merupakan temuan A01, bukan tertutup oleh keberhasilan normal ini."
+  },
+  {
+    "id": "T25",
+    "group": "Terminal",
+    "control": "Pemilih market",
+    "purpose": "Mengganti market chart, order book, serta model yang dilihat.",
+    "status": "UI",
+    "result": "BTC ke ETH berhasil. Melihat market yang off tidak otomatis menambahnya ke policy."
+  },
+  {
+    "id": "T26",
+    "group": "Terminal",
+    "control": "Trade market",
+    "purpose": "Menambahkan market ke policy.",
+    "status": "UI simulator",
+    "result": "Trade ETH membuat agent aktif mengeluarkan quote ETH. Pada mode registry, jalur signature belum diuji."
+  },
+  {
+    "id": "T27",
+    "group": "Terminal",
+    "control": "Stop market",
+    "purpose": "Menghentikan quote market tertentu dan mengerjakan keluar posisinya.",
+    "status": "UI simulator",
+    "result": "Stop ETH menghapus market aktif sementara agent global tetap berjalan. Bedakan akibatnya dari Stop global."
+  },
+  {
+    "id": "T28",
+    "group": "Terminal",
+    "control": "Timeframe chart",
+    "purpose": "Mengubah interval candle.",
+    "status": "UI sebagian",
+    "result": "5m dipilih dan preferensi bertahan pada tab terminal baru. Pilihan timeframe lain dibaca dari kode, tidak seluruhnya diklik."
+  },
+  {
+    "id": "T29",
+    "group": "Terminal",
+    "control": "EMA 20, EMA 50, EMA 200",
+    "purpose": "Menampilkan rata rata bergerak harga.",
+    "status": "UI",
+    "result": "Ketiga pilihan indikator aktif dan legend tampil. Akurasi matematis seluruh seri tidak dihitung ulang dalam audit ini."
+  },
+  {
+    "id": "T30",
+    "group": "Terminal",
+    "control": "Bollinger Bands",
+    "purpose": "Menampilkan pita variasi harga.",
+    "status": "UI",
+    "result": "Pilihan aktif dan plot tampil bersama indikator lain."
+  },
+  {
+    "id": "T31",
+    "group": "Terminal",
+    "control": "Volume dan VWAP",
+    "purpose": "Menampilkan volume serta harga rata rata berbobot volume.",
+    "status": "UI sebagian",
+    "result": "Pilihan aktif; VWAP pada simulator tampil sebagai nilai tidak tersedia karena volume candle nol. Nilai VWAP live belum divalidasi."
+  },
+  {
+    "id": "T32",
+    "group": "Terminal",
+    "control": "RSI dan MACD",
+    "purpose": "Menampilkan oscillator serta momentum.",
+    "status": "UI",
+    "result": "Pilihan aktif dan panel tambahan tampil. Semua indikator sekaligus meningkatkan kepadatan terminal."
+  },
+  {
+    "id": "T33",
+    "group": "Terminal",
+    "control": "Order book dan Trades",
+    "purpose": "Menunjukkan antrean pasar serta transaksi pasar terbaru.",
+    "status": "UI sebagian dan kode",
+    "result": "Data order book terlihat. Trades menggambarkan pasar; berbeda dari Fills milik agent. Semua interaksi panel belum diuji terpisah."
+  },
+  {
+    "id": "T34",
+    "group": "Terminal",
+    "control": "Open orders",
+    "purpose": "Memperlihatkan order agent yang masih aktif.",
+    "status": "UI",
+    "result": "Dua sisi quote terlihat; Buy burst mengurangi sisi ask sehingga tersisa satu sisi."
+  },
+  {
+    "id": "T35",
+    "group": "Terminal",
+    "control": "Positions",
+    "purpose": "Memperlihatkan inventory, entry, mark, dan open PnL.",
+    "status": "UI",
+    "result": "Tab merender state flat dan posisi dari fills. Ini tampilan baca; tidak menyediakan close per baris."
+  },
+  {
+    "id": "T36",
+    "group": "Terminal",
+    "control": "Fills",
+    "purpose": "Memperlihatkan eksekusi milik agent dan markout.",
+    "status": "UI",
+    "result": "State kosong tampil dengan penjelasan; fills muncul setelah simulasi berjalan."
+  },
+  {
+    "id": "T37",
+    "group": "Terminal",
+    "control": "Decisions",
+    "purpose": "Memperlihatkan keputusan, alasan, efek quote, dan status bukti.",
+    "status": "UI",
+    "result": "Keputusan Rules serta Reflex muncul dan record detail bisa dibuka."
+  },
+  {
+    "id": "T38",
+    "group": "Terminal",
+    "control": "Equity",
+    "purpose": "Memperlihatkan perubahan equity akun.",
+    "status": "UI",
+    "result": "Chart tampil ketika tab dipilih. Rekonsiliasi deposit, funding, dan PnL nyata belum diuji di sini."
+  },
+  {
+    "id": "T39",
+    "group": "Terminal",
+    "control": "Quote model",
+    "purpose": "Menjelaskan pembentuk harga, spread, skew, dan ukuran quote.",
+    "status": "UI",
+    "result": "Rincian market terpilih tampil. Ini penjelasan state, bukan input untuk mengubah setiap komponen secara manual."
+  },
+  {
+    "id": "T40",
+    "group": "Terminal",
+    "control": "Guide dan Got it",
+    "purpose": "Menjelaskan cara membaca terminal.",
+    "status": "UI",
+    "result": "Dialog terbuka dan dapat ditutup. Kemunculan otomatis pada penyimpanan browser yang benar benar baru belum diuji ulang."
+  },
+  {
+    "id": "T41",
+    "group": "Terminal",
+    "control": "Buy burst",
+    "purpose": "Memicu aliran beli besar pada simulator.",
+    "status": "UI simulator",
+    "result": "Ask ditarik selama periode Reflex dan keputusan tercatat. Ini alat demonstrasi, bukan tombol order beli pengguna."
+  },
+  {
+    "id": "T42",
+    "group": "Terminal",
+    "control": "Sell burst",
+    "purpose": "Memicu aliran jual besar pada simulator.",
+    "status": "UI simulator",
+    "result": "Bid ETH ditarik dan keputusan tercatat. Hanya tersedia pada simulator."
+  },
+  {
+    "id": "T43",
+    "group": "Terminal",
+    "control": "Stop global",
+    "purpose": "Membatalkan order agent dan menghentikan pemantauan.",
+    "status": "UI simulator, F01",
+    "result": "Pada satu sesi agent menjadi Stopped; posisi dapat tetap terbuka dan peringatannya tampil. Pergantian akun antar tab menargetkan akun yang salah."
+  },
+  {
+    "id": "T44",
+    "group": "Terminal",
+    "control": "Kill and flatten",
+    "purpose": "Membatalkan order dan menutup posisi.",
+    "status": "Sebelumnya dan kode",
+    "result": "Alur manual normal serta kegagalan tertentu diuji pada audit sebelumnya. Pemeriksaan ini menguji flatten yang dipicu stop loss; tidak mengklaim semua kegagalan Kill selesai."
+  },
+  {
+    "id": "T45",
+    "group": "Terminal",
+    "control": "Session stop loss",
+    "purpose": "Memicu Kill ketika rugi sesi mencapai batas.",
+    "status": "UI simulator",
+    "result": "Batas 0.01 memicu penghentian; setelah cleanup, order dan posisi terlihat nol. Screenshot disimpan."
+  },
+  {
+    "id": "T46",
+    "group": "Terminal",
+    "control": "Take profit",
+    "purpose": "Menghentikan agent dan meminta penutupan posisi ketika target sesi tercapai.",
+    "status": "Fixture Runner",
+    "result": "Target 5, hasil setelah fee 5.95 menghasilkan paused, cancel satu kali, flatten satu kali. Fixture tidak memiliki posisi terbuka sehingga tidak membuktikan fill penutupan di venue."
+  },
+  {
+    "id": "T47",
+    "group": "Terminal",
+    "control": "Status koneksi dan alasan penghentian",
+    "purpose": "Menjelaskan freshness, pause, kill, atau cleanup yang belum selesai.",
+    "status": "UI sebagian dan kode",
+    "result": "State normal dan stop loss terlihat. Kode reconnect berubah selama audit; perilaku offline versi terbaru belum diuji ulang."
+  },
+  {
+    "id": "T48",
+    "group": "Analytics publik",
+    "control": "Window 24H, 7D, 30D, All",
+    "purpose": "Memilih periode ringkasan protokol.",
+    "status": "UI",
+    "result": "Keempat pilihan menunjukkan selected tanpa error terlihat. Ketepatan total tetap bergantung pada coverage data."
+  },
+  {
+    "id": "T49",
+    "group": "Analytics publik",
+    "control": "Metric Volume, Fees, Traders, Net flows, Liquidations",
+    "purpose": "Mengganti metrik grafik histori.",
+    "status": "UI",
+    "result": "Lima pilihan berganti dan terpilih."
+  },
+  {
+    "id": "T50",
+    "group": "Analytics publik",
+    "control": "Range 30D, 90D, All",
+    "purpose": "Mengubah rentang histori grafik.",
+    "status": "UI",
+    "result": "Ketiga pilihan terpilih. Ini tidak mengesahkan tanggal kosong sebagai nol."
+  },
+  {
+    "id": "T51",
+    "group": "Analytics publik",
+    "control": "Leaderboard Sort Volume dan PnL",
+    "purpose": "Mengubah dasar urutan akun.",
+    "status": "UI",
+    "result": "Kedua pilihan dapat diaktifkan."
+  },
+  {
+    "id": "T52",
+    "group": "Analytics publik",
+    "control": "Leaderboard Days Today, 7D, 30D",
+    "purpose": "Mengubah periode leaderboard.",
+    "status": "UI",
+    "result": "Ketiga pilihan terpilih. Batas waktu yang konsisten perlu pengujian data terpisah."
+  },
+  {
+    "id": "T53",
+    "group": "Analytics publik",
+    "control": "Pencarian wallet atau nomor akun",
+    "purpose": "Membuka detail akun publik.",
+    "status": "UI",
+    "result": "Nomor akun 424 berhasil dibuka. Di Compare, fungsi ini tetap navigasi sehingga petunjuknya membingungkan, F06."
+  },
+  {
+    "id": "T54",
+    "group": "Analytics publik",
+    "control": "Detail wallet",
+    "purpose": "Menampilkan posisi dan statistik akun publik.",
+    "status": "UI",
+    "result": "Data termuat. Kelengkapan seluruh histori, profit factor, dan beban payload dibahas pada audit sebelumnya; kode metrik berubah selama pemeriksaan."
+  },
+  {
+    "id": "T55",
+    "group": "Analytics publik",
+    "control": "Copy address",
+    "purpose": "Menyalin alamat wallet.",
+    "status": "Kode",
+    "result": "Handler clipboard tersedia. Hasil clipboard dan penanganan kegagalannya belum diuji."
+  },
+  {
+    "id": "T56",
+    "group": "Analytics publik",
+    "control": "Watch dan Watching",
+    "purpose": "Menyimpan pilihan wallet pada browser.",
+    "status": "UI, F02",
+    "result": "Toggle bekerja untuk string identik; status berbeda ketika kapitalisasi alamat berubah. Preferensi uji dikembalikan."
+  },
+  {
+    "id": "T57",
+    "group": "Analytics publik",
+    "control": "Compare dari wallet",
+    "purpose": "Membuka perbandingan dengan wallet pilihan.",
+    "status": "UI",
+    "result": "Kolom awal terbentuk. Alias alamat dan nomor akun belum disatukan."
+  },
+  {
+    "id": "T58",
+    "group": "Analytics publik",
+    "control": "Add wallet, Remove, dan chip Watching",
+    "purpose": "Mengelola hingga empat kolom perbandingan.",
+    "status": "UI sebagian, F02",
+    "result": "Tambah, hapus, state kosong, dan tambah melalui chip bekerja. Batas empat dibaca dari kode; wallet sama masih bisa menduplikasi kolom."
+  },
+  {
+    "id": "T59",
+    "group": "Analytics pribadi",
+    "control": "My Monday ketika belum login",
+    "purpose": "Memberi jalan masuk ke performa pribadi.",
+    "status": "UI, F07",
+    "result": "Prompt sign in muncul, tetapi tujuan semula tidak dipertahankan."
+  },
+  {
+    "id": "T60",
+    "group": "Analytics pribadi",
+    "control": "My Monday dan filter periode",
+    "purpose": "Menampilkan fills, volume, PnL, market, serta regime milik pengguna.",
+    "status": "UI sebagian, F05",
+    "result": "Data akun simulator tampil dan 7D dapat dipilih. Identitas serta asal data tidak cukup jelas."
+  },
+  {
+    "id": "T61",
+    "group": "Bukti",
+    "control": "Evidence BTC, ETH, SOL",
+    "purpose": "Mengganti market event study dan replay historis.",
+    "status": "UI",
+    "result": "Ketiga tab terpilih dan konten sesuai market tampil. Audit ini tidak mengulang komputasi dataset historis."
+  },
+  {
+    "id": "T62",
+    "group": "Bukti",
+    "control": "Record keputusan",
+    "purpose": "Membuka payload dan hash keputusan.",
+    "status": "UI",
+    "result": "Record 7 berhasil dibuka dari Decisions."
+  },
+  {
+    "id": "T63",
+    "group": "Bukti",
+    "control": "Recompute hashes in this browser",
+    "purpose": "Menghitung ulang hash payload untuk dibandingkan dengan catatan.",
+    "status": "UI",
+    "result": "Dua hasil matches terlihat. Ini verifikasi kecocokan payload, bukan bukti bahwa transaksi onchain berhasil."
+  },
+  {
+    "id": "T64",
+    "group": "Bukti",
+    "control": "Explorer keputusan",
+    "purpose": "Membuka transaksi log ketika tersedia.",
+    "status": "Kode",
+    "result": "Harness tidak mengaktifkan log chain dan tidak menghasilkan transaksi untuk diuji."
+  },
+  {
+    "id": "T65",
+    "group": "Keluar dan pemulihan",
+    "control": "Sign out",
+    "purpose": "Menghapus sesi browser dan melepas koneksi wallet lokal.",
+    "status": "UI simulator, F01",
+    "result": "Tab asal kembali ke Connect wallet. Tab lain masih menampilkan data dan kontrol akun lama."
+  },
+  {
+    "id": "T66",
+    "group": "Keluar dan pemulihan",
+    "control": "Disconnect dan Stay connected",
+    "purpose": "Mengonfirmasi penghapusan koneksi key dari Monday.",
+    "status": "UI simulator sebagian",
+    "result": "Disconnect akun B yang stopped dan flat berhasil kembali ke setup akun. Kegagalan HTTP dan pesan pemulihan dibahas dalam A10; Stay connected dibaca dari dialog."
+  },
+  {
+    "id": "T67",
+    "group": "Keluar dan pemulihan",
+    "control": "Open Perpl dan Perpl API keys dari Policy",
+    "purpose": "Mengelola posisi atau mencabut izin key pada venue.",
+    "status": "Kode",
+    "result": "Tujuan eksternal tersedia. Tidak ada transaksi atau pencabutan key nyata."
+  }
+]

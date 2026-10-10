@@ -1,0 +1,11 @@
+{
+  "description": "Credentials DELETE returned injected 503. Dialog closed, no product error or retry appeared.",
+  "logs": [
+    {
+      "level": "error",
+      "message": "ApiError: Audit injected upstream failure\n    at api (http://127.0.0.1:3100/_next/static/chunks/_0svatcv._.js:898:24)\n    at async remove (http://127.0.0.1:3100/_next/static/chunks/_125qa8q._.js:135:9)",
+      "timestamp": "2026-10-10T06:44:35.951Z",
+      "url": "http://127.0.0.1:3100/_next/static/chunks/_0svatcv._.js"
+    }
+  ]
+}

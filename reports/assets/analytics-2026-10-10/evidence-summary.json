@@ -1,0 +1,172 @@
+{
+  "title": "Monday analytics evidence summary",
+  "provenance": "Structured transcription of tool-observed API responses and read-only SQLite queries from the preceding review; not a raw response export.",
+  "reviewDate": "2026-10-10",
+  "displayTimezone": "Asia/Jakarta",
+  "baseUrl": "http://localhost:3000",
+  "gitHead": "d157a662e75972ae261c7a6204ab6fa7f676ed53",
+  "workingTree": "Existing uncommitted changes were present during inspection.",
+  "laterSnapshotAttempt": "A fresh API snapshot attempted while preparing the report timed out after 10 seconds. The historical observations below were retained.",
+  "runtimeConfigurationObserved": {
+    "sim": false,
+    "paper": false,
+    "network": "mainnet",
+    "realFunds": true,
+    "smartMoney": "nansen",
+    "llm": true,
+    "registry": null,
+    "chainLog": false
+  },
+  "endpointsObserved": [
+    {
+      "path": "/api/stats/overview",
+      "status": 200
+    },
+    {
+      "path": "/api/stats/risk",
+      "status": 200
+    },
+    {
+      "path": "/api/stats/liquidations?limit=40",
+      "status": 200
+    },
+    {
+      "path": "/api/stats/traders?days=7&sort=net",
+      "status": 200
+    }
+  ],
+  "overviewSample": {
+    "apiAt": 1791608552816,
+    "apiAtUtc": "2026-10-10T05:02:32.816Z",
+    "indexer": {
+      "source": "hypersync",
+      "block": 112093533,
+      "head": 112093532,
+      "live": true,
+      "lagSec": 78.816,
+      "since": 1770940800000
+    },
+    "headline": {
+      "volume24hUsd": 9510680.230198,
+      "volume7dUsd": 155366217.30377,
+      "volume30dUsd": 1704579086.3339734,
+      "volumeAllUsd": 8670528090.506643,
+      "openInterestUsd": 1474624.109759,
+      "tvlUsd": 3292705.194645,
+      "accounts": 5442,
+      "fees24hUsd": 2690.897033,
+      "fees7dUsd": 7014.677471000015,
+      "fees30dUsd": 7014.677471000015,
+      "feesAllUsd": 529450.1834580001,
+      "activeTraders24h": 280,
+      "activeTraders7d": 398,
+      "activeTraders30d": 398,
+      "netFlow24hUsd": -456220.983021,
+      "liquidations24hUsd": 10.001892000000002
+    },
+    "eth": {
+      "tickerVolume24hUsd": 786188.46509,
+      "todayCandleVolumeUsd": 893211.0031,
+      "candleDateUtc": "2026-10-10"
+    },
+    "dailyCount": 241
+  },
+  "subsequentCoverageProbe": {
+    "note": "Later reads during the same review; no precise API timestamp retained for this sample.",
+    "fees7dUsd": 7015.4925880000155,
+    "fees30dUsd": 7015.4925880000155,
+    "periods": [
+      {
+        "days": 7,
+        "returnedDays": 7,
+        "daysWithFeeAggregate": 4,
+        "missingFeeDatesWithPositiveCandleVolume": [
+          "2026-10-04",
+          "2026-10-05",
+          "2026-10-07"
+        ]
+      },
+      {
+        "days": 30,
+        "returnedDays": 30,
+        "daysWithFeeAggregate": 4
+      },
+      {
+        "days": 90,
+        "returnedDays": 90,
+        "daysWithFeeAggregate": 33
+      }
+    ]
+  },
+  "sqliteProbe": {
+    "database": "apps/server/data/perpl-stats-mainnet.sqlite",
+    "readOnly": true,
+    "table": "px_day",
+    "indexedDays": 180,
+    "aggregateDateGaps": [
+      {
+        "from": "2026-02-17",
+        "to": "2026-02-18",
+        "missingDays": 2
+      },
+      {
+        "from": "2026-02-21",
+        "to": "2026-02-21",
+        "missingDays": 1
+      },
+      {
+        "from": "2026-08-11",
+        "to": "2026-10-05",
+        "missingDays": 56
+      },
+      {
+        "from": "2026-10-07",
+        "to": "2026-10-07",
+        "missingDays": 1
+      }
+    ],
+    "latestAggregateDays": [
+      {
+        "date": "2026-08-10",
+        "day": 20675,
+        "accounts": 754,
+        "fills": 361689,
+        "fees": 13327.856049000015
+      },
+      {
+        "date": "2026-10-06",
+        "day": 20732,
+        "accounts": 139,
+        "fills": 17079,
+        "fees": 633.633348
+      },
+      {
+        "date": "2026-10-08",
+        "day": 20734,
+        "accounts": 243,
+        "fills": 93897,
+        "fees": 3136.7855720000093
+      },
+      {
+        "date": "2026-10-09",
+        "day": 20735,
+        "accounts": 288,
+        "fills": 131528,
+        "fees": 2939.7967670000057
+      },
+      {
+        "date": "2026-10-10",
+        "day": 20736,
+        "accounts": 122,
+        "fills": 19514,
+        "fees": 305.71840400000025
+      }
+    ]
+  },
+  "screenshot": {
+    "file": "analytics-fees.jpg",
+    "state": "Window 7D, Fees metric, 90D chart range",
+    "note": "Captured during the preceding browser review."
+  },
+  "interpretation": "Missing aggregate dates and conflicting volume values were observed. Raw-log completeness and root cause are not yet established. Source switching is a code-supported hypothesis, not a confirmed incident history."
+}

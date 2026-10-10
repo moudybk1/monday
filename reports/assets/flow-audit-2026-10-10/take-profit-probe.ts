@@ -1,0 +1,15 @@
+import { Runner } from './src/runner';
+import { upsertUser } from './src/db';
+import { Collector } from './src/collector';
+import { PRESETS } from '@monday/core';
+let onFill=(f:any)=>{};
+const v={balance:1000,cancelled:0,flattened:0,connect:async()=>v.account(),close(){},connected:()=>true,quote:()=>null,setQuote:async()=>{},cancelAll:async()=>{v.cancelled++},flatten:async()=>{v.flattened++},on:(e:string,cb:any)=>{if(e==='fill')onFill=cb},account:()=>({accountId:1,balanceUsd:v.balance,canTrade:true}),position:()=>({size:0,entryPrice:0})};
+const driver={kind:'perpl',open:()=>v,feed:{specs:()=>({}),snapshot:()=>null,candles:async()=>[]}} as never;
+const wallet='0x00000000000000000000000000000000000f107';
+const r=new Runner(upsertUser(wallet),wallet,1,{mode:'maker',markets:['BTC'],preset:'balanced',...PRESETS.balanced},{driver,collector:new Collector(null),k:()=>0,notify:()=>{},creds:()=>({wallet,accountId:1,token:'audit',secret:'audit'})});
+await r.start({stopLossUsd:null,takeProfitUsd:5});r.tick();
+v.balance+=5.95;
+onFill({id:'audit:tp:1',sym:'BTC',side:'ask',price:100000,size:.001,feeUsd:.05,realizedUsd:6,isMaker:true,ts:Date.now()});
+r.tick();await new Promise(ok=>setImmediate(ok));
+console.log(JSON.stringify({target:5,realizedAfterFee:5.95,status:r.status,owes:r.owes,cancelCalls:v.cancelled,flattenCalls:v.flattened,alerts:r.state().alerts.map(a=>a.message)},null,2));
+r.dispose();process.exit(0);

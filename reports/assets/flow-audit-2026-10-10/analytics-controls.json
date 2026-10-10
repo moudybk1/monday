@@ -1,0 +1,104 @@
+[
+  {
+    "group": "Window",
+    "value": "24H",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Window",
+    "value": "7D",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Window",
+    "value": "30D",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Window",
+    "value": "All",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Metric",
+    "value": "Fees",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Metric",
+    "value": "Traders",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Metric",
+    "value": "Net flows",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Metric",
+    "value": "Liquidations",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Metric",
+    "value": "Volume",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Range",
+    "value": "30D",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Range",
+    "value": "90D",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Range",
+    "value": "All",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Sort",
+    "value": "Volume",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Sort",
+    "value": "PnL",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Days",
+    "value": "Today",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Days",
+    "value": "7D",
+    "selected": "true",
+    "hasVisibleError": false
+  },
+  {
+    "group": "Days",
+    "value": "30D",
+    "selected": "true",
+    "hasVisibleError": false
+  }
+]

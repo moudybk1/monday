@@ -1,0 +1,54 @@
+{
+  "setup": [
+    {
+      "path": "/auth/demo",
+      "status": 200,
+      "result": "isolated demo account"
+    },
+    {
+      "path": "/credentials",
+      "status": 200,
+      "result": {
+        "accountId": 7688,
+        "balanceUsd": 1000,
+        "tradeScope": true
+      }
+    },
+    {
+      "path": "/policy",
+      "status": 200,
+      "result": {
+        "policy": {
+          "mode": "maker",
+          "markets": [
+            "BTC"
+          ],
+          "preset": "conservative",
+          "quoteSizeUsd": 25,
+          "maxInventoryUsd": 250,
+          "minHalfSpreadBps": 6,
+          "maxDailyLossUsd": 25,
+          "maxLeverage": 2
+        },
+        "policyHash": "0xf9db937daa79d53f1716446bf8e4a3dfc0bb6806fe93cf6b09f80379f201f0c3",
+        "onchainTx": null,
+        "pending": null
+      }
+    },
+    {
+      "path": "/agent/start",
+      "status": 200,
+      "result": {
+        "status": "quoting"
+      }
+    }
+  ],
+  "firstRead429": 58,
+  "kill": {
+    "status": 429,
+    "body": {
+      "error": "rate_limited",
+      "message": "Too many requests. Try again in a minute."
+    }
+  }
+}

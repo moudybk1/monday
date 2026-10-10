@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-10",
+  "baseCommit": "d157a662e75972ae261c7a6204ab6fa7f676ed53",
+  "scope": "working tree including preexisting local edits",
+  "tests": {
+    "vitest": {
+      "files": 7,
+      "tests": 66,
+      "status": "passed"
+    },
+    "typecheck": "passed",
+    "forge test -q": {
+      "exitCode": 0
+    },
+    "productionBuild": {
+      "status": "passed",
+      "location": "isolated copy with original next.config.ts"
+    }
+  },
+  "mutatingTests": "isolated simulator only",
+  "appImplementationEdited": false,
+  "mainnetTransactions": 0
+}

@@ -1,0 +1,47 @@
+{
+  "at": 1791614217183,
+  "indexer": {
+    "source": "hypersync",
+    "block": 112112531,
+    "head": 112112530,
+    "live": true,
+    "lagSec": 26.183,
+    "since": 1770940800000
+  },
+  "headline": {
+    "volume24hUsd": 9169096.771082,
+    "volume7dUsd": 155852357.293924,
+    "volume30dUsd": 1705065226.3241272,
+    "volumeAllUsd": 8671014230.496796,
+    "openInterestUsd": 1496300.047882,
+    "tvlUsd": 3292387.194645,
+    "accounts": 5442,
+    "fees24hUsd": 2603.976031,
+    "fees7dUsd": 7112.428918000015,
+    "fees30dUsd": 7112.428918000015,
+    "feesAllUsd": 529547.9349050001,
+    "activeTraders24h": 282,
+    "activeTraders7d": 402,
+    "activeTraders30d": 402,
+    "netFlow24hUsd": -454626.843021,
+    "liquidations24hUsd": 10.001892000000002
+  },
+  "coverage": {
+    "7": {
+      "daily": 7,
+      "feeDays": 4
+    },
+    "30": {
+      "daily": 30,
+      "feeDays": 4
+    },
+    "90": {
+      "daily": 90,
+      "feeDays": 33
+    }
+  },
+  "ETH": {
+    "ticker24h": 766988.93468,
+    "todayCandle": 1123395.6839
+  }
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "file": "apps/server/src/api.ts",
+    "audited_sha256": "7a8a9a8e32faf5ac810d4b0b69394154c0c671d50e6b7e2e9c5a2c96400c02d5",
+    "workspace_sha256": "08a9608435587372454cf5ac4531f31a06eea32978ba864de8583c0cc13a3e8c",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/web/lib/live.ts",
+    "audited_sha256": "1b7a449f60083ac9ceac578b6c0979fe5fbd9fdb1048f2a7fab5a48b8efe814a",
+    "workspace_sha256": "3d2821982e740e67f2d157571d8a679acb3f5e1536a3cf6bd1340b4d2d10644e",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/web/lib/wallet.tsx",
+    "audited_sha256": "23a4ec8280b6fb264808754d18ddb2175e500cad8d02b304616e52c5409b571f",
+    "workspace_sha256": "23a4ec8280b6fb264808754d18ddb2175e500cad8d02b304616e52c5409b571f",
+    "same_as_audited": true
+  },
+  {
+    "file": "apps/web/components/policy-form.tsx",
+    "audited_sha256": "e08b26a7a327c9b80de6443499cece8a467fe98adcc83d7c21daec301a3138e5",
+    "workspace_sha256": "6e9a75ac9b05047143772c32ebc27cfdb8b5a90879896fa04e004876bb2a386d",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/server/src/stats/routes.ts",
+    "audited_sha256": "6960e467a32bc9ac329f6728349ac7a6866532534bc68906f95cb7211952db51",
+    "workspace_sha256": "2dd5bf23fe470d2cf9b3aa9f36f6a44a6d56d4304a771661fcf80a760d6d5c5c",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/web/components/stats-ui.tsx",
+    "audited_sha256": "24644b507656ccab6bc69a0d4f764a13908aef536d12c03c611249a59b3cfb2d",
+    "workspace_sha256": "6eb97a1874ecc30562b6e96bf85eaefb70081f3ec217b018bf9668baa01e61ec",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/web/app/analytics/compare/page.tsx",
+    "audited_sha256": "37a98e7789e6528f70d7f84a2c8aacfc623ff577547e26b468873ee40e7b8356",
+    "workspace_sha256": "7b7220384503d6f42275b53994ce6fd87b777daad31e97854ad2d1bd8f5d3e4f",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/web/app/analytics/layout.tsx",
+    "audited_sha256": "daff7f8eac321a81dc69f68efa8d30ce61ba7b9a199cf4bf0fd275d4d8d66011",
+    "workspace_sha256": "7ea74945e7794ddd0230dc041779332186ff7d1656f279ef637cd2c59060d5de",
+    "same_as_audited": false
+  },
+  {
+    "file": "apps/web/app/analytics/monday/page.tsx",
+    "audited_sha256": "d28745ab5f3baef95589e7f80a8aa2084ce0fb509695a8daf25e6b52abadbd0e",
+    "workspace_sha256": "d28745ab5f3baef95589e7f80a8aa2084ce0fb509695a8daf25e6b52abadbd0e",
+    "same_as_audited": true
+  },
+  {
+    "file": "apps/web/app/app/onboarding/page.tsx",
+    "audited_sha256": "9b8fcf35a6c1e7864a5b0e2139a0f32c23ad06aa0f21c2abf1dc91faa1414810",
+    "workspace_sha256": "9b8fcf35a6c1e7864a5b0e2139a0f32c23ad06aa0f21c2abf1dc91faa1414810",
+    "same_as_audited": true
+  },
+  {
+    "file": "apps/web/app/app/page.tsx",
+    "audited_sha256": "fefeb15b7842bb685dd48adf8c6387c9d1110dea4d558aa9a9d419fcf3f2193b",
+    "workspace_sha256": "cfde0aff18242a41f9f412ac20eed815aef0350ada36a006f5aaf2ae86676033",
+    "same_as_audited": false
+  }
+]

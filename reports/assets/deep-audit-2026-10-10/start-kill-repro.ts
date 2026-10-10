@@ -1,0 +1,17 @@
+import {Runner} from './src/runner';
+import {upsertUser} from './src/db';
+import {PRESETS} from '@monday/core';
+let release:()=>void=()=>{};
+const gate=new Promise<void>(r=>release=r);
+const v={size:.01,connect:async()=>{await gate;return v.account()},close(){},on(){},connected:()=>true,quote:()=>null,setQuote:async()=>{},account:()=>({accountId:1,balanceUsd:1000,canTrade:true}),position:()=>({size:v.size,entryPrice:0}),cancelAll:async()=>{},flatten:async()=>{v.size=0}};
+const driver={kind:'perpl',open:()=>v,feed:{specs:()=>({}),snapshot:()=>null,candles:async()=>[]}} as never;
+const wallet='0x00000000000000000000000000000000000a0d17';
+const r=new Runner(upsertUser(wallet),wallet,1,{mode:'maker',markets:['BTC'],preset:'balanced',...PRESETS.balanced},{driver,collector:{} as never,k:()=>0,notify:()=>{},creds:()=>({wallet,accountId:1,token:'audit',secret:'audit'})});
+const starting=r.start();
+await Promise.resolve();
+await r.kill('manual');
+const afterKill={status:r.status,owes:r.owes,size:v.size};
+release();await starting;
+const afterStartResolved={status:r.status,owes:r.owes,size:v.size};
+console.log(JSON.stringify({scenario:'Kill while Start awaits connection',afterKill,afterStartResolved},null,2));
+r.dispose();process.exit(0);

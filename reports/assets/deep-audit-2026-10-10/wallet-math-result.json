@@ -1,0 +1,73 @@
+{
+  "actual": {
+    "trades": 2,
+    "closes": 1,
+    "volumeUsd": 200,
+    "feesUsd": 1,
+    "fundingUsd": 0,
+    "pnlUsd": 10,
+    "netUsd": 9,
+    "winRate": 1,
+    "profitFactor": null,
+    "maxDrawdownUsd": 1,
+    "longestWin": 1,
+    "longestLoss": 0,
+    "avgHoldMin": null,
+    "firstTs": 1000,
+    "lastTs": 1000,
+    "byMarket": [
+      {
+        "sym": "BTC",
+        "trades": 2,
+        "volumeUsd": 200,
+        "netUsd": 9
+      }
+    ],
+    "curve": [
+      {
+        "t": 1000,
+        "v": 10
+      },
+      {
+        "t": 1000,
+        "v": 9
+      }
+    ]
+  },
+  "chronological": {
+    "trades": 2,
+    "closes": 1,
+    "volumeUsd": 200,
+    "feesUsd": 1,
+    "fundingUsd": 0,
+    "pnlUsd": 10,
+    "netUsd": 9,
+    "winRate": 1,
+    "profitFactor": null,
+    "maxDrawdownUsd": 1,
+    "longestWin": 1,
+    "longestLoss": 0,
+    "avgHoldMin": 0,
+    "firstTs": 1000,
+    "lastTs": 1000,
+    "byMarket": [
+      {
+        "sym": "BTC",
+        "trades": 2,
+        "volumeUsd": 200,
+        "netUsd": 9
+      }
+    ],
+    "curve": [
+      {
+        "t": 1000,
+        "v": -1
+      },
+      {
+        "t": 1000,
+        "v": 9
+      }
+    ]
+  },
+  "profitFactorBeforeSerialization": "Infinity"
+}

@@ -1,0 +1,12 @@
+{
+  "target": 5,
+  "realizedAfterFee": 5.95,
+  "status": "paused",
+  "owes": null,
+  "cancelCalls": 1,
+  "flattenCalls": 1,
+  "alerts": [
+    "Take profit reached: $5.95 this session. Orders cancelled and positions closed.",
+    "Monday started quoting."
+  ]
+}

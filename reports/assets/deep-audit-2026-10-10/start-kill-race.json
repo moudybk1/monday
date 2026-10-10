@@ -1,0 +1,13 @@
+{
+  "scenario": "Kill while Start awaits connection",
+  "afterKill": {
+    "status": "killed",
+    "owes": "flatten",
+    "size": 0.01
+  },
+  "afterStartResolved": {
+    "status": "quoting",
+    "owes": null,
+    "size": 0.01
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "config": {
+    "network": "mainnet",
+    "realFunds": true,
+    "registry": null
+  },
+  "health": {
+    "ok": true,
+    "network": "mainnet",
+    "realFunds": true,
+    "venue": "perpl",
+    "chainLog": false
+  }
+}

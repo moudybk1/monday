@@ -1,0 +1,50 @@
+{
+  "10": {
+    "account": 10,
+    "historyComplete": true,
+    "bytes": 4389807,
+    "performance": {
+      "trades": 100000,
+      "closes": 50805,
+      "volumeUsd": 227969.73481799912,
+      "feesUsd": 78.67924900000071,
+      "fundingUsd": -1.2999999999999733e-05,
+      "pnlUsd": -53.25042699999923,
+      "netUsd": -131.92968900000403,
+      "winRate": 0.19708690089558115,
+      "profitFactor": 0.13868462098905496,
+      "maxDrawdownUsd": 131.92968900000403,
+      "longestWin": 8,
+      "longestLoss": 197,
+      "avgHoldMin": 2.553944848975189,
+      "firstTs": 1785863077000,
+      "lastTs": 1791614417000
+    },
+    "curveLength": 100000,
+    "visibleTrades": 300
+  },
+  "424": {
+    "account": 424,
+    "historyComplete": true,
+    "bytes": 1117,
+    "performance": {
+      "trades": 2,
+      "closes": 1,
+      "volumeUsd": 3988.1306999999997,
+      "feesUsd": 1.000045,
+      "fundingUsd": 0,
+      "pnlUsd": 12.0467,
+      "netUsd": 11.046655,
+      "winRate": 1,
+      "profitFactor": null,
+      "maxDrawdownUsd": 1.000045,
+      "longestWin": 1,
+      "longestLoss": 0,
+      "avgHoldMin": 137.41666666666666,
+      "firstTs": 1776258807000,
+      "lastTs": 1776267052000
+    },
+    "curveLength": 2,
+    "visibleTrades": 2
+  }
+}
