@@ -19,7 +19,7 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between gap-2 px-4 sm:px-8 md:grid md:grid-cols-[1fr_auto_1fr] md:justify-items-start md:gap-6">
         <Wordmark />
         {/* Phones get every link in the menu instead of a row that cannot fit them. */}
-        <nav className="hidden items-center gap-1 text-[13px] md:flex" aria-label="Main">
+        <nav className="hidden items-center gap-1 text-[14px] md:flex" aria-label="Main">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} className="rounded-sm px-3 py-1.5 text-fg-2 hover:bg-raised hover:text-fg">{l.label}</Link>
           ))}

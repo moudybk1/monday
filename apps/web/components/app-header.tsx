@@ -28,7 +28,7 @@ export function AppHeader({ nav = true, children }: { nav?: boolean; children?: 
           {NAV.map((n) => {
             const on = isOn(n.href, path);
             return (
-              <Link key={n.href} href={n.href} aria-current={on ? 'page' : undefined} className={cx('flex items-center px-3 text-[12.5px]', on ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
+              <Link key={n.href} href={n.href} aria-current={on ? 'page' : undefined} className={cx('flex items-center px-3 text-[13.5px]', on ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
                 {n.label}
               </Link>
             );
