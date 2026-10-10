@@ -96,7 +96,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
               </div>
               <div className="min-w-0">
                 <h2 className="font-semibold">Evidence</h2>
-                <p className="mt-1 text-[13px] text-fg-3">Signal values, the market snapshot, and the hashes of the smart-money trades in the window.</p>
+                <p className="mt-1 text-[13px] text-fg-3">Signal values, the market snapshot, and the hashes of the Smart Trader trades in the window.</p>
                 <pre className="num mt-3 max-h-[28rem] overflow-auto rounded-sm bg-raised p-4 text-[12.5px] leading-relaxed">{JSON.stringify(d.evidence, null, 2)}</pre>
               </div>
             </section>

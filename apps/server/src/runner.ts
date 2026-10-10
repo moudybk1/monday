@@ -907,10 +907,10 @@ export class Runner {
       const verb = state.side === 'ask' ? 'bought' : 'sold';
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
       const reason = big && Math.abs(z) <= cfg.z2
-        ? `A single smart-money ${state.side === 'ask' ? 'buy' : 'sell'} of ${usdCompact(big.valueUsd)} ${sym} landed on Hyperliquid. ${what} for ${holdMin} minutes.`
-        : `Smart money ${verb} ${usdCompact(Math.abs(sig.w5.netUsd))} ${sym} on Hyperliquid in 5 min (z = ${z.toFixed(1)}). ${what} for ${holdMin} minutes.`;
+        ? `A single Smart Trader ${state.side === 'ask' ? 'buy' : 'sell'} of ${usdCompact(big.valueUsd)} ${sym} landed on Hyperliquid. ${what} for ${holdMin} minutes.`
+        : `Smart Traders ${verb} ${usdCompact(Math.abs(sig.w5.netUsd))} ${sym} on Hyperliquid in 5 min (z = ${z.toFixed(1)}). ${what} for ${holdMin} minutes.`;
       const signalAgeMs = now - (culprits[0]?.fetchedAt ?? now);
-      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_min: holdMin }, reason, { z5m: z, netUsd5m: sig.w5.netUsd, nansenTx: state.triggerHashes, signalAgeMs, at: now }, null);
+      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_min: holdMin }, reason, { z5m: z, netUsd5m: sig.w5.netUsd, smartTraderTx: state.triggerHashes, signalAgeMs, at: now }, null);
     } else if (before) {
       const what = before.ref ? 'Perpl has caught up with Hyperliquid' : before.book ? 'The book has evened out' : 'Flow has cooled';
       this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `${what}. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
@@ -961,7 +961,7 @@ export class Runner {
     const evidence = {
       at: now, strategy: STRATEGY_VERSION, policyHash: policyAtAsk, lean: ctx.lean,
       signal: { S: sig.S, z5m: sig.w5.z, z15m: sig.w15.z, z60m: sig.w60.z, net5m: sig.w5.netUsd, net15m: sig.w15.netUsd, net60m: sig.w60.netUsd, stale: sig.stale, ageMs: Number.isFinite(this.deps.collector.ageMs) ? this.deps.collector.ageMs : null },
-      nansenTx: this.deps.collector.recentTrades(rt.sym, now - 15 * 60_000).map((t) => t.hash),
+      smartTraderTx: this.deps.collector.recentTrades(rt.sym, now - 15 * 60_000).map((t) => t.hash),
       market: { mark: snap.mark, oracle: snap.oracle, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: ctx.sigma1mBps, fundingRate: snap.fundingRate, dataAgeMs: ctx.feedAgeMs },
       inventoryUsd: ctx.inventoryUsd, inventoryStage: rt.stage, results1h: { fills: ctx.fills1h, markout1mBps: ctx.avgMarkout1mBps, quotedPct: ctx.quotedPct1h },
       rules: ctx.proposal,
@@ -1295,7 +1295,7 @@ export class Runner {
       if (b?.startsWith('risk:')) return `${word[side]} is blocked because ${GATE_TEXT[b.slice(5) as GateReason]}.`;
       if (b === 'exit') return `Adding to the ${posUsd > 0 ? 'long' : 'short'} is stopped; Monday is working its ${usd(Math.abs(posUsd))} exit${rt.stage === 'urgent' ? ' at the best price' : ''}.`;
       if (b === 'not in policy') return `${rt.sym} is no longer in your policy; Monday only closes what it holds there.`;
-      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.ref ? `Hyperliquid just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `smart money is ${side === 'ask' ? 'buying' : 'selling'}`}.`;
+      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.ref ? `Hyperliquid just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `Smart Traders are ${side === 'ask' ? 'buying' : 'selling'}`}.`;
       if (b === 'governor') return `The governor turned quoting off: ${rt.params.reason}`;
       if (b === 'size') return `The ${side} rounds to zero size (quote size, volume cap or inventory skew).`;
       if (rt.held[side] === 'budget') return `Waiting for request budget to move the ${side}.`;

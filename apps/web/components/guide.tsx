@@ -12,7 +12,7 @@ const AREAS: [string, ReactNode][] = [
   ['Order book', <>Every open offer on Perpl. Monday&apos;s own are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
   ['Agent', <>Your money and the controls. <b>Stop</b> cancels Monday&apos;s offers and stops the bot; any position stays open and is yours to manage. <b>Kill and flatten</b> cancels everything and closes positions. While quoting, Monday kills itself when the day's stop loss is reached, and closes any single position 20 bps under its entry.</>],
   ['Open orders', <>Where each of Monday&apos;s offers sits: at the best price or behind it, and what has to trade before it fills.</>],
-  ['Smart money', <>Big trades by wallets Nansen labels as consistently profitable. When they rush one way, Monday steps aside on that side.</>],
+  ['Smart Traders', <>Big trades by wallets with a record of consistent profit on Hyperliquid. When they rush one way, Monday steps aside on that side.</>],
   ['Decisions', <>Every change Monday makes, with the reason in plain words.</>],
 ];
 
@@ -37,12 +37,12 @@ export function Guide({ dialog, sim, paper }: { dialog: RefObject<HTMLDialogElem
       </p>
       {paper && (
         <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[13px]">
-          <b>Paper trading:</b> prices, the order book and smart-money trades are real. Monday&apos;s orders are simulated and never reach Perpl. An offer fills when the real market trades through its price.
+          <b>Paper trading:</b> prices, the order book and Smart Trader trades are real. Monday&apos;s orders are simulated and never reach Perpl. An offer fills when the real market trades through its price.
         </p>
       )}
       {sim && (
         <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[13px]">
-          <b>Try it:</b> press <b>Buy burst</b> in the Smart money panel. Within a few seconds Monday pulls its sell offer, and the reason appears under Decisions.
+          <b>Try it:</b> press <b>Buy burst</b> in the Smart Traders panel. Within a few seconds Monday pulls its sell offer, and the reason appears under Decisions.
         </p>
       )}
       <form method="dialog" className="mt-5 flex justify-end">

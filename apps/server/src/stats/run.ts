@@ -6,6 +6,7 @@
 import Fastify from 'fastify';
 import { z } from 'zod';
 import { config } from '../config';
+import { startSnapshots } from './history';
 import { indexerStatus, startIndexer } from './indexer';
 import { registerStats } from './routes';
 
@@ -34,5 +35,6 @@ app.get('/api/stats/health', async () => ({ ok: true, at: Date.now(), indexer: i
 registerStats(app);
 
 startIndexer();
+startSnapshots();
 await app.listen({ port, host: '0.0.0.0' });
 console.log(JSON.stringify({ service: 'stats', event: 'listening', port, network: config.network }));

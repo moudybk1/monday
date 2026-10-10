@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
-  type QuoteInput, type SmartTrade,
+  type QuoteInput, type SmartTrade, retentionCohorts, traderDistribution,
 } from './index';
 
 const base: QuoteInput = {
@@ -500,9 +500,42 @@ describe('Perpl stats', () => {
     expect(p.maxDrawdownUsd).toBe(22); // peak +19 after the first close, trough -3 after the second loss
     expect(p.avgHoldMin).toBeCloseTo((1 + 2 + 2) / 3);
     expect(p.byMarket.map((m) => m.sym)).toEqual(['ETH', 'BTC']);
+    expect(p.byMarket.map((m) => [m.closes, m.wins])).toEqual([[1, 1], [3, 1]]);
+    expect([p.grossWinUsd, p.grossLossUsd, p.avgWinUsd, p.avgLossUsd, p.largestWinUsd, p.largestLossUsd]).toEqual([25, 20, 12.5, 10, 20, 10]);
+    expect(p.sides.long).toEqual({ closes: 4, wins: 2, netUsd: 2, volumeUsd: 700 }); // every test trade is long
+    expect(p.sides.short).toEqual({ closes: 0, wins: 0, netUsd: 0, volumeUsd: 0 });
+    expect(p.daily).toEqual([{ day: 0, trades: 7, closes: 4, wins: 2, volumeUsd: 700, netUsd: 2 }]);
+    expect(p.hours[0]).toBe(7);
+    expect(p.makerVolumeUsd).toBe(0);
     // No losing close: no finite profit factor, and it must survive JSON as null rather than Infinity.
     const clean = walletPerformance([t(0, 'open', 0, 0), t(60_000, 'close', 5, 0)]);
     expect([clean.profitFactor, clean.winRate]).toEqual([null, 1]);
+  });
+
+  it('splits active accounts by result and measures how concentrated volume is', () => {
+    const rows = [
+      { volumeUsd: 900, netUsd: 5_000 }, { volumeUsd: 50, netUsd: 50 }, { volumeUsd: 30, netUsd: -3 }, { volumeUsd: 20, netUsd: -20_000 }, { volumeUsd: 0, netUsd: 0 },
+    ];
+    const d = traderDistribution(rows);
+    expect([d.accounts, d.profitable, d.losing, d.flat]).toEqual([5, 2, 2, 1]);
+    expect(d.medianNetUsd).toBeCloseTo((-3 + 50) / 2);
+    expect(d.buckets.map((b) => b.n)).toEqual([1, 0, 0, 0, 1, 0, 1, 0, 1, 0]);
+    expect(d.buckets[0].label).toBe('under -$10k');
+    expect(d.buckets[9].label).toBe('over $10k');
+    expect(d.top10Share).toBe(1);
+    expect(traderDistribution([{ volumeUsd: 100, netUsd: 1 }, { volumeUsd: 1, netUsd: 1 }, ...Array.from({ length: 10 }, () => ({ volumeUsd: 1, netUsd: 1 }))]).top10Share).toBeCloseTo(109 / 111);
+  });
+
+  it('builds weekly cohorts with the share that came back', () => {
+    // Weeks 100 and 101: three accounts joined in week 100, one of them traded in week 101 and 102, another only in 101.
+    const first = new Map([[1, 700], [2, 701], [3, 702], [4, 707]]);
+    const active = new Map([[1, new Set([100, 101, 102])], [2, new Set([100, 101])], [3, new Set([100])], [4, new Set([101])]]);
+    const c = retentionCohorts(first, active, 102, 3, [1, 2, 4]);
+    expect(c.map((x) => x.size)).toEqual([0, 1, 3]);
+    expect(c[2].retained).toEqual([2 / 3, 1 / 3, null]);
+    expect(c[1].retained).toEqual([0, null, null]);
+    expect(c[2].week).toBe(697 * 86_400_000); // Monday 1971-11-29: weeks start on Monday
+    expect(new Date(c[2].week).getUTCDay()).toBe(1);
   });
 
   it('finds the block ranges never scanned, back to block 0', () => {

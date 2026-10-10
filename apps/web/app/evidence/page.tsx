@@ -22,7 +22,7 @@ export default function EvidencePage() {
     <>
       <SiteHeader />
       <main className={`${WRAP} pb-24 pt-12 md:pt-16`}>
-        <h1 className="display max-w-[18ch] text-4xl md:text-6xl">Does smart-money flow lead price?</h1>
+        <h1 className="display max-w-[18ch] text-4xl md:text-6xl">Does Smart Trader flow lead price?</h1>
         <p className="mt-5 max-w-[62ch] text-lg text-fg-2">
           Monday&apos;s claim is testable, so here are the tests. An event study measures the signal. A replay compares a naive maker with Monday on the same minutes. Every assumption sits next to the numbers.
         </p>
@@ -31,7 +31,7 @@ export default function EvidencePage() {
           <div className="mt-12 grid gap-4"><Skeleton className="h-12" /><Skeleton className="h-80" /></div>
         ) : ev === 'none' || !Object.keys(ev.studies).length ? (
           <div className="mt-12">
-            <Notice>Not enough data yet. The study needs at least two days of one-minute prices and smart-money trades. It recomputes every hour.</Notice>
+            <Notice>Not enough data yet. The study needs at least two days of one-minute prices and Smart Trader trades. It recomputes every hour.</Notice>
           </div>
         ) : (
           <Body ev={ev} sym={ev.studies[sym] ? sym : (Object.keys(ev.studies)[0] as MarketSym)} setSym={setSym} />
@@ -52,7 +52,7 @@ function Body({ ev, sym, setSym }: { ev: Evidence; sym: MarketSym; setSym: (s: M
       <div className="mt-10 grid gap-4">
         {ev.synthetic && (
           <Notice tone="warn">
-            <strong>Simulated data.</strong> The simulator is built so that smart-money flow moves price, so a positive result here shows the pipeline working, not a proven edge. With a Nansen key and the Perpl venue configured, the same code runs on real trades and real candles.
+            <strong>Simulated data.</strong> The simulator is built so that Smart Trader flow moves price, so a positive result here shows the pipeline working, not a proven edge. With the Smart Trader feed and the Perpl venue configured, the same code runs on real trades and real candles.
           </Notice>
         )}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -70,7 +70,7 @@ function Body({ ev, sym, setSym }: { ev: Evidence; sym: MarketSym; setSym: (s: M
       <section className="mt-14 border-t border-line-2 pt-8">
         <h2 className="display text-3xl md:text-4xl">Event study</h2>
         <p className="mt-3 max-w-[66ch] text-fg-2">
-          At the end of every five-minute bucket we score how unusual the net smart-money flow was (a z-score against the past week), then look at what {sym} did next.
+          At the end of every five-minute bucket we score how unusual the net Smart Trader flow was (a z-score against the past week), then look at what {sym} did next.
         </p>
 
         <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
@@ -83,7 +83,7 @@ function Body({ ev, sym, setSym }: { ev: Evidence; sym: MarketSym; setSym: (s: M
               <p className="mt-1.5 text-[15px] text-fg-2">
                 {s.skewEnabled
                   ? 'The interval sits above zero, so Monday shifts its quotes 1.5 bps per unit of signal in the direction of the flow.'
-                  : 'The interval includes zero, so Monday does not lean with the flow. Smart money still widens, shrinks and pulls its quotes; it just does not move their centre.'}
+                  : 'The interval includes zero, so Monday does not lean with the flow. Smart Trader flow still widens, shrinks and pulls its quotes; it just does not move their centre.'}
               </p>
             </div>
             <p className="mt-6 text-[15px] text-fg-2">
@@ -95,7 +95,7 @@ function Body({ ev, sym, setSym }: { ev: Evidence; sym: MarketSym; setSym: (s: M
           <div>
             <p className="mb-2 text-[13px] font-semibold">Mean return over the next 15 minutes, by flow strength <span className="font-normal text-fg-3">(bps, ten equal groups)</span></p>
             <SignedBars
-              height={250} format={(v) => v.toFixed(1)} label={`Mean forward 15-minute ${sym} return per decile of the 15-minute smart-money z-score`} lowLabel="strongest selling" highLabel="strongest buying"
+              height={250} format={(v) => v.toFixed(1)} label={`Mean forward 15-minute ${sym} return per decile of the 15-minute Smart Trader z-score`} lowLabel="strongest selling" highLabel="strongest buying"
               data={s.deciles.map((d) => ({ key: `Decile ${d.decile}`, v: d.meanRetBps, tip: `Group ${d.decile} of 10: mean z ${d.meanZ.toFixed(1)}, next 15 min ${fmtBps(d.meanRetBps, 2)} bps, ${d.n} samples` }))}
             />
           </div>
@@ -134,7 +134,7 @@ function Body({ ev, sym, setSym }: { ev: Evidence; sym: MarketSym; setSym: (s: M
         <section className="mt-16 border-t border-line-2 pt-8">
           <h2 className="display text-3xl md:text-4xl">Replay: naive maker against Monday</h2>
           <p className="mt-3 max-w-[66ch] text-fg-2">
-            Both arms quote {sym} over the same {Math.round((r.to - r.from) / 86_400_000)} days with the same limits. The naive maker quotes symmetrically and skews only for inventory. Monday adds the smart-money reflex, the regimes{s.skewEnabled ? ' and the lean' : ''}.
+            Both arms quote {sym} over the same {Math.round((r.to - r.from) / 86_400_000)} days with the same limits. The naive maker quotes symmetrically and skews only for inventory. Monday adds the Smart Trader reflex, the regimes{s.skewEnabled ? ' and the lean' : ''}.
           </p>
           <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,6fr)_minmax(0,6fr)]">
             <ArmsTable naive={r.naive} monday={r.monday} />
