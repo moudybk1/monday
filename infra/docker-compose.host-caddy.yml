@@ -1,0 +1,12 @@
+# For a machine whose own Caddy already holds ports 80 and 443: the bundled Caddy stays off and the three services are
+# published on localhost only, for the host Caddy to proxy (infra/host-caddy.caddy goes in its conf.d).
+#   docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.host-caddy.yml up -d --build
+services:
+  server:
+    ports: ["127.0.0.1:3101:3001"]
+  stats:
+    ports: ["127.0.0.1:3102:3002"]
+  web:
+    ports: ["127.0.0.1:3100:3000"]
+  caddy:
+    profiles: ["bundled-caddy"]
