@@ -2,6 +2,13 @@
 # analytics.DOMAIN (point both at this machine).
 #   docker compose --env-file .env -f infra/docker-compose.yml up -d --build      (from the repo root)
 # DOMAIN in .env must point at this machine. Never run a second Monday (a laptop, say) on the same Perpl accounts.
+# Container logs rotate at 5 x 20 MB per service; Docker's default keeps them forever and a 24/7 server fills the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   server:
     build:
@@ -11,6 +18,7 @@ services:
     volumes:
       - ../apps/server/data:/app/apps/server/data # the account database and the stats database, kept across rebuilds
     restart: always
+    logging: *logging
     stop_grace_period: 20s # on SIGTERM the server cancels resting orders before it exits (10 s at most)
     expose:
       - "3001"
@@ -30,6 +38,7 @@ services:
     volumes:
       - ../apps/server/data:/app/apps/server/data
     restart: always
+    logging: *logging
     expose:
       - "3002"
     healthcheck:
@@ -50,12 +59,14 @@ services:
     environment:
       API_URL: http://server:3001
     restart: always
+    logging: *logging
     expose:
       - "3000"
 
   caddy:
     image: caddy:2
     restart: always
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"

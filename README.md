@@ -172,6 +172,9 @@ Point A records for both `DOMAIN` and `analytics.DOMAIN` at the machine and open
 certificates. `analytics.DOMAIN` serves the public analytics; sign-in and the trading app stay on `DOMAIN`. Data lives in
 `apps/server/data` on the host, so a rebuild keeps it.
 
+Back up the account database daily with `scripts/backup-db.sh` (needs `sqlite3`; the cron line is in the script) and
+copy the backups off the machine. The stats database needs no backup: the stats process rebuilds it.
+
 Moving a running Monday (a laptop, say): stop it there first, then copy `apps/server/data/monday-<network>.sqlite` to
 the same path here and keep the same `MONDAY_MASTER_KEY`, or the stored Perpl keys cannot be decrypted. Never run two
 Mondays on the same Perpl account.
