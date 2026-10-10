@@ -57,9 +57,12 @@ export const config = {
   perpl: { apiUrl: net.perplApi, wsUrl: net.perplWs, chainId: net.chainId, rpcUrl, exchangeAddress: net.exchange as `0x${string}`, appUrl: net.perplApp },
   budgetPerMin: num('TRADING_REQ_BUDGET_PER_MIN', 40),
 
-  // Operator ceilings on what any user's policy may ask for while real money is at stake.
-  // They start at the Conservative preset: prove the system small, then raise them on purpose.
-  caps: realFunds ? { quoteSizeUsd: num('CAP_QUOTE_USD', 50), maxInventoryUsd: num('CAP_INVENTORY_USD', 250), maxDailyLossUsd: num('CAP_DAILY_LOSS_USD', 25) } : null,
+  // Operator ceilings on every user's policy while real money is at stake, only when all three are set in .env. Off by
+  // default since 2026-10-11, at the owner's call: each user picks their own risk profile, bounded by their balance
+  // (balanceNeededUsd), the market's leverage cap, the schema maxima and their stop losses.
+  caps: realFunds && ['CAP_QUOTE_USD', 'CAP_INVENTORY_USD', 'CAP_DAILY_LOSS_USD'].every((k) => env(k) !== '')
+    ? { quoteSizeUsd: num('CAP_QUOTE_USD', Infinity), maxInventoryUsd: num('CAP_INVENTORY_USD', Infinity), maxDailyLossUsd: num('CAP_DAILY_LOSS_USD', Infinity) }
+    : null,
 
   // Smart-money source: real Nansen when a key is set; the simulator only when the
   // venue is simulated too. Live orders are never driven by simulated signals.
