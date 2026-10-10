@@ -1,6 +1,6 @@
-import { HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon } from '@phosphor-icons/react/dist/ssr';
-import { PRESETS, usd } from '@monday/core';
-import { EvidenceTeaser, HeroTerminal, Story } from '@/components/landing';
+import { CaretDownIcon, HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon } from '@phosphor-icons/react/dist/ssr';
+import type { AppConfig } from '@monday/core';
+import { EvidenceTeaser, LiveMarket, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ButtonLink } from '@/components/ui';
 
@@ -22,62 +22,87 @@ const LOOPS = [
   },
 ] as const;
 
-const CUSTODY = [
+const custody = (onchain: boolean) => [
   { icon: KeyIcon, title: 'A key that can only trade', text: 'Monday holds a trade-scoped Perpl API key. Perpl never lets any API key withdraw or transfer funds, whatever its scope.' },
-  { icon: HandPalmIcon, title: 'Pause and kill, one click each', text: 'Pause cancels every order and keeps your position. Kill cancels, then closes positions with reduce-only orders.' },
+  { icon: HandPalmIcon, title: 'Stop and kill, one click each', text: 'Stop cancels Monday\'s orders and leaves your position and your own orders to you. Kill cancels every order, then closes positions with reduce-only orders.' },
   { icon: SignOutIcon, title: 'Leave without asking', text: 'Withdraw on Perpl from your own wallet. Revoke the key there and Monday loses access at once, notices, and stops.' },
-  { icon: SealCheckIcon, title: 'Limits you sign, decisions you can check', text: 'Your wallet publishes the policy to a registry on Monad. The agent logs a hash of every decision and its evidence there.' },
+  // Only claim the Monad registry while one is configured on this server.
+  onchain
+    ? { icon: SealCheckIcon, title: 'Limits you sign, decisions you can check', text: 'Your wallet publishes the policy to a registry on Monad. The agent logs a hash of every decision and its evidence there.' }
+    : { icon: SealCheckIcon, title: 'Decisions you can check', text: 'Every decision is stored with its reason in plain words and a hash of the data behind it, so it can be checked later.' },
 ];
 
-type Preset = (typeof PRESETS)['balanced'];
-const PRESET_ROWS: [string, (p: Preset) => string][] = [
-  ['Offers to buy and to sell', (p) => `${usd(p.quoteSizeUsd)} each side`],
-  ['Largest position it may hold', (p) => usd(p.maxInventoryUsd)],
-  ['Closest it quotes to fair price', (p) => `${p.minHalfSpreadBps} bps`],
-  ['Stops for the day after losing', (p) => usd(p.maxDailyLossUsd)],
-  ['Leverage cap', (p) => `${p.maxLeverage}x`],
+const CONTROLS = [
+  { k: 'Position limit', v: 'The most Monday may hold in each market. Margin and leverage set it, or you type it.' },
+  { k: 'Daily loss limit', v: 'At this loss Monday stops quoting and closes positions for the day. Fast markets can overshoot it.' },
+  { k: 'Stop and kill', v: 'Stop pulls Monday\'s orders. Kill also closes positions. Both are one click in the terminal.' },
 ];
 
-export default function Landing() {
+// Answers follow what the code does today (runner, stale-data limits, cleanup); keep them in step with it.
+const faq = (onchain: boolean) => [
+  { q: 'What do I need to use Monday?', a: 'A wallet to sign in with, a Perpl account with collateral, and a Perpl API key that can trade. The app walks you through each step before anything is quoted.' },
+  { q: 'Where are my funds held?', a: 'In your own Perpl account. Monday trades with an API key that Perpl never lets withdraw or transfer funds, and you withdraw on Perpl yourself.' },
+  { q: 'Can Monday lose money?', a: 'Yes. Market making carries inventory and execution risk, smart-money signals can be wrong or late, and fees count against every fill. The daily loss limit stops Monday, but a fast market can overshoot it.' },
+  { q: 'What is the difference between Stop and Kill?', a: 'Stop cancels Monday\'s orders and leaves open positions for you to manage. Kill cancels every order in the account and closes positions. Closing can take time, and waits if Perpl is unreachable.' },
+  { q: 'What happens if the data or the connection fails?', a: 'If market data is more than 5 seconds old Monday pulls its quotes, and after 30 seconds it stops and closes positions. Any cancel or close it still owes is retried until Perpl confirms it. You can always act on Perpl directly.' },
+  {
+    q: 'What is recorded on Monad?',
+    a: onchain
+      ? 'Your wallet publishes your limits to the MondayRegistry contract on Monad, and the agent logs a hash of every decision and its evidence there for anyone to check.'
+      : 'Perpl itself runs on Monad, so every order and fill settles there. Monday can also publish your limits and log a hash of each decision to a registry contract on Monad; that registry is not switched on for this server yet, so decisions are kept with their hashes in Monday\'s own log for now.',
+  },
+];
+
+/** Whether this server has a Monad registry, read once a minute so the page stays static. Unreachable: claim nothing. */
+async function registryOn(): Promise<boolean> {
+  try {
+    const res = await fetch(`${process.env.API_URL ?? 'http://localhost:3001'}/api/config`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(2_000) });
+    return Boolean(((await res.json()) as AppConfig).registry);
+  } catch {
+    return false;
+  }
+}
+
+export default async function Landing() {
+  const onchain = await registryOn();
   return (
     <>
       <SiteHeader />
       <main>
-        {/* Hero: the claim, then the product itself running live. */}
-        <section className={`${WRAP} pb-16 pt-12 md:pt-16`}>
-          <h1 className="display rise text-[2.1rem] sm:text-[clamp(2.75rem,5.4vw,4.75rem)]">
-            Quotes both sides. <br className="hidden sm:block" />
-            <span className="text-accent">Steps aside</span> for smart money.
-          </h1>
-          <div className="rise mt-6 flex flex-col gap-5 md:flex-row md:items-end md:justify-between" style={{ '--i': 1 } as React.CSSProperties}>
-            <p className="max-w-[44ch] text-[16px] text-fg-2">
+        {/* Hero: the claim and the action together, the walkthrough beside them. */}
+        <section className={`${WRAP} grid items-center gap-10 pb-16 pt-10 md:pt-14 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
+          <div>
+            <h1 className="display rise text-[2.1rem] sm:text-5xl xl:text-[3.6rem]">
+              Quotes both sides. <span className="text-accent">Steps aside</span> for smart money.
+            </h1>
+            <p className="rise mt-5 max-w-[44ch] text-[16px] text-fg-2 sm:text-[17px]" style={{ '--i': 1 } as React.CSSProperties}>
               An AI agent that market-makes on Perpl from your own account and pulls its quotes when smart money moves.
             </p>
-            <div className="flex flex-none flex-wrap gap-2.5">
+            <div className="rise mt-7 flex flex-wrap gap-2.5" style={{ '--i': 2 } as React.CSSProperties}>
               <ButtonLink href="/app" size="lg">Launch app</ButtonLink>
-              <ButtonLink href="/evidence" size="lg" variant="ghost">See the evidence</ButtonLink>
+              <ButtonLink href="#how" size="lg" variant="ghost">How it works</ButtonLink>
             </div>
           </div>
-          <div className="rise mt-9" style={{ '--i': 2 } as React.CSSProperties}>
-            <HeroTerminal />
+          <div className="rise min-w-0" style={{ '--i': 3 } as React.CSSProperties}>
+            <Story onchain={onchain} />
           </div>
         </section>
 
-        {/* The burst: a tabbed walk-through. */}
-        <section id="how" className="scroll-mt-14 border-t border-line">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <h2 className={`${H2} max-w-[20ch]`}>What happens when smart money moves</h2>
+        {/* The real thing, once the reader knows what to look for. */}
+        <section className="border-t border-line">
+          <div className={`${WRAP} py-16 md:py-20`}>
+            <h2 className={`${H2} max-w-[20ch]`}>The live market</h2>
             <p className="mt-4 max-w-[60ch] text-[15px] text-fg-2">
-              Makers earn the spread on every fill and lose whenever the other side knows where price is going. Monday reads who the informed traders are, and gets out of their way.
+              Perpl&apos;s order book and the smart-money flow Monday reads, streaming from its server now. Not an illustration.
             </p>
-            <div className="mt-10">
-              <Story />
+            <div className="mt-8">
+              <LiveMarket />
             </div>
           </div>
         </section>
 
         {/* Three loops: cadence drawn as rhythm. */}
-        <section className="border-t border-line bg-canvas">
+        <section id="how" className="scroll-mt-14 border-t border-line bg-canvas">
           <div className={`${WRAP} py-20 md:py-28`}>
             <h2 className={`${H2} max-w-[24ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
             <ol className="mt-12 border-t border-line-2">
@@ -102,7 +127,7 @@ export default function Landing() {
               Your funds <span className="text-accent">never leave</span> your Perpl account.
             </h2>
             <dl className="mt-12 grid gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-2">
-              {CUSTODY.map((c) => (
+              {custody(onchain).map((c) => (
                 <div key={c.title} className="grid grid-cols-[2.25rem_1fr] bg-canvas p-5">
                   <c.icon size={20} weight="regular" aria-hidden className="mt-0.5 text-accent" />
                   <div>
@@ -115,37 +140,21 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* Presets: the real numbers, in a table. */}
+        {/* Limits: what each control does, in the words the app uses. */}
         <section className="border-t border-line">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <h2 className={`${H2} max-w-[20ch]`}>You set the limits. Monday stays inside them.</h2>
-            <p className="mt-4 max-w-[52ch] text-[15px] text-fg-2">Pick a preset or set each number yourself. The agent and the LLM are both clamped to it on every order.</p>
-            {/* Staggered: the table hangs off the right two thirds, under the heading. */}
-            <div className="panel mt-10 lg:ml-[34%]">
-              <div className="scroll">
-                <table className="w-full min-w-[520px] text-left text-[13.5px]">
-                  <thead>
-                    <tr className="border-b border-line">
-                      <th className="label px-4 py-3 font-normal">Per market</th>
-                      <th className="px-3 py-3 font-semibold">Conservative</th>
-                      <th className="px-3 py-3 font-semibold text-accent shadow-[inset_0_2px_0_var(--accent)]">Balanced</th>
-                      <th className="px-3 py-3 font-semibold">Active</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {PRESET_ROWS.map(([label, f]) => (
-                      <tr key={label} className="border-b border-line last:border-b-0">
-                        <th scope="row" className="px-4 py-2.5 font-normal text-fg-2">{label}</th>
-                        <td className="num px-3 text-fg-2">{f(PRESETS.conservative)}</td>
-                        <td className="num bg-raised px-3 font-medium">{f(PRESETS.balanced)}</td>
-                        <td className="num px-3 text-fg-2">{f(PRESETS.active)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
+            <div>
+              <h2 className={`${H2} max-w-[16ch]`}>You set the limits. Monday stops when one is hit.</h2>
+              <p className="mt-4 max-w-[48ch] text-[15px] text-fg-2">Pick a margin and a leverage in Bot settings and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
             </div>
-            <p className="mt-2 text-[12px] text-fg-3 lg:ml-[34%]">Starting defaults. 1 bp is 0.01%.</p>
+            <dl className="grid content-start border-t border-line-2">
+              {CONTROLS.map((c) => (
+                <div key={c.k} className="grid gap-1 border-b border-line-2 py-5 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6">
+                  <dt className="text-[15px] font-semibold">{c.k}</dt>
+                  <dd className="text-[14px] text-fg-2">{c.v}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </section>
 
@@ -162,9 +171,27 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* Questions: native disclosures, readable without JavaScript. */}
+        <section className="border-t border-line">
+          <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
+            <h2 className={`${H2} max-w-[14ch]`}>Questions before you start</h2>
+            <div className="border-t border-line-2">
+              {faq(onchain).map((f) => (
+                <details key={f.q} className="group border-b border-line-2">
+                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-3 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+                    {f.q}
+                    <CaretDownIcon size={16} aria-hidden className="flex-none text-fg-3 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <p className="max-w-[62ch] pb-5 text-[14px] text-fg-2">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="border-t border-line">
           <div className={`${WRAP} flex flex-col items-start gap-8 py-20 md:flex-row md:items-end md:justify-between md:py-28`}>
-            <h2 className="display max-w-[18ch] text-4xl md:text-6xl">Put idle collateral to work without betting on direction.</h2>
+            <h2 className="display max-w-[18ch] text-4xl md:text-6xl">Quote both sides without betting on direction.</h2>
             <ButtonLink href="/app" size="lg">Launch app</ButtonLink>
           </div>
         </section>

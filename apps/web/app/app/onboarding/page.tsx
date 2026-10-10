@@ -4,12 +4,12 @@ import { ArrowSquareOutIcon, CheckIcon } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ComponentProps } from 'react';
-import { policySummary, usd } from '@monday/core';
-import { PolicyForm, draftFits, draftForBalance, draftFrom, toBody, type Caps, type PolicyDraft } from '@/components/policy-form';
+import { policySummary, safeReturnPath, usd } from '@monday/core';
+import { PolicyForm, draftForBalance, draftFrom, draftOk, toBody, type Caps, type PolicyDraft } from '@/components/policy-form';
 import { Button, Field, INPUT, Notice, Skeleton, Tag, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { fmtUsd, shortAddr, shortHash } from '@/lib/format';
-import { useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
+import { useAgentAuthorized, useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
 
 interface Account { exists: boolean; accountId: number | null; balanceUsd: number | null; minDepositUsd: number; depositUrl: string }
 
@@ -71,7 +71,7 @@ export default function Onboarding() {
             next={async () => { await refresh(); setStep(4); }}
           />
         )}
-        {current === 4 && <ReviewStep view={policy.data} demo={me.demo} explorerUrl={cfg?.explorerUrl ?? ''} realFunds={Boolean(cfg?.realFunds)} networkName={cfg?.networkName ?? ''} refresh={refresh} />}
+        {current === 4 && <ReviewStep view={policy.data} demo={me.demo} explorerUrl={cfg?.explorerUrl ?? ''} realFunds={Boolean(cfg?.realFunds)} networkName={cfg?.networkName ?? ''} registryAt={cfg?.registry ?? null} agent={cfg?.agentAddress ?? null} refresh={refresh} />}
       </div>
     </div>
   );
@@ -194,18 +194,22 @@ function LimitsStep({ initial, balance, linked, available, caps, specs, next }: 
   return (
     <div>
       {linked && <div className="mb-8"><Notice>Key accepted. Monday can place, change and cancel orders in your account. It cannot withdraw or transfer funds.</Notice></div>}
-      <Heading title="Set your limits">These limits bind the agent and the LLM alike. Nothing Monday does can exceed them. Your Perpl balance is <span className="num">{fmtUsd(balance)}</span>.</Heading>
-      <div className="mt-8"><PolicyForm value={draft} onChange={setDraft} available={available} caps={caps} balance={balance} specs={specs} /></div>
-      <p className="mt-8 border-l-2 border-fg pl-4 text-[15px]">{policySummary({ ...draft.limits, markets: draft.markets })}</p>
-      {err && <p role="alert" className="mt-4 text-[13px] text-ask-fg">{err}</p>}
-      <Button size="lg" className="mt-8" onClick={save} disabled={busy || !draftFits(draft, balance)}>{busy ? 'Checking limits' : 'Continue'}</Button>
+      <Heading title="Set your limits">Pick a margin and a leverage, and Monday sizes the rest. The agent and the LLM are both held to these limits. Your Perpl balance is <span className="num">{fmtUsd(balance)}</span>.</Heading>
+      <div className="mt-8">
+        <PolicyForm value={draft} onChange={setDraft} available={available} caps={caps} balance={balance} specs={specs}>
+          {err && <p role="alert" className="text-[12px] text-ask-fg">{err}</p>}
+          <Button size="lg" className="w-full" onClick={save} disabled={busy || !draftOk(draft, balance, caps, specs ?? {})}>{busy ? 'Checking limits' : 'Continue'}</Button>
+        </PolicyForm>
+      </div>
     </div>
   );
 }
 
-function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, refresh }: { view?: PolicyView; demo: boolean; explorerUrl: string; realFunds: boolean; networkName: string; refresh: () => Promise<unknown> }) {
+function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, registryAt, agent, refresh }: { view?: PolicyView; demo: boolean; explorerUrl: string; realFunds: boolean; networkName: string; registryAt: string | null; agent: string | null; refresh: () => Promise<unknown> }) {
   const router = useRouter();
   const registry = useRegistry();
+  // Step two on Monad, checked on its own: a declined authorisation must be retryable without publishing again.
+  const authorized = useAgentAuthorized(demo ? null : (registryAt as `0x${string}` | null), agent as `0x${string}` | null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
@@ -214,6 +218,17 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, refresh }
   if (!p) return <Notice tone="warn">No policy saved yet. Go back one step.</Notice>;
   const mustSign = Boolean(view.pending);
 
+  const authorize = async () => {
+    setErr(null);
+    try {
+      await registry.authorize(registryAt as `0x${string}`, agent as `0x${string}`, setBusy);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.split('\n')[0] : 'Transaction failed.';
+      setErr(/rejected|denied/i.test(msg) ? 'You declined the authorisation. The policy stays in force; decisions are not logged on Monad until you authorise.' : msg);
+    } finally {
+      setBusy(null);
+    }
+  };
   const sign = async () => {
     setErr(null);
     try {
@@ -232,7 +247,7 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, refresh }
     try {
       await api('/agent/start', { method: 'POST' });
       await refresh();
-      router.push('/app');
+      router.push(safeReturnPath(new URLSearchParams(location.search).get('next')) ?? '/app'); // back where sign-in began
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not start.');
       setBusy(null);
@@ -244,8 +259,8 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, refresh }
       <Heading title="Review and start">{policySummary(p)}</Heading>
       <dl className="mt-8 grid grid-cols-2 border-t border-line-2 text-sm sm:grid-cols-3">
         {[
-          ['Markets', p.markets.join(', ')], ['Quote size per side', usd(p.quoteSizeUsd)], ['Max inventory', usd(p.maxInventoryUsd)],
-          ['Min half-spread', `${p.minHalfSpreadBps} bps`], ['Daily loss limit', usd(p.maxDailyLossUsd)], ['Max leverage', `${p.maxLeverage}x`],
+          ['Markets', p.markets.join(', ')], ['Quote per side', usd(p.quoteSizeUsd)], ['Position limit per market', usd(p.maxInventoryUsd)],
+          ['Base spread', `${p.minHalfSpreadBps} bps`], ['Daily loss limit', usd(p.maxDailyLossUsd)], ['Leverage', `${p.maxLeverage}x`],
         ].map(([k, v]) => (
           <div key={k} className="border-b border-line py-3"><dt className="text-[12px] text-fg-3">{k}</dt><dd className="num mt-0.5 font-semibold">{v}</dd></div>
         ))}
@@ -256,15 +271,26 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, refresh }
           <div className="min-w-0">
             <p className="text-sm font-semibold">Publish the policy on Monad</p>
             <p className="mt-0.5 text-[13px] text-fg-3">
-              {mustSign ? 'One transaction from your wallet records these limits in MondayRegistry and authorises the agent to log its decisions. The contract holds no funds.'
+              {mustSign ? 'Two steps in your wallet: publish these limits to MondayRegistry, then, the first time only, authorise Monday\'s agent to log its decisions. The contract holds no funds.'
                 : view.onchainTx ? <>Published. <a className="num underline underline-offset-2" href={`${explorerUrl}/tx/${view.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.onchainTx)}</a></>
                 : demo ? 'Skipped for demo accounts, which have no wallet to sign with. The policy is enforced off-chain.'
                 : 'MondayRegistry is not configured on this server yet, so the policy is enforced off-chain only.'}
             </p>
           </div>
-          {mustSign ? <Button variant="ghost" onClick={sign} disabled={busy !== null || !registry.canSign}>Sign on Monad</Button> : <Tag tone={view.onchainTx ? 'accent' : 'neutral'}>{view.onchainTx ? 'On-chain' : 'Off-chain'}</Tag>}
+          {mustSign && !registry.canSign ? <Button variant="ghost" onClick={registry.reconnect}>Reconnect wallet</Button>
+            : mustSign ? <Button variant="ghost" onClick={sign} disabled={busy !== null}>Sign on Monad</Button>
+            : <Tag tone={view.onchainTx ? 'accent' : 'neutral'}>{view.onchainTx ? 'On-chain' : 'Off-chain'}</Tag>}
         </div>
-        {mustSign && !registry.canSign && <p className="text-[13px] text-warn">Reconnect the wallet you signed in with to publish the policy.</p>}
+        {mustSign && !registry.canSign && <p className="text-[13px] text-warn">The wallet connection was lost. Reconnect the wallet you signed in with to publish the policy.</p>}
+        {!mustSign && authorized === false && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Authorise the agent</p>
+              <p className="mt-0.5 text-[13px] text-fg-3">The policy is published. One more signature lets Monday&apos;s agent log its decisions in MondayRegistry; until then they are kept off-chain.</p>
+            </div>
+            {registry.canSign ? <Button variant="ghost" onClick={authorize} disabled={busy !== null}>Authorise agent</Button> : <Button variant="ghost" onClick={registry.reconnect}>Reconnect wallet</Button>}
+          </div>
+        )}
       </div>
 
       {busy && <p className="mt-4 text-[13px] text-fg-2" role="status">{busy}</p>}
@@ -278,7 +304,7 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, refresh }
         </label>
       )}
       <Button size="lg" className="mt-8" onClick={start} disabled={busy !== null || mustSign || (realFunds && !accepted)}>Start Monday</Button>
-      <p className="mt-3 text-[13px] text-fg-3">The first quotes reach the book within seconds. You can pause or kill from the dashboard at any time.</p>
+      <p className="mt-3 text-[13px] text-fg-3">The first quotes reach the book within seconds. You can stop or kill from the dashboard at any time.</p>
     </div>
   );
 }

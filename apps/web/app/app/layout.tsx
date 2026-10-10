@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { Button, Notice, Skeleton, Tag, cx } from '@/components/ui';
 import { shortAddr } from '@/lib/format';
+import { safeReturnPath } from '@monday/core';
+import { showAccount } from '@/lib/api';
 import { Providers, chain, useAppConfig, useMe, useSession } from '@/lib/wallet';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -23,19 +25,32 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const onboarded = Boolean(me.data?.hasKey && me.data.policy);
-  const mustOnboard = me.data && !onboarded && pathname !== '/app/onboarding';
+  // A page that sent the user here to sign in (`?next=`). Reading your own history needs a session, not a running agent,
+  // so an analytics page is returned to at once; anything else once setup is done. Read after mount: during a client
+  // navigation the new page renders before the address bar changes. Undefined until read, and nothing redirects before.
+  const [next, setNext] = useState<string | null | undefined>(undefined);
+  useEffect(() => setNext(safeReturnPath(new URLSearchParams(location.search).get('next'))), []);
+  const readOnly = next?.startsWith('/analytics') ?? false;
+  const mustOnboard = me.data && next !== undefined && !onboarded && !readOnly && pathname !== '/app/onboarding';
   const terminal = pathname === '/app' && onboarded;
 
+  // Every change this tab asks for names the account it shows (see lib/api).
+  const wallet = me.data?.wallet ?? null;
+  useEffect(() => showAccount(wallet), [wallet]);
+
   useEffect(() => {
-    if (mustOnboard) router.replace('/app/onboarding');
-  }, [mustOnboard, router]);
+    if (mustOnboard) router.replace(`/app/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+  }, [mustOnboard, next, router]);
+  useEffect(() => {
+    if (me.data && next && (readOnly || (onboarded && pathname === '/app'))) router.replace(next);
+  }, [me.data, next, readOnly, onboarded, pathname, router]);
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <AppHeader nav={onboarded}>
         {/* Always say what kind of money is on the line. Real funds is never hidden, even on a phone. */}
         {cfg.data?.realFunds ? <Tag tone="ask">Mainnet: real funds</Tag>
-          : cfg.data && <span className="hidden sm:block"><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
+          : cfg.data && <span><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
         {me.data && (
           <span className="flex h-7 items-center rounded-sm border border-line-2">
             <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[12px] text-fg-2 sm:inline', !me.data.demo && 'num')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
@@ -92,7 +107,8 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
   };
 
   return (
-    <div className="grid gap-10 py-12 md:grid-cols-[minmax(0,5fr)_minmax(0,4fr)] md:py-24">
+    // Centred both ways in the space under the 45px header: one compact block, not two columns pushed to the edges.
+    <div className="mx-auto grid min-h-[calc(100dvh-2.75rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
       <div>
         <h1 className="display text-4xl md:text-5xl">Connect your wallet</h1>
         <p className="mt-4 max-w-[52ch] text-[15px] text-fg-2">
@@ -105,11 +121,11 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
         </div>
         {error && <p role="alert" className="mt-3 text-[12.5px] text-ask-fg">{error}</p>}
       </div>
-      <dl className="panel divide-y divide-line self-start text-[13px]">
+      <dl className="panel divide-y divide-line text-[13px]">
         {[
           ['Funds stay put', 'Your collateral stays in your own Perpl account. Monday never holds it.'],
           ['Trade-only key', 'The key you give Monday can place and cancel orders. Perpl never lets an API key withdraw.'],
-          ['One click to stop', 'Pause cancels every order. Kill also closes positions. Revoking the key on Perpl cuts access at once.'],
+          ['One click to stop', 'Stop cancels Monday\'s orders. Kill cancels every order and closes positions. Revoking the key on Perpl cuts access at once.'],
         ].map(([t, d]) => (
           <div key={t} className="px-4 py-3.5">
             <dt className="font-semibold">{t}</dt>

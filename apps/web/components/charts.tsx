@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cx } from './ui';
 
 // Charts are hand-built SVG so they wear the terminal's tokens exactly.
@@ -176,9 +176,12 @@ export function LineChart({ series, height, format, baseline, label, empty = 'Co
   );
 }
 
-/** Bars on a zero baseline, coloured by sign unless `tone` fixes one colour (for values with no good or bad side, like volume). */
+/**
+ * Bars on a zero baseline, coloured by sign unless `tone` fixes one colour (for values with no good or bad side, like volume).
+ * A null value is a slot with no data (drawn hatched, so a missing day never reads as a quiet one); `faded` marks a partial value.
+ */
 export function SignedBars({ data, height = 220, format, label, lowLabel, highLabel, tone }: {
-  data: { key: string; v: number; tip: string }[];
+  data: { key: string; v: number | null; tip: string; faded?: boolean }[];
   height?: number;
   format: (v: number) => string;
   label: string;
@@ -188,9 +191,11 @@ export function SignedBars({ data, height = 220, format, label, lowLabel, highLa
 }) {
   const [ref, { w }] = useSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
+  const hatch = `hatch${useId().replace(/[^\w-]/g, '')}`;
   const PAD = { l: 2, r: 2, t: 14, b: 24 };
   if (!data.length) return <div ref={ref} style={{ height }} />;
-  const hi = Math.max(0, ...data.map((d) => d.v)), lo = Math.min(0, ...data.map((d) => d.v));
+  const values = data.flatMap((d) => (d.v == null ? [] : [d.v]));
+  const hi = Math.max(0, ...values), lo = Math.min(0, ...values);
   const span = (hi - lo || 1) * 1.15;
   const y = (v: number) => PAD.t + ((hi * 1.075 - v) / span) * (height - PAD.t - PAD.b);
   const slot = (w - PAD.l - PAD.r) / data.length;
@@ -200,11 +205,24 @@ export function SignedBars({ data, height = 220, format, label, lowLabel, highLa
     <div ref={ref} className="relative" style={{ height }}>
       {w > 0 && (
         <svg width={w} height={height} role="img" aria-label={label} className="block" onPointerLeave={() => setHover(null)}>
+          <defs>
+            <pattern id={hatch} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="5" stroke="var(--line-2)" strokeWidth="1.5" />
+            </pattern>
+          </defs>
           {niceTicks(lo, hi, 4).map((v) => (
             <line key={v} x1={PAD.l} x2={w - PAD.r} y1={y(v)} y2={y(v)} stroke={v === 0 ? 'var(--line-2)' : 'var(--line)'} />
           ))}
           {data.map((d, i) => {
             const cx0 = PAD.l + slot * i + slot / 2;
+            if (d.v == null) {
+              return (
+                <g key={d.key} onPointerEnter={() => setHover(i)}>
+                  <rect x={PAD.l + slot * i} y={PAD.t} width={slot} height={height - PAD.t - PAD.b} fill="transparent" />
+                  <rect x={cx0 - bw / 2} y={PAD.t} width={bw} height={height - PAD.t - PAD.b} fill={`url(#${hatch})`} opacity={hover === i ? 1 : 0.6} />
+                </g>
+              );
+            }
             const top = Math.min(y(d.v), y(0)), h = Math.max(1, Math.abs(y(d.v) - y(0)));
             const r = Math.min(2, h);
             // Rounded at the data end only, square at the baseline.
@@ -214,7 +232,7 @@ export function SignedBars({ data, height = 220, format, label, lowLabel, highLa
             return (
               <g key={d.key} onPointerEnter={() => setHover(i)}>
                 <rect x={PAD.l + slot * i} y={PAD.t} width={slot} height={height - PAD.t - PAD.b} fill="transparent" />
-                <path d={shape} fill={tone ? TONE[tone] : d.v >= 0 ? 'var(--bid)' : 'var(--ask)'} opacity={hover == null || hover === i ? 1 : 0.4} />
+                <path d={shape} fill={tone ? TONE[tone] : d.v >= 0 ? 'var(--bid)' : 'var(--ask)'} opacity={(hover == null || hover === i ? 1 : 0.4) * (d.faded ? 0.5 : 1)} />
               </g>
             );
           })}

@@ -1,8 +1,11 @@
 'use client';
 
 import { StarIcon } from '@phosphor-icons/react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import type { PxOverview } from '@monday/core';
+import { api } from '@/lib/api';
 import { cx } from './ui';
 
 // Shared pieces of the public Perpl stats pages. Same tokens as the terminal: mono numerals, 12px workhorse text,
@@ -36,6 +39,12 @@ export const ago = (ts: number, now = Date.now()) => {
 };
 
 /** A labelled number in a gap-px grid cell. */
+/** Distance to liquidation, coloured as it closes in. Null: the position cannot be liquidated. */
+export const liqText = (d: number | null, digits = 2) => (d == null ? 'n/a' : `${d.toFixed(digits)}%`);
+export const liqTone = (d: number | null) => (d == null ? 'text-fg-3' : d < 2 ? 'text-ask-fg' : d < 5 ? 'text-warn' : 'text-fg-2');
+/** Profit factor as a reader expects it: a ratio, "no losses" when every close won, or n/a without closes. */
+export const profitText = (p: { profitFactor: number | null; winRate: number | null }) => (p.profitFactor != null ? p.profitFactor.toFixed(2) : p.winRate === 1 ? 'no losses' : 'n/a');
+
 export function Kpi({ k, v, sub, t, hint }: { k: string; v: ReactNode; sub?: ReactNode; t?: number | null; hint?: string }) {
   return (
     <div className="bg-canvas px-3 py-2.5" title={hint}>
@@ -71,34 +80,60 @@ export function Skew({ longs, shorts }: { longs: number; shorts: number }) {
   );
 }
 
-/** Wallets the viewer watches, kept in this browser only. Storage can be blocked; then the list simply stays empty. */
-const KEY = 'monday.stats.watch';
-export function useWatchlist() {
+/**
+ * One wallet, however it was reached: account number, lower-case address or checksummed address. The account number is
+ * the identity; an address is only another way to type it.
+ */
+export type WalletRef = { account: number | null; address: string };
+export const walletKey = (w: WalletRef) => (w.account != null ? String(w.account) : w.address.toLowerCase());
+export const sameWallet = (q: string, w: WalletRef) => q.toLowerCase() === walletKey(w) || (!!w.address && q.toLowerCase() === w.address.toLowerCase());
+
+/**
+ * Wallets the viewer watches, kept in this browser only and per network (an account number means a different wallet on
+ * testnet). Storage can be blocked; then the list simply stays empty.
+ */
+/** The network the public stats read: the overview the analytics header already polls, shared through its cache. */
+export const useStatsNetwork = () => useQuery({ queryKey: ['stats-overview'], queryFn: () => api<PxOverview>('/stats/overview'), refetchInterval: 15_000 }).data?.network;
+
+const LEGACY_KEY = 'monday.stats.watch'; // before 2026-10-10: one list for every network, entries as typed
+export function useWatchlist(network: string | undefined) {
+  const key = network ? `monday.stats.watch.${network}` : null;
   const [list, setList] = useState<string[]>([]);
   useEffect(() => {
+    if (!key) return;
     try {
-      setList(JSON.parse(localStorage.getItem(KEY) ?? '[]'));
+      let saved = localStorage.getItem(key);
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (saved == null && legacy != null) {
+        // The old list was kept by the mainnet deployment; it moves to the first network that asks, normalised.
+        saved = JSON.stringify([...new Set((JSON.parse(legacy) as string[]).map((q) => q.toLowerCase()))]);
+        localStorage.setItem(key, saved);
+        localStorage.removeItem(LEGACY_KEY);
+      }
+      setList(JSON.parse(saved ?? '[]'));
     } catch {
       setList([]);
     }
-  }, []);
+  }, [key]);
   const save = useCallback((next: string[]) => {
     setList(next);
     try {
-      localStorage.setItem(KEY, JSON.stringify(next));
+      if (key) localStorage.setItem(key, JSON.stringify(next));
     } catch {
       // per-browser convenience only
     }
-  }, []);
-  const toggle = useCallback((q: string) => save(list.includes(q) ? list.filter((x) => x !== q) : [...list, q].slice(-12)), [list, save]);
-  return { list, toggle, has: (q: string) => list.includes(q) };
+  }, [key]);
+  const has = (w: WalletRef) => list.some((q) => sameWallet(q, w));
+  // Watching stores the account number; un-watching removes every way the wallet was ever stored.
+  const toggle = (w: WalletRef) => save(has(w) ? list.filter((q) => !sameWallet(q, w)) : [...list, walletKey(w)].slice(-12));
+  return { list, has, toggle };
 }
 
-export function WatchButton({ q }: { q: string }) {
-  const w = useWatchlist();
-  const on = w.has(q);
+export function WatchButton({ wallet, network }: { wallet: WalletRef; network: string }) {
+  const w = useWatchlist(network);
+  const on = w.has(wallet);
   return (
-    <button type="button" onClick={() => w.toggle(q)} aria-pressed={on} className={cx('inline-flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-[12px]', on ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>
+    <button type="button" onClick={() => w.toggle(wallet)} aria-pressed={on} className={cx('inline-flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-[12px]', on ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>
       <StarIcon size={12} weight={on ? 'fill' : 'regular'} /> {on ? 'Watching' : 'Watch'}
     </button>
   );

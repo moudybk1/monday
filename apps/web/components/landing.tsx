@@ -1,10 +1,12 @@
 'use client';
 
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useState } from 'react';
-import type { Decision, Evidence, MarketState, MarketSym } from '@monday/core';
+import { PauseIcon, PlayIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
+import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
+import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import { MARKETS, type Decision, type Evidence, type MarketState, type MarketSym } from '@monday/core';
 import { api } from '@/lib/api';
-import { fmtPrice } from '@/lib/format';
+import { fmtPrice, fmtTime } from '@/lib/format';
 import { useLive } from '@/lib/live';
 import { OrderBook } from './book';
 import { SignedBars } from './charts';
@@ -12,9 +14,22 @@ import { PriceChart } from './price-chart';
 import { FlowBars, SmartTape } from './smart-money';
 import { Panel, Skeleton, Tag, cx } from './ui';
 
-/** The hero's visual is the product itself: the house account's terminal, live. */
-export function HeroTerminal() {
-  const { state } = useLive('public');
+/** The live terminal, mounted (and its stream opened) only once the reader scrolls near it. */
+export function LiveMarket() {
+  const ref = useRef<HTMLDivElement>(null);
+  const near = useInView(ref, { once: true, margin: '0px 0px 150px 0px' });
+  return <div ref={ref}>{near ? <LiveTerminal /> : <Skeleton className="h-[420px]" />}</div>;
+}
+
+/** The product itself: the house account's terminal on the live market. */
+function LiveTerminal() {
+  const { state, connected } = useLive('public');
+  // A first snapshot takes a moment: say "connecting" until it is clearly overdue.
+  const [overdue, setOverdue] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setOverdue(true), 8_000);
+    return () => clearTimeout(t);
+  }, []);
   const [picked, setPicked] = useState<MarketSym>('BTC');
   const syms = state ? (Object.keys(state.markets) as MarketSym[]) : [];
   const sym = syms.includes(picked) ? picked : syms[0];
@@ -24,7 +39,7 @@ export function HeroTerminal() {
     return (
       <div className="rounded-lg border border-line bg-canvas p-1">
         <Skeleton className="h-[420px]" />
-        <p className="px-2 py-2 text-[12px] text-fg-3">Waiting for the Monday server. Start it with npm run dev to see the live terminal.</p>
+        <p className="px-2 py-2 text-[12px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough above shows what Monday does.' : 'Connecting to the live market.'}</p>
       </div>
     );
   }
@@ -61,10 +76,13 @@ export function HeroTerminal() {
           </Panel>
         </div>
       </div>
-      <figcaption className="mt-2 text-[12px] text-fg-3">
-        {state.sim ? "Live: Monday's house account quoting on a simulated book. Pick a market."
-          : state.paper ? "Live: Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated."
-          : `Live Perpl order book${m.signal ? ' with Nansen smart-money flow' : ''}. Monday's own quotes appear in your terminal once you start it.`}
+      {/* "Live" only while the stream is: a frozen book must say it is frozen. */}
+      <figcaption className={cx('mt-2 text-[12px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
+        {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
+          : state.sim ? "Live: Monday's house account quoting on a simulated book. Pick a market. "
+          : state.paper ? "Live: Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
+          : `Live Perpl order book${m.signal ? ' with Nansen smart-money flow' : ''}. `}
+        {!state.sim && !state.paper && "Monday's own quotes appear in your terminal once you start it."}
       </figcaption>
     </figure>
   );
@@ -101,10 +119,10 @@ function scene(step: number): MarketState {
 }
 
 const STEPS = [
-  { verb: 'Quote', text: 'Monday rests one bid and one ask around fair price and earns the spread each time both fill.' },
-  { verb: 'Detect', text: 'Traders Nansen labels as smart money buy $640k of BTC on Hyperliquid in five minutes. The flow score passes 2.5.' },
-  { verb: 'Step aside', text: 'On the next one-second tick the reflex pulls the ask. Only the bid stays, so nobody can lift Monday before price moves.' },
-  { verb: 'Explain', text: 'The governor sets a storm regime, writes its reason in plain words and logs the hash on Monad for anyone to check.' },
+  { verb: 'Quote', ms: 3000, text: 'Monday rests one bid and one ask around fair price. It aims to earn the spread when both fill; fees and price moves can still make a round trip lose.' },
+  { verb: 'Detect', ms: 4000, text: 'Traders Nansen labels as smart money buy $640k of BTC on Hyperliquid in five minutes. The flow score passes 2.5.' },
+  { verb: 'Step aside', ms: 4000, text: 'On the next one-second tick the reflex pulls the ask, so a better-informed buyer cannot lift it. The bid stays.' },
+  { verb: 'Explain', ms: 4000, text: 'The governor sets a storm regime and writes its reason in plain words, with a hash of the data behind it.' },
 ];
 
 const CARDS: Pick<Decision, 'id' | 'source' | 'reason'>[] = [
@@ -112,33 +130,70 @@ const CARDS: Pick<Decision, 'id' | 'source' | 'reason'>[] = [
   { id: 2, source: 'governor', reason: 'Storm regime. Widening quotes 2.5x and cutting size to 40% until flow cools.' },
 ];
 
-export function Story() {
-  const [step, setStep] = useState(0);
-  const [auto, setAuto] = useState(true);
+type Play = 'ready' | 'playing' | 'paused' | 'done';
+
+/**
+ * The walkthrough. It plays once, from the moment it is on screen, and stops on the last step with Replay; a step
+ * picked by hand pauses it. Out of view it holds still. With reduced motion it never plays by itself.
+ * `onchain`: the Monad registry is live, so the governor's record can say it is anchored there.
+ */
+export function Story({ onchain = false }: { onchain?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.5 });
   const reduce = useReducedMotion();
-
-  // Motion here is storytelling: the sequence is the explanation. It stops for good once the reader takes over.
+  const [step, setStep] = useState(0);
+  const [play, setPlay] = useState<Play>('ready');
+  const [tabShown, setTabShown] = useState(true);
   useEffect(() => {
-    if (!auto || reduce) return;
-    const t = setInterval(() => setStep((s) => (s + 1) % STEPS.length), 4200);
-    return () => clearInterval(t);
-  }, [auto, reduce]);
+    const onChange = () => setTabShown(!document.hidden);
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
+  }, []);
+  const seen = inView && tabShown;
 
+  useEffect(() => {
+    if (seen && play === 'ready' && !reduce) setPlay('playing');
+  }, [seen, play, reduce]);
+  useEffect(() => {
+    if (play !== 'playing' || !seen) return;
+    const t = setTimeout(() => (step < STEPS.length - 1 ? setStep(step + 1) : setPlay('done')), STEPS[step].ms);
+    return () => clearTimeout(t);
+  }, [play, seen, step]);
+
+  const toggle = () => {
+    if (play === 'playing') return setPlay('paused');
+    if (play === 'done') setStep(0);
+    setPlay('playing');
+  };
   const m = scene(step);
   return (
-    <div onPointerEnter={() => setAuto(false)} onFocusCapture={() => setAuto(false)}>
-      <div role="tablist" aria-label="What happens during a smart-money burst" className="grid border-y border-line sm:grid-cols-4">
-        {STEPS.map((s, i) => (
-          <button
-            key={s.verb} role="tab" aria-selected={i === step} onClick={() => { setStep(i); setAuto(false); }}
-            className={cx('border-line px-0 py-4 text-left sm:border-l sm:px-5 sm:first:border-l-0 sm:first:pl-0', i === step ? 'shadow-[inset_0_2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg-2')}
-          >
-            <span className={cx('text-xl font-semibold tracking-tight', i === step && 'text-accent')}>{s.verb}</span>
-            <span className={cx('mt-1.5 block text-[13px] leading-snug', i === step ? 'text-fg-2' : 'hidden sm:block')}>{s.text}</span>
-          </button>
-        ))}
+    <div ref={ref}>
+      <div className="flex items-stretch gap-2">
+        <ol className="grid min-w-0 flex-1 grid-cols-4 rounded-md border border-line-2" aria-label="What happens during a smart-money burst">
+          {STEPS.map((s, i) => (
+            <li key={s.verb} className="relative min-w-0 border-l border-line-2 first:border-l-0">
+              <button
+                type="button" aria-current={i === step ? 'step' : undefined} onClick={() => { setStep(i); setPlay('paused'); }}
+                className={cx('flex h-11 w-full items-center justify-center px-1.5 text-center text-[12.5px] font-medium leading-tight sm:text-[13px]', i === step ? 'bg-accent/12 text-accent' : 'text-fg-3 hover:bg-raised hover:text-fg')}
+              >
+                <span className="num mr-1.5 hidden text-[11px] opacity-70 sm:inline">{i + 1}</span>{s.verb}
+              </button>
+              {/* How long this step has left: drawn only while it plays, so a pause never shows a frozen bar. */}
+              {i === step && play === 'playing' && seen && !reduce && (
+                <motion.span key={step} aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-accent" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: s.ms / 1000, ease: 'linear' }} />
+              )}
+            </li>
+          ))}
+        </ol>
+        <button type="button" onClick={toggle} aria-label={play === 'playing' ? 'Pause the walkthrough' : play === 'done' ? 'Replay the walkthrough' : 'Play the walkthrough'}
+          className="grid h-11 w-11 flex-none place-items-center rounded-md border border-line-2 text-fg-2 hover:border-fg-3 hover:text-fg">
+          {play === 'playing' ? <PauseIcon size={16} weight="fill" /> : play === 'done' ? <ArrowCounterClockwiseIcon size={16} /> : <PlayIcon size={16} weight="fill" />}
+        </button>
       </div>
-      <div className="mt-6 grid gap-1 rounded-lg border border-line bg-void p-1 md:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
+      <p aria-live="polite" className="mt-3 min-h-[3.75rem] text-[14px] leading-snug text-fg-2 sm:min-h-[2.75rem]">
+        <span className="font-semibold text-fg">{STEPS[step].verb}.</span> {STEPS[step].text}
+      </p>
+      <div className="mt-3 grid gap-1 rounded-lg border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
         <Panel title="Order book" aside={<span>BTC perp</span>} bodyClassName="!overflow-hidden">
           <OrderBook m={m} rows={5} now={T0} />
         </Panel>
@@ -160,34 +215,54 @@ export function Story() {
                 >
                   <div className="flex gap-1"><Tag>BTC</Tag><Tag tone={c.source === 'reflex' ? 'ask' : 'neutral'}>{c.source === 'reflex' ? 'Reflex' : 'Governor'}</Tag>{c.source === 'governor' && <Tag tone="accent">storm</Tag>}</div>
                   <p className="mt-1.5 text-[12.5px] leading-snug">{c.reason}</p>
-                  {c.source === 'governor' && <p className="num mt-1 text-[11px] text-fg-3">logged on Monad</p>}
+                  {c.source === 'governor' && <p className="num mt-1 text-[11px] text-fg-3">{onchain ? 'hash logged on Monad' : 'reason and data hash recorded'}</p>}
                 </motion.div>
               ))}
             </AnimatePresence>
           </Panel>
         </div>
       </div>
-      <p className="mt-2 text-[12px] text-fg-3">Illustration with example numbers, drawn with the same components as the terminal.</p>
+      <p className="mt-2 text-[12px] text-fg-3">Example data, drawn with the same components as the terminal. The steps are shortened; in the product the reflex acts within a second and the governor every 15 minutes.</p>
     </div>
   );
 }
 
 export function EvidenceTeaser() {
-  const [ev, setEv] = useState<Evidence | null | 'none'>(null);
-  useEffect(() => {
-    api<Evidence & { pending?: boolean }>('/evidence').then((e) => setEv(e.pending ? 'none' : e)).catch(() => setEv('none'));
-  }, []);
+  const [ev, setEv] = useState<Evidence | 'pending' | 'error' | null>(null);
+  const load = () => void api<Evidence & { pending?: boolean }>('/evidence').then((e) => setEv(e.pending ? 'pending' : e)).catch(() => setEv('error'));
+  useEffect(load, []);
   if (ev === null) return <Skeleton className="h-72" />;
-  const s = ev === 'none' ? undefined : ev.studies.BTC;
-  if (ev === 'none' || !s) return <p className="panel px-4 py-10 text-fg-3">The event study is still collecting data. It needs two days of prices and smart-money trades before it reports anything.</p>;
-  const head = s.grid.find((g) => g.window === 15 && g.horizon === 15)!;
+  if (ev === 'error') {
+    return (
+      <p className="panel px-4 py-10 text-fg-3">
+        The evidence could not be loaded right now.{' '}
+        <button type="button" onClick={() => { setEv(null); load(); }} className="font-medium text-fg underline underline-offset-2 hover:text-accent">Try again</button>
+      </p>
+    );
+  }
+  const sym = ev === 'pending' ? undefined : MARKETS.find((m) => ev.studies[m]); // BTC first when it has one
+  const s = sym && ev !== 'pending' ? ev.studies[sym] : undefined;
+  if (ev === 'pending' || !sym || !s) return <p className="panel px-4 py-10 text-fg-3">The event study is still collecting data. It needs two days of prices and smart-money trades before it reports anything.</p>;
+  const head = s.grid.find((g) => g.window === 15 && g.horizon === 15 && [g.rho, g.lo, g.hi].every(Number.isFinite) && g.n > 0);
+  if (!head) return <p className="panel px-4 py-10 text-fg-3">The study has no 15-minute result yet. The full tables are on the evidence page.</p>;
   const stats = [
     { k: 'Rank correlation, 15 min flow vs next 15 min', v: head.rho.toFixed(2), sub: `95% interval ${head.lo.toFixed(2)} to ${head.hi.toFixed(2)}` },
-    { k: 'Independent samples', v: String(head.n), sub: 'seven days, BTC' },
-    { k: 'Same-way moves after a burst', v: s.hit.n ? `${Math.round(s.hit.rate * 100)}%` : 'n/a', sub: `${s.hit.n} bursts past z 2.5` },
+    { k: 'Independent samples', v: String(head.n), sub: `${sym}, non-overlapping 15-minute windows` },
+    { k: 'Price moved the same way after a burst', v: s.hit.n > 0 && s.hit.rate >= 0 && s.hit.rate <= 1 ? `${Math.round(s.hit.rate * 100)}%` : 'n/a', sub: `${s.hit.n} bursts past z 2.5. Not a trading win rate.` },
   ];
+  // What the interval says, in one sentence. A correlation is never a profit claim.
+  const reading = head.lo > 0
+    ? `In this sample, ${sym} tended to move the way smart money traded over the next 15 minutes. That is a correlation, not a profit.`
+    : head.hi < 0
+      ? `In this sample, ${sym} tended to move against smart-money flow over the next 15 minutes.`
+      : `This sample does not show a clear link between smart-money flow and where ${sym} went next.`;
+  const computed = Number.isFinite(ev.at) ? new Date(ev.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : null;
+  // Simulated data says so before the numbers, not under them.
+  const synthetic = ev.synthetic && <p className="mb-2 text-[12px] text-warn">Simulated data. The simulator makes flow move price, so this shows the method working, not a proven edge.</p>;
   return (
     <div>
+      {synthetic}
+      <p className="mb-3 max-w-[70ch] text-[15px]">{reading}</p>
       <div className="flex flex-col gap-1 rounded-lg border border-line bg-void p-1">
         <dl className="grid gap-1 sm:grid-cols-3">
           {stats.map((x) => (
@@ -198,15 +273,18 @@ export function EvidenceTeaser() {
             </div>
           ))}
         </dl>
-        <Panel title="Mean BTC return over the next 15 minutes, by strength of smart-money flow" aside={<span>bps</span>} bodyClassName="p-2 !overflow-hidden">
+        <Panel title={`Mean ${sym} return over the next 15 minutes, by strength of smart-money flow`} aside={<span>bps</span>} bodyClassName="p-2 !overflow-hidden">
           <SignedBars
-            height={230} format={(v) => v.toFixed(1)} label="Mean forward 15-minute return in basis points for each decile of the 15-minute smart-money z-score"
+            height={230} format={(v) => v.toFixed(1)} label={`Mean forward 15-minute ${sym} return in basis points for each decile of the 15-minute smart-money z-score`}
             lowLabel="strongest selling" highLabel="strongest buying"
-            data={s.deciles.map((d) => ({ key: `Decile ${d.decile}`, v: d.meanRetBps, tip: `Decile ${d.decile}: mean z ${d.meanZ.toFixed(1)}, next 15 min ${d.meanRetBps >= 0 ? '+' : ''}${d.meanRetBps.toFixed(2)} bps, ${d.n} samples` }))}
+            data={s.deciles.filter((d) => Number.isFinite(d.meanRetBps) && Number.isFinite(d.meanZ)).map((d) => ({ key: `Decile ${d.decile}`, v: d.meanRetBps, tip: `Decile ${d.decile}: mean z ${d.meanZ.toFixed(1)}, next 15 min ${d.meanRetBps >= 0 ? '+' : ''}${d.meanRetBps.toFixed(2)} bps, ${d.n} samples` }))}
           />
         </Panel>
       </div>
-      {ev.synthetic && <p className="mt-2 text-[12px] text-fg-3">Simulated data. The simulator makes flow move price, so this shows the method working, not a proven edge. Real Nansen and Perpl data replace it once keys are configured.</p>}
+      <p className="mt-3 text-[12px] text-fg-3">
+        {computed && <>Computed {computed}. </>}Sources: {ev.smartMoneySource}; {ev.priceSource}.{' '}
+        <Link href="/evidence" className="font-medium text-fg underline underline-offset-2 hover:text-accent">Read the evidence</Link>
+      </p>
     </div>
   );
 }

@@ -2,12 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { Analytics, Bucket } from '@monday/core';
+import type { Analytics, AppConfig, Bucket, Me } from '@monday/core';
 import { SignedBars } from '@/components/charts';
 import { Segments } from '@/components/stats-ui';
-import { ButtonLink, Notice, Panel, Skeleton, cx } from '@/components/ui';
+import { ButtonLink, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
-import { fmtBps, fmtSigned, fmtUsd } from '@/lib/format';
+import { fmtBps, fmtSigned, fmtUsd, shortAddr } from '@/lib/format';
 
 // Tread-style performance view over Monday's own fills: is the spread paying for the adverse selection,
 // and under which conditions (market, regime, quoted width, hour of day)?
@@ -26,9 +26,22 @@ export default function MyMondayPage() {
     document.title = 'My Monday - Analytics';
   }, []);
   const signedOut = q.error instanceof ApiError && q.error.status === 401;
+  // Whose numbers these are and what money was at stake: the session and the trading server, not the public stats.
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false, enabled: !signedOut });
+  const cfg = useQuery({ queryKey: ['config'], queryFn: () => api<AppConfig>('/config'), staleTime: 60_000 });
 
   return (
     <div className="grid gap-1 pt-1">
+      {me.data && cfg.data && (
+        <div className="panel flex-row flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1.5 text-[12px] text-fg-2" aria-label="Account">
+          <span className="font-semibold text-fg">{me.data.accountId ? `Perpl account #${me.data.accountId}` : 'No Perpl account yet'}</span>
+          <span className="num">{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
+          <Tag tone={cfg.data.realFunds ? 'ask' : cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>
+            {cfg.data.realFunds ? 'Mainnet: real funds' : cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}
+          </Tag>
+          <span className="text-fg-3">Last {days} days, by UTC day, from Monday&apos;s own records of its fills.</span>
+        </div>
+      )}
       <div className="panel flex-row flex-wrap items-center justify-between gap-2 px-2.5 py-1.5">
         <p className="text-[12px] text-fg-2">
           <span className="font-semibold text-fg">Your agent&apos;s fills.</span> Net is realised PnL after fees, per dollar traded. Markout is how price moved after a fill: positive means the fill was good for you.
@@ -38,7 +51,7 @@ export default function MyMondayPage() {
       {q.isLoading ? (
         <div className="grid gap-1"><Skeleton className="h-16" /><Skeleton className="h-64" /><Skeleton className="h-48" /></div>
       ) : signedOut ? (
-        <Notice action={<ButtonLink href="/app" size="sm">Open Monday</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
+        <Notice action={<ButtonLink href="/app?next=/analytics/monday" size="sm">Sign in</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
       ) : q.isError || !q.data ? (
         <Notice tone="warn">Could not load your analytics. {q.error instanceof Error ? q.error.message : ''}</Notice>
       ) : q.data.summary.fills === 0 ? (
@@ -95,7 +108,7 @@ function Body({ a }: { a: Analytics }) {
       <div className="grid gap-1 lg:grid-cols-3">
         <Buckets title="By market" rows={a.byMarket} />
         <Buckets title="By regime" rows={a.byRegime} />
-        <Buckets title="By quoted half-spread" unit=" bps" rows={a.bySpread} />
+        <Buckets title="By distance from fair at fill" unit=" bps" rows={a.bySpread} />
       </div>
 
       <Heatmap cells={a.hourly} />

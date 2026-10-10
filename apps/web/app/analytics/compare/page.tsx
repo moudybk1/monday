@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import type { PxWallet } from '@monday/core';
 import { LineChart, type Tone } from '@/components/charts';
-import { money, shortAddress, signedMoney, tone, useWatchlist } from '@/components/stats-ui';
+import { money, profitText, sameWallet, shortAddress, signedMoney, tone, useStatsNetwork, useWatchlist, walletKey } from '@/components/stats-ui';
 import { INPUT, Notice, Panel, Skeleton, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 
@@ -25,17 +25,28 @@ export default function ComparePage() {
 function Compare() {
   const params = useSearchParams();
   const router = useRouter();
-  const watch = useWatchlist();
+  const watch = useWatchlist(useStatsNetwork());
   const ws = (params.get('w') ?? '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, MAX);
   const [draft, setDraft] = useState('');
   const set = (next: string[]) => router.replace(`/analytics/compare${next.length ? `?w=${next.join(',')}` : ''}`);
-  const add = (q: string) => q && !ws.includes(q) && ws.length < MAX && set([...ws, q]);
   const qs = useQueries({ queries: ws.map((q) => ({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${q}`), refetchInterval: 30_000 })) });
   useEffect(() => {
     document.title = 'Compare wallets - Monday';
   }, []);
 
   const loaded = ws.map((q, i) => ({ q, w: qs[i]?.data, err: qs[i]?.error, loading: qs[i]?.isLoading }));
+  // One wallet is one column, whether it was added as an account number or an address in any letter case.
+  const listed = (q: string) => ws.some((x) => x.toLowerCase() === q.toLowerCase()) || loaded.some(({ w }) => w && sameWallet(q, w));
+  const add = (raw: string) => {
+    const q = raw.trim();
+    if (q && ws.length < MAX && !listed(q)) set([...ws, q]);
+  };
+  const resolved = loaded.map(({ q, w }) => (w ? walletKey(w) : q.toLowerCase()));
+  useEffect(() => {
+    const keep = ws.filter((_, i) => resolved.indexOf(resolved[i]) === i); // a duplicate shows up once it resolves
+    if (keep.length < ws.length) set(keep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved.join()]);
   const rows: [string, (w: PxWallet) => React.ReactNode, ((w: PxWallet) => number | null)?][] = [
     ['Equity', (w) => money(w.equityUsd)],
     ['Open PnL', (w) => signedMoney(w.positions.reduce((s, p) => s + p.upnl, 0)), (w) => w.positions.reduce((s, p) => s + p.upnl, 0)],
@@ -44,8 +55,10 @@ function Compare() {
     ['Fees paid', (w) => money(w.performance.feesUsd, true)],
     ['Volume', (w) => money(w.performance.volumeUsd)],
     ['Fills', (w) => w.performance.trades.toLocaleString('en-US')],
+    // Busy wallets are measured over their newest fills only: each column says which period its numbers cover.
+    ['Stats cover', (w) => (w.fills.total > w.fills.used ? `newest ${w.fills.used.toLocaleString('en-US')} of ${w.fills.total.toLocaleString('en-US')}` : 'all indexed fills') + (w.fills.since ? `, since ${new Date(w.fills.since).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}` : '')],
     ['Win rate', (w) => (w.performance.winRate == null ? 'n/a' : `${(w.performance.winRate * 100).toFixed(1)}%`)],
-    ['Profit factor', (w) => (w.performance.profitFactor == null ? 'n/a' : Number.isFinite(w.performance.profitFactor) ? w.performance.profitFactor.toFixed(2) : 'no losses')],
+    ['Profit factor', (w) => profitText(w.performance)],
     ['Max drawdown', (w) => money(w.performance.maxDrawdownUsd, true)],
     ['Longest streaks', (w) => `${w.performance.longestWin} W / ${w.performance.longestLoss} L`],
     ['Avg hold', (w) => hold(w.performance.avgHoldMin)],
@@ -65,15 +78,18 @@ function Compare() {
         ))}
         {ws.length < MAX && (
           <form onSubmit={(e) => { e.preventDefault(); add(draft.trim()); setDraft(''); }} className="flex items-center gap-1">
-            <label htmlFor="cmp-add" className="sr-only">Add a wallet address or account number</label>
-            <input id="cmp-add" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add address or account #" className={cx(INPUT, 'num h-7 w-64 text-[12px]')} />
+            <label htmlFor="cmp-add" className="sr-only">Add a wallet to the comparison: address or account number</label>
+            <input
+              id="cmp-add" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add to comparison: address or account #" className={cx(INPUT, 'num h-7 w-64 text-[12px]')}
+              required pattern="0x[0-9a-fA-F]{40}|[0-9]{1,12}" title="A 0x wallet address (40 hex characters) or a Perpl account number"
+            />
             <button type="submit" className="grid size-7 place-items-center rounded-sm border border-line-2 text-fg-2 hover:bg-raised" aria-label="Add"><PlusIcon size={12} /></button>
           </form>
         )}
-        {watch.list.filter((q) => !ws.includes(q)).length > 0 && ws.length < MAX && (
+        {watch.list.filter((q) => !listed(q)).length > 0 && ws.length < MAX && (
           <span className="flex flex-wrap items-center gap-1 text-[11.5px] text-fg-3">
             Watching:
-            {watch.list.filter((q) => !ws.includes(q)).map((q) => (
+            {watch.list.filter((q) => !listed(q)).map((q) => (
               <button key={q} type="button" onClick={() => add(q)} className="num rounded-sm border border-accent/40 px-1.5 py-0.5 text-accent hover:bg-accent/12">{label(q)}</button>
             ))}
           </span>
@@ -81,7 +97,7 @@ function Compare() {
       </section>
 
       {!ws.length ? (
-        <Notice>Add up to four wallets to compare them. Use the search above, the Watch button on any wallet, or an account from the leaderboard.</Notice>
+        <Notice>Add up to four wallets to compare them: type an address or account number in the Add to comparison box above, use the Watch button on any wallet, or pick an account from the leaderboard.</Notice>
       ) : (
         <>
           <Panel title="Side by side">
@@ -115,9 +131,7 @@ function Compare() {
               label="Cumulative realised PnL per wallet" format={(v) => money(v, true)} empty="No indexed fills yet"
               timeFormat={(t) => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' })}
               series={loaded.filter((x) => x.w).map(({ q, w }) => {
-                const c = w!.performance.curve;
-                const step = Math.ceil(c.length / 400);
-                return { name: label(q), tone: TONES[ws.indexOf(q)], points: step > 1 ? c.filter((_, i) => i % step === 0 || i === c.length - 1) : c };
+                return { name: label(q), tone: TONES[ws.indexOf(q)], points: w!.performance.curve }; // thinned by the server
               })}
             />
           </Panel>

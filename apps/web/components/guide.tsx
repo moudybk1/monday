@@ -10,7 +10,7 @@ const AREAS: [string, ReactNode][] = [
   ['Market strip', <>Pick a market. Beside it: price, 24-hour change and volume, the spread (Monday needs a few bps of it to earn anything), and the regime Monday is in.</>],
   ['Chart', <>Candles show the market price. The dashed <Swatch tone="bid" /> line is Monday&apos;s offer to buy, <Swatch tone="ask" /> its offer to sell. Arrows mark its trades. Scroll to zoom, drag to move.</>],
   ['Order book', <>Every open offer on Perpl. Monday&apos;s own are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
-  ['Agent', <>Your money and the controls. <b>Pause</b> cancels Monday&apos;s offers and keeps any position. <b>Kill and flatten</b> cancels everything and closes positions. At 100% of the daily loss limit Monday stops on its own.</>],
+  ['Agent', <>Your money and the controls. <b>Stop</b> cancels Monday&apos;s offers and stops the bot; any position stays open and is yours to manage. <b>Kill and flatten</b> cancels everything and closes positions. While quoting, Monday kills itself at 100% of the daily loss limit.</>],
   ['Open orders', <>Where each of Monday&apos;s offers sits: at the best price or behind it, and what has to trade before it fills.</>],
   ['Smart money', <>Big trades by wallets Nansen labels as consistently profitable. When they rush one way, Monday steps aside on that side.</>],
   ['Decisions', <>Every change Monday makes, with the reason in plain words.</>],

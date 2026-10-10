@@ -29,6 +29,7 @@
   --accent-fg: #0c0d10;
   --bid: #27a583;
   --ask: #e0633f;
+  --ask-deep: #b8401a; /* white text on it reads at 5.5:1; --ask itself does not (3.5:1) */
   --bid-fg: #45c7a0;
   --ask-fg: #f28563;
   --warn: #e9b949;
@@ -52,6 +53,7 @@
   --accent-fg: #ffffff;
   --bid: #0b8468;
   --ask: #d2512a;
+  --ask-deep: #b8401a;
   --bid-fg: #086b54;
   --ask-fg: #ad3d1c;
   --warn: #7a5200;
@@ -76,6 +78,7 @@
   --color-accent-fg: var(--accent-fg);
   --color-bid: var(--bid);
   --color-ask: var(--ask);
+  --color-ask-deep: var(--ask-deep);
   --color-bid-fg: var(--bid-fg);
   --color-ask-fg: var(--ask-fg);
   --color-warn: var(--warn);
@@ -156,6 +159,47 @@
     overflow: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--raised-2) transparent;
+  }
+  /* A slider: thin track filled in amber up to the thumb (--p, 0 to 1, set inline), a 4px-cornered handle. */
+  .range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 1.25rem;
+    background: transparent;
+    cursor: pointer;
+  }
+  .range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--accent) calc(7px + (100% - 14px) * var(--p, 0)), var(--raised-2) 0);
+  }
+  .range::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--raised-2);
+  }
+  .range::-moz-range-progress {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border: 2px solid var(--accent);
+    border-radius: 4px;
+    background: var(--canvas);
+  }
+  .range::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--accent);
+    border-radius: 4px;
+    background: var(--canvas);
   }
   /* A side that has been pulled: hatched, like a struck line. */
   .hatch {

@@ -14,13 +14,13 @@ const SOURCE = { governor: 'LLM governor', fallback: 'Rule-based governor', refl
 /** The public record a decision's on-chain uri points to (PRD 10.4, US-10). */
 export default function DecisionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [d, setD] = useState<DecisionRecord | null | 'missing'>(null);
+  const [d, setD] = useState<DecisionRecord | null | 'missing' | 'error'>(null);
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [check, setCheck] = useState<{ params: boolean; evidence: boolean } | null>(null);
 
   useEffect(() => {
     document.title = `Decision ${id} - Monday`;
-    api<DecisionRecord>(`/decisions/${id}`).then(setD).catch((e) => setD(e instanceof ApiError && e.status === 404 ? 'missing' : 'missing'));
+    api<DecisionRecord>(`/decisions/${id}`).then(setD).catch((e) => setD(e instanceof ApiError && e.status === 404 ? 'missing' : 'error'));
     api<AppConfig>('/config').then(setCfg).catch(() => {});
   }, [id]);
 
@@ -35,6 +35,8 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
           <div className="grid gap-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-64" /></div>
         ) : d === 'missing' ? (
           <Notice tone="warn">No decision with id {id} exists on this server.</Notice>
+        ) : d === 'error' ? (
+          <Notice tone="warn">Could not reach the Monday server to load decision {id}. Reload the page to try again.</Notice>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 text-[13px] text-fg-3">
@@ -69,7 +71,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
                   <dt className="text-[12.5px] text-fg-3">On Monad</dt>
                   <dd className="mt-1">
                     {d.txHash ? (
-                      <a href={`${cfg?.explorerUrl}/tx/${d.txHash}`} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 break-all underline underline-offset-2">
+                      <a href={cfg ? `${cfg.explorerUrl}/tx/${d.txHash}` : undefined} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 break-all underline underline-offset-2">
                         {d.txHash} <ArrowUpRightIcon size={12} />
                       </a>
                     ) : (

@@ -33,8 +33,10 @@ type Ind = (typeof INDICATORS)[number]['id'];
 const DEFAULT_IND: Ind[] = ['vol', 'ema20', 'ema50'];
 const PREFS = 'monday.chart'; // this viewer's interval and indicators
 
-// The library draws in UTC; shift each time by the viewer's offset so the axis reads local time.
-const toTime = (ms: number) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60_000) / 1000) as UTCTimestamp;
+// The library draws in UTC; shift every time by the viewer's offset so the axis reads local time. One offset for the whole
+// page, not each bar's own: across a daylight-saving change a per-bar offset runs time backwards, and the chart throws.
+const OFFSET_MS = new Date().getTimezoneOffset() * 60_000;
+const toTime = (ms: number) => Math.floor((ms - OFFSET_MS) / 1000) as UTCTimestamp;
 const toBar = (k: Candle): CandlestickData<Time> => ({ time: toTime(k.t), open: k.o, high: k.h, low: k.l, close: k.c });
 const decimals = (tick: number) => Math.max(0, Math.round(-Math.log10(tick)));
 

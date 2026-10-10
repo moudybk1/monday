@@ -1,14 +1,21 @@
 'use client';
 
-import { PauseIcon, PlayIcon, StopIcon } from '@phosphor-icons/react';
+import { PlayIcon, StopIcon, XCircleIcon } from '@phosphor-icons/react';
 import { usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
 import { fmtBps, fmtPrice, fmtSigned, fmtTime, fmtUsd } from '@/lib/format';
 import { Diverging } from './charts';
 import { Button, Tag, cx } from './ui';
 
-/** Session stop loss and take profit as typed: empty or not a positive number means none. */
+/**
+ * Session stop loss and take profit as typed. Empty means none; anything that is not a positive amount blocks Start.
+ * Text inputs, not number ones: a number input reports unparseable text ("$50", "1,000") as empty, which would read as "none".
+ */
 export type SessionDraft = { sl: string; tp: string };
-export const STATUS = { quoting: 'Quoting', paused: 'Paused', killed: 'Killed', idle: 'Not started' } as const;
+/** A session limit as typed: null for none, the amount, or NaN for a mistake (a negative or non-number) that must not pass silently. */
+export const sessionUsd = (s: string): number | null => (s.trim() === '' ? null : Number(s) > 0 ? Number(s) : NaN);
+export const STATUS = { quoting: 'Quoting', paused: 'Stopped', killed: 'Killed', idle: 'Not started' } as const;
+/** The agent's state in one word, with cleanup Perpl has not confirmed yet taking precedence. */
+export const statusText = (s: DashboardState) => (s.closing === 'flatten' ? 'Closing' : s.closing === 'cancel' ? 'Cancelling' : STATUS[s.status]);
 /** What fmtSigned shows as non-zero gets a colour. */
 export const tone = (n: number) => (n >= 0.00005 ? 'text-bid-fg' : n <= -0.00005 ? 'text-ask-fg' : 'text-fg');
 
@@ -44,12 +51,13 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
   const used = Math.min(100, Math.max(0, pnl.lossLimitUsedPct));
   const m = state.markets[sym];
   const cell = 'min-w-0 bg-canvas px-2.5 py-2';
+  const invalid = { sl: Number.isNaN(sessionUsd(session.sl)), tp: Number.isNaN(sessionUsd(session.tp)) };
 
   return (
     <section className="panel flex-none" aria-label="Agent">
       <header className="flex h-8 flex-none items-center justify-between border-b border-line px-2.5">
         <h2 className="text-[12px] font-semibold">Agent</h2>
-        <Tag tone={state.closing ? 'warn' : quoting ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{state.closing ? 'Closing' : STATUS[state.status]}</Tag>
+        <Tag tone={state.closing ? 'warn' : quoting ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{statusText(state)}</Tag>
       </header>
 
       <dl className="grid grid-cols-2 gap-px bg-line">
@@ -70,7 +78,7 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
           <dd className="num mt-1.5 text-[12px]">
             {live ? <><span className={tone(live.pnlUsd)}>{fmtSigned(live.pnlUsd)}</span> <span className="text-fg-3">since {fmtTime(live.startedAt, false)}</span></> : <span className="text-fg-3">not running</span>}
           </dd>
-          {live && (live.stopLossUsd != null || live.takeProfitUsd != null) && (
+          {live && (
             <dd className="num mt-1 text-[11px] text-fg-3">
               stop {live.stopLossUsd != null ? <span className="text-ask-fg">-{usd(live.stopLossUsd)}</span> : 'none'} / target {live.takeProfitUsd != null ? <span className="text-bid-fg">+{usd(live.takeProfitUsd)}</span> : 'none'}
             </dd>
@@ -91,8 +99,8 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
       <div className="border-t border-line px-2.5 py-2">
         {quoting ? (
           <div className="flex gap-1.5">
-            <Button size="sm" variant="ghost" className="flex-1" onClick={onPause} disabled={busy}><PauseIcon size={12} weight="fill" /> Pause</Button>
-            <Button size="sm" variant="danger" className="flex-1" onClick={onKill} disabled={busy}><StopIcon size={12} weight="fill" /> Kill and flatten</Button>
+            <Button size="sm" variant="ghost" className="flex-1" onClick={onPause} disabled={busy} title="Cancel Monday's orders and stop the bot. Open positions and orders you placed yourself stay as they are, and Monday stops watching them."><StopIcon size={12} weight="fill" /> Stop</Button>
+            <Button size="sm" variant="danger" className="flex-1" onClick={onKill} disabled={busy}><XCircleIcon size={12} weight="fill" /> Kill and flatten</Button>
           </div>
         ) : (
           <div className="grid gap-1.5">
@@ -102,17 +110,21 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
                   <span className="label">{label}</span>
                   <span className="flex items-center gap-1 text-[12px] text-fg-3">
                     $<input
-                      id={`session-${k}`} type="number" inputMode="decimal" min={0} step={1} placeholder="none" value={session[k]}
-                      onChange={(e) => onSession({ ...session, [k]: e.target.value })}
-                      className="num h-7 w-full min-w-0 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none"
+                      id={`session-${k}`} type="text" inputMode="decimal" autoComplete="off" placeholder="none" value={session[k]}
+                      onChange={(e) => onSession({ ...session, [k]: e.target.value })} aria-invalid={invalid[k] || undefined} aria-describedby={invalid[k] ? 'session-error' : undefined}
+                      className={cx('num h-7 w-full min-w-0 rounded-sm border bg-raised px-1.5 text-[12px] text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none', invalid[k] ? 'border-ask' : 'border-line-2')}
                     />
                   </span>
                 </label>
               ))}
             </div>
+            {(invalid.sl || invalid.tp) && <p id="session-error" role="alert" className="text-[11px] leading-snug text-ask-fg">Enter a positive amount, or leave the field empty for no limit.</p>}
             <div className="flex gap-1.5">
-              <Button size="sm" className="flex-1" onClick={onStart} disabled={busy}><PlayIcon size={12} weight="fill" /> {state.status === 'idle' ? 'Start quoting' : 'Resume'}</Button>
-              {state.status === 'paused' && <Button size="sm" variant="danger" onClick={onKill} disabled={busy}><StopIcon size={12} weight="fill" /> Kill</Button>}
+              {/* A kill still closing positions cannot be resumed over: the position would stay open with nobody closing it. */}
+              <Button size="sm" className="flex-1" onClick={onStart} disabled={busy || invalid.sl || invalid.tp || state.closing === 'flatten'} title={state.closing === 'flatten' ? 'Wait until Perpl confirms the positions are closed.' : undefined}>
+                <PlayIcon size={12} weight="fill" /> {state.closing === 'flatten' ? 'Closing positions' : state.status === 'idle' ? 'Start quoting' : 'Start again'}
+              </Button>
+              {state.status === 'paused' && <Button size="sm" variant="danger" onClick={onKill} disabled={busy}><XCircleIcon size={12} weight="fill" /> Kill and flatten</Button>}
             </div>
           </div>
         )}
@@ -146,7 +158,10 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
               );
             };
             return (
-              <tr key={s} onClick={() => onPick(s)} className={cx('h-[34px] cursor-pointer border-t border-line align-middle', s === sym ? 'bg-raised' : 'hover:bg-raised')}>
+              <tr
+                key={s} onClick={() => onPick(s)} tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(s); } }}
+                className={cx('h-[34px] cursor-pointer border-t border-line align-middle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent', s === sym ? 'bg-raised' : 'hover:bg-raised')}
+              >
                 <td className="pl-2.5 font-sans font-semibold" title={!x.inPolicy ? 'Not in your policy any more: Monday only closes the position here.' : x.stage !== 'normal' ? `Inventory stage: ${x.stage}. Monday has stopped adding and is working the exit.` : undefined}>
                   {s}{(!x.inPolicy || x.stage !== 'normal') && <span className={cx('ml-1 font-normal', x.stage === 'urgent' ? 'text-ask-fg' : 'text-warn')}>{x.inPolicy ? x.stage : 'exit'}</span>}
                 </td>

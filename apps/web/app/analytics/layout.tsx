@@ -38,14 +38,20 @@ function Header() {
   // The same cached query the Perpl tab polls: one request feeds both.
   const ov = useQuery({ queryKey: ['stats-overview'], queryFn: () => api<PxOverview>('/stats/overview'), refetchInterval: 15_000 });
   const ix = ov.data?.indexer;
-  const live = ix && ix.lagSec != null && ix.lagSec < 120;
+  const off = ix?.source === 'off';
+  const live = ix?.live;
+  const ago = (s: number) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86_400 ? `${(s / 3600).toFixed(1)} h` : `${(s / 86_400).toFixed(1)} d`);
+  // Two freshnesses on one page: Perpl's API answers live; fills, flows and liquidations come from the indexer, which may be behind or off.
+  const title = !ix ? undefined
+    : off ? `The event indexer is not running (start it with npm run indexer). Fills, flows and liquidations stop${ix.block ? ` at block ${ix.block.toLocaleString('en-US')}` : ''}${ix.lagSec != null ? `, ${ago(ix.lagSec)} ago` : ''}. Prices, open interest and positions are live from Perpl's API.`
+    : `Perpl events indexed to block ${Math.min(ix.block, ix.head).toLocaleString('en-US')} of ${ix.head.toLocaleString('en-US')} via ${ix.source === 'hypersync' ? 'Envio HyperSync' : 'Monad RPC'}${ix.lagSec != null ? `, last trade ${ago(ix.lagSec)} ago` : ''}.${ix.backfillDays ? ` ${ix.backfillDays} earlier days are still being indexed, newest first.` : ''}`;
   return (
     <AppHeader>
-      <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex" title={ix ? `Perpl events indexed to block ${ix.block.toLocaleString('en-US')} via ${ix.source === 'hypersync' ? 'Envio HyperSync' : 'Monad RPC'}` : undefined}>
-        <span aria-hidden className={cx('size-1.5 rounded-full', live ? 'live-dot bg-bid' : 'bg-warn')} />
-        {!ix ? 'connecting' : live ? 'live' : ix.lagSec == null ? 'indexing' : 'catching up'}
+      <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex" title={title}>
+        <span aria-hidden className={cx('size-1.5 rounded-full', live ? 'live-dot bg-bid' : off ? 'bg-ask' : 'bg-warn')} />
+        {!ix ? 'connecting' : off ? (ix.lagSec != null ? `history ${ago(ix.lagSec)} behind, indexer off` : 'indexer off') : !live ? 'catching up' : ix.backfillDays ? `live, ${ix.backfillDays} days backfilling` : 'live'}
       </span>
-      <span className="hidden sm:inline"><Tag tone="neutral">Perpl {ov.data?.network ?? 'mainnet'}</Tag></span>
+      <span className="hidden sm:inline" title="The network the public Perpl pages read. Your own results on My Monday name their own account and funds."><Tag tone="neutral">Public: Perpl {ov.data?.network ?? 'mainnet'}</Tag></span>
     </AppHeader>
   );
 }
@@ -71,8 +77,8 @@ function SubNav() {
       <form onSubmit={go} role="search" className="flex flex-1 items-center justify-end px-2 py-1 sm:flex-none">
         <label className="flex h-7 w-full items-center gap-2 rounded-sm border border-line-2 bg-raised px-2 focus-within:border-accent sm:w-[22rem]">
           <MagnifyingGlassIcon size={13} className="flex-none text-fg-3" />
-          <span className="sr-only">Wallet address or account number</span>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Any Perpl wallet: address or account #" spellCheck={false} className="num min-w-0 flex-1 bg-transparent text-[12px] text-fg placeholder:font-sans placeholder:text-fg-3 focus:outline-none" />
+          <span className="sr-only">Open a wallet: address or account number</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Open a wallet: address or account #" spellCheck={false} className="num min-w-0 flex-1 bg-transparent text-[12px] text-fg placeholder:font-sans placeholder:text-fg-3 focus:outline-none" />
         </label>
       </form>
     </div>

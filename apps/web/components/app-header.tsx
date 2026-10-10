@@ -9,7 +9,7 @@ import { Wordmark, cx } from './ui';
 const NAV = [
   { href: '/app', label: 'Terminal' },
   { href: '/analytics', label: 'Analytics' },
-  { href: '/app/policy', label: 'Policy' },
+  { href: '/app/policy', label: 'Bot settings' },
   { href: '/evidence', label: 'Evidence' },
 ];
 const isOn = (href: string, path: string) => (href === '/analytics' ? path.startsWith('/analytics') : path === href);

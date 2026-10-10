@@ -20,6 +20,7 @@ function summary(d: Decision): string | null {
 /** Where the decision's hash stands on Monad. Only a receipt counts as anchored; until then it says so. */
 export function Chain({ d, explorerUrl }: { d: Pick<Decision, 'txHash' | 'anchor'>; explorerUrl?: string; chainOn?: boolean }) {
   if (d.txHash && d.anchor !== 'failed') {
+    if (!explorerUrl) return <span>on Monad</span>; // config still loading: no link rather than a broken one
     return (
       <a href={`${explorerUrl}/tx/${d.txHash}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-fg-2 underline decoration-line-2 underline-offset-2 hover:text-fg">
         on Monad <ArrowUpRightIcon size={10} />

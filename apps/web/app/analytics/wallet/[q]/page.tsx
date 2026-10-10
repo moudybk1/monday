@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation';
 import { useEffect } from 'react';
 import type { PxWallet } from '@monday/core';
 import { LineChart } from '@/components/charts';
-import { Kpi, WatchButton, ago, money, price, shortAddress, signedMoney, tone } from '@/components/stats-ui';
+import { Kpi, WatchButton, ago, liqText, liqTone, money, price, profitText, shortAddress, signedMoney, tone } from '@/components/stats-ui';
 import { Notice, Panel, Skeleton, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 
@@ -30,7 +30,7 @@ export default function WalletPage() {
   const d = w.data;
   const p = d.performance;
   const upnl = d.positions.reduce((s, x) => s + x.upnl, 0);
-  const id = d.address || String(d.account);
+  const id = d.account != null ? String(d.account) : d.address; // the account number is the wallet's one identity
 
   return (
     <div className="grid gap-1 pt-1">
@@ -51,14 +51,16 @@ export default function WalletPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <WatchButton q={id} />
+          <WatchButton wallet={d} network={d.network} />
           <Link href={`/analytics/compare?w=${id}`} className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-[12px] text-fg-2 hover:bg-raised"><UsersThreeIcon size={12} /> Compare</Link>
           {d.address && <a href={`${EXPLORER}/address/${d.address}`} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-[12px] text-fg-2 hover:bg-raised">Explorer <ArrowSquareOutIcon size={11} /></a>}
         </div>
       </section>
 
-      {!d.historyComplete && (
-        <Notice>Trade history covers fills indexed so far{p.firstTs ? `, from ${shortDay(p.firstTs)}` : ''}. Balances and open positions are live from the Exchange.</Notice>
+      {d.fills.total > d.fills.used ? (
+        <Notice>Statistics cover this wallet&apos;s newest {d.fills.used.toLocaleString('en-US')} of {d.fills.total.toLocaleString('en-US')} fills{d.fills.since ? `, since ${shortDay(d.fills.since)}` : ''}. Balances and open positions are live from the Exchange.</Notice>
+      ) : !d.historyComplete && (
+        <Notice>Trade history covers fills indexed so far{p.firstTs ? `, from ${shortDay(p.firstTs)}` : ''}; part of Perpl&apos;s history is still being indexed. Balances and open positions are live from the Exchange.</Notice>
       )}
 
       <dl className="panel grid grid-cols-2 gap-px bg-line sm:grid-cols-4 xl:grid-cols-8">
@@ -67,7 +69,7 @@ export default function WalletPage() {
         <Kpi k="Realised PnL" v={signedMoney(p.netUsd)} t={p.netUsd} sub={`${signedMoney(p.pnlUsd)} price, ${signedMoney(p.fundingUsd)} funding, -${money(p.feesUsd, true)} fees`} hint="Price PnL plus funding minus fees, over indexed fills" />
         <Kpi k="Volume" v={money(p.volumeUsd)} sub={`${p.trades.toLocaleString('en-US')} fills`} />
         <Kpi k="Win rate" v={p.winRate == null ? 'n/a' : `${(p.winRate * 100).toFixed(1)}%`} sub={`of ${p.closes.toLocaleString('en-US')} closing fills`} />
-        <Kpi k="Profit factor" v={p.profitFactor == null ? 'n/a' : Number.isFinite(p.profitFactor) ? p.profitFactor.toFixed(2) : 'no losses'} sub="gross wins over gross losses" />
+        <Kpi k="Profit factor" v={profitText(p)} sub="gross wins over gross losses" />
         <Kpi k="Max drawdown" v={money(p.maxDrawdownUsd, true)} sub={`streaks: ${p.longestWin} wins, ${p.longestLoss} losses`} />
         <Kpi k="Avg hold" v={hold(p.avgHoldMin)} sub="open to flat, per market" />
       </dl>
@@ -93,7 +95,7 @@ export default function WalletPage() {
                     <td className="text-right">{x.leverage.toFixed(1)}x</td>
                     <td className={cx('text-right', tone(x.upnl))}>{signedMoney(x.upnl)}</td>
                     <td className="text-right">{x.liqPrice > 0 ? price(x.liqPrice) : 'none'}</td>
-                    <td className={cx('pr-2.5 text-right', x.liqDistancePct < 2 ? 'text-ask-fg' : x.liqDistancePct < 5 ? 'text-warn' : 'text-fg-2')}>{Number.isFinite(x.liqDistancePct) ? `${x.liqDistancePct.toFixed(1)}%` : 'n/a'}</td>
+                    <td className={cx('pr-2.5 text-right', liqTone(x.liqDistancePct))}>{liqText(x.liqDistancePct, 1)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -104,7 +106,7 @@ export default function WalletPage() {
 
       <div className="grid gap-1 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel title="Realised PnL over time" aside={<span>after fees and funding</span>} bodyClassName="p-2.5" className="h-[300px]">
-          <LineChart label="Cumulative realised PnL" format={(v) => money(v, true)} empty="No indexed fills yet" timeFormat={shortDay} series={[{ name: 'PnL', tone: p.netUsd >= 0 ? 'bid' : 'ask', points: p.curve.length > 600 ? p.curve.filter((_, i) => i % Math.ceil(p.curve.length / 600) === 0 || i === p.curve.length - 1) : p.curve }]} />
+          <LineChart label="Cumulative realised PnL" format={(v) => money(v, true)} empty="No indexed fills yet" timeFormat={shortDay} series={[{ name: 'PnL', tone: p.netUsd >= 0 ? 'bid' : 'ask', points: p.curve }]} />
         </Panel>
         <Panel title="By market" aside={<span>best first</span>} className="h-[300px]">
           <table className="w-full text-[11.5px]">

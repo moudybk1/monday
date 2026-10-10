@@ -10,7 +10,7 @@ import { monad, monadTestnet } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
 import { WagmiProvider, createConfig, http, useAccount, useDisconnect, usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
 import { REGISTRY_ABI, type AppConfig, type Me, type Policy } from '@monday/core';
-import { ApiError, api } from './api';
+import { ACCOUNT_CHANGED, ApiError, api } from './api';
 
 // Follows the NETWORK switch (see next.config.ts). The shell warns if the server disagrees.
 export const chain = process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? monad : monadTestnet;
@@ -54,10 +54,31 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Tabs share one session cookie, so a sign-in or sign-out in one tab is announced to the others. */
+const authChannel = () => (typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('monday-auth'));
+const announce = () => {
+  const ch = authChannel();
+  ch?.postMessage('changed');
+  ch?.close();
+};
+
 /** Connect and Sign-In with Ethereum in one modal. The session is the server's cookie; the modal only creates it. */
 function Auth({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const me = useMe();
+  // Another tab signed in or out, or the server refused an action for the account shown here: drop every private
+  // answer and ask again who is signed in. resetQueries, not clear: clear only empties the cache, and a page already
+  // showing the old account would keep showing it.
+  useEffect(() => {
+    const reset = () => void qc.resetQueries();
+    const ch = authChannel();
+    if (ch) ch.onmessage = reset;
+    window.addEventListener(ACCOUNT_CHANGED, reset);
+    return () => {
+      ch?.close();
+      window.removeEventListener(ACCOUNT_CHANGED, reset);
+    };
+  }, [qc]);
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const adapter = useMemo(() => createAuthenticationAdapter({
@@ -69,13 +90,14 @@ function Auth({ children }: { children: React.ReactNode }) {
     }),
     verify: async ({ message, signature }) => {
       await api('/auth/verify', { method: 'POST', body: { message, signature } });
+      announce();
       await qc.invalidateQueries({ queryKey: ['me'] });
       return true;
     },
     signOut: async () => {
       await api('/auth/logout', { method: 'POST' });
-      qc.clear();
-      await qc.invalidateQueries({ queryKey: ['me'] });
+      announce();
+      await qc.resetQueries();
     },
   }), [qc]);
   const wallet = me.data && !me.data.demo ? me.data.wallet.toLowerCase() : null;
@@ -116,13 +138,14 @@ export function useSession() {
     signIn: () => openConnectModal?.(),
     async demo() {
       await api('/auth/demo', { method: 'POST' });
+      announce();
       await done();
     },
     async signOut() {
       await api('/auth/logout', { method: 'POST' });
+      announce();
       await disconnectAsync().catch(() => {});
-      qc.clear();
-      await done();
+      await qc.resetQueries();
     },
   };
 }
@@ -141,15 +164,45 @@ export interface PolicyView {
   pending: { policy: Policy; policyHash: string; onchain: OnchainPolicy | null } | null;
 }
 
-/** Publish the policy to MondayRegistry and authorise the agent, from the user's own wallet. */
-export function useRegistry() {
+/** Whether this wallet has authorised Monday's agent to log its decisions in the registry. Undefined while unknown. */
+export function useAgentAuthorized(registry: `0x${string}` | null | undefined, agent: `0x${string}` | null | undefined) {
   const { address } = useAccount();
   const pub = usePublicClient({ chainId: chain.id });
+  return useQuery({
+    queryKey: ['agent-of', registry, agent, address],
+    enabled: Boolean(registry && agent && address && pub),
+    queryFn: async () => (await pub!.readContract({ address: registry!, abi: registryAbi, functionName: 'agentOf', args: [address!] })).toLowerCase() === agent!.toLowerCase(),
+  }).data;
+}
+
+/**
+ * Two wallet steps on Monad: publish the policy to MondayRegistry, then, the first time only, authorise the agent to
+ * log decisions. Each step can be retried on its own: a declined second step leaves the published policy in force.
+ */
+export function useRegistry() {
+  const { address } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const pub = usePublicClient({ chainId: chain.id });
+  const qc = useQueryClient();
   const { writeContractAsync } = useWriteContract();
   const { switchChainAsync } = useSwitchChain();
 
+  const authorize = async (registry: `0x${string}`, agent: `0x${string}`, onStep: (s: string) => void) => {
+    if (!address || !pub) throw new Error('Connect the wallet that owns this account.');
+    await switchChainAsync({ chainId: chain.id });
+    onStep('Authorise the agent to log decisions');
+    const tx = await writeContractAsync({ address: registry, abi: registryAbi, functionName: 'authorizeAgent', args: [agent], chainId: chain.id });
+    onStep('Waiting for Monad to confirm');
+    await pub.waitForTransactionReceipt({ hash: tx });
+    await qc.invalidateQueries({ queryKey: ['agent-of'] });
+  };
+
   return {
+    /** A wallet is connected. The session belongs to it: the shell signs out if another one is picked. */
     canSign: Boolean(address),
+    /** Open the wallet modal to connect again, when the session is valid but the wallet connection was lost. */
+    reconnect: () => openConnectModal?.(),
+    authorize,
     async publish(o: OnchainPolicy, onStep: (s: string) => void): Promise<`0x${string}`> {
       if (!address || !pub) throw new Error('Connect the wallet that owns this account.');
       await switchChainAsync({ chainId: chain.id });
@@ -165,9 +218,11 @@ export function useRegistry() {
       if (o.agent) {
         const current = await pub.readContract({ address: o.registry, abi: registryAbi, functionName: 'agentOf', args: [address] });
         if (current.toLowerCase() !== o.agent.toLowerCase()) {
-          onStep('Authorise the agent to log decisions');
-          const tx2 = await writeContractAsync({ address: o.registry, abi: registryAbi, functionName: 'authorizeAgent', args: [o.agent], chainId: chain.id });
-          await pub.waitForTransactionReceipt({ hash: tx2 });
+          try {
+            await authorize(o.registry, o.agent, onStep);
+          } catch {
+            throw new Error('Your limits are published on Monad and in force. Authorising the agent to log decisions did not finish: use Authorise agent to complete it.');
+          }
         }
       }
       return tx;

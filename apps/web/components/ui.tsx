@@ -9,7 +9,7 @@ const VARIANT = {
   primary: 'bg-accent text-accent-fg not-disabled:hover:brightness-110',
   ghost: 'border border-line-2 text-fg not-disabled:hover:bg-raised-2',
   quiet: 'text-fg-2 not-disabled:hover:bg-raised not-disabled:hover:text-fg',
-  danger: 'border border-ask/70 text-ask-fg not-disabled:hover:bg-ask not-disabled:hover:text-white',
+  danger: 'border border-ask/70 text-ask-fg not-disabled:hover:bg-ask-deep not-disabled:hover:text-white',
 } as const;
 const SIZE = { xs: 'h-6 px-2 text-[11.5px]', sm: 'h-7 px-2.5 text-[12px]', md: 'h-9 px-3.5 text-[13px]', lg: 'h-11 px-5 text-[14px]' } as const;
 
@@ -87,7 +87,7 @@ export function Skeleton({ className }: { className?: string }) {
 }
 
 export function Notice({ tone = 'neutral', children, action }: { tone?: 'neutral' | 'warn' | 'ask'; children: ReactNode; action?: ReactNode }) {
-  const t = { neutral: 'border-line-2 bg-raised text-fg-2', warn: 'border-warn/45 bg-warn/8 text-warn', ask: 'border-ask bg-ask text-white' }[tone];
+  const t = { neutral: 'border-line-2 bg-raised text-fg-2', warn: 'border-warn/45 bg-warn/8 text-warn', ask: 'border-ask bg-ask-deep text-white' }[tone];
   return (
     <div role={tone === 'neutral' ? 'status' : 'alert'} className={cx('flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-sm border px-3 py-1.5 text-[12.5px]', t)}>
       <div className="min-w-0">{children}</div>

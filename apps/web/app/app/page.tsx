@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
-import { AgentConsole, STATUS, type SessionDraft } from '@/components/agent';
+import { AgentConsole, sessionUsd, statusText, type SessionDraft } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
 import { LineChart } from '@/components/charts';
@@ -19,7 +19,7 @@ import { Button, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtPrice, fmtTime, fmtUsd } from '@/lib/format';
 import { useLive } from '@/lib/live';
-import { useAppConfig, useRegistry, type PolicyView } from '@/lib/wallet';
+import { useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
 
 // The layout every live terminal shares, measured on Hyperliquid and Tread: a market strip on top, the chart largest
 // and left, the book and the tape beside it, the ticket column on the right (here the agent, since Monday trades for
@@ -35,13 +35,13 @@ const KILL_WHY: Record<KillReason, string> = {
   margin: 'Equity fell below the margin this policy needs at its leverage.',
 };
 
-const usdOrNull = (s: string) => (Number(s) > 0 ? Number(s) : null);
 type Tab = 'orders' | 'positions' | 'fills' | 'decisions' | 'equity' | 'model';
 
 export default function Terminal() {
   const qc = useQueryClient();
   // If the server drops this session's runner, re-check who we are; the shell then routes to onboarding.
-  const { state, connected } = useLive('auth', () => void qc.invalidateQueries({ queryKey: ['me'] }));
+  const me = useMe();
+  const { state, connected } = useLive('auth', () => void qc.invalidateQueries({ queryKey: ['me'] }), me.data?.wallet);
   const cfg = useAppConfig().data;
   const registry = useRegistry();
   const [picked, setPicked] = useState<MarketSym>('BTC');
@@ -101,7 +101,12 @@ export default function Terminal() {
   };
 
   const quoting = state.status === 'quoting';
-  const start = () => act('/agent/start', { stopLossUsd: usdOrNull(session.sl), takeProfitUsd: usdOrNull(session.tp) });
+  const start = () => {
+    const stopLossUsd = sessionUsd(session.sl), takeProfitUsd = sessionUsd(session.tp);
+    // A mistyped limit must not quietly become "no limit".
+    if (Number.isNaN(stopLossUsd) || Number.isNaN(takeProfitUsd)) return setError('Session stop loss and take profit must be positive amounts, or empty for no limit.');
+    return act('/agent/start', { stopLossUsd, takeProfitUsd });
+  };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const openOrders = shown.reduce((n, s) => n + (state.markets[s]?.quotes.bid ? 1 : 0) + (state.markets[s]?.quotes.ask ? 1 : 0), 0);
   const stale = m && m.dataAgeMs > 5_000;
@@ -119,7 +124,7 @@ export default function Terminal() {
         <MarketPicker state={state} sym={sym} onPick={setPicked} />
         {m && <Stats m={m} quoting={quoting} />}
         <div className="ml-auto flex items-center gap-2 px-2.5 py-2">
-          {/* The last market cannot be dropped: a policy always trades one. Pause stops trading altogether. */}
+          {/* The last market cannot be dropped: a policy always trades one. Stop ends trading altogether. */}
           {!(trading && state.policy.markets.length === 1) && (
             <Button
               size="sm" variant={trading ? 'ghost' : 'primary'} onClick={() => void toggleMarket()} disabled={busy !== null}
@@ -132,7 +137,7 @@ export default function Terminal() {
           <span className="flex items-center gap-1.5 text-[12px] font-medium">
             {/* The one status dot: it reflects real agent state. */}
             <span aria-hidden className={cx('size-1.5 rounded-full', quoting ? 'live-dot bg-bid' : state.status === 'killed' ? 'bg-ask' : 'bg-fg-3')} />
-            {state.closing ? 'Closing' : STATUS[state.status]}
+            {statusText(state)}
           </span>
         </div>
       </div>
@@ -146,8 +151,13 @@ export default function Terminal() {
             {state.killReason === 'key_error' && <> <Link href="/app/onboarding" className="underline">Add a new key</Link>.</>}
           </Notice>
         )}
-        {state.status === 'paused' && state.closing && <Notice tone="warn">Paused, but Perpl has not confirmed the cancels yet. Monday keeps retrying.</Notice>}
-        {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes paused. Monday resumes on its own when data returns.</Notice>}
+        {state.status === 'paused' && state.closing === 'cancel' && <Notice tone="warn">Stopped, but Perpl has not confirmed the cancels yet. Monday keeps retrying.</Notice>}
+        {state.status === 'paused' && state.closing === 'flatten' && <Notice tone="warn">Take profit reached, but Perpl has not confirmed the position is closed. Monday retries every 10 seconds; you can close it on Perpl too.</Notice>}
+        {/* Stop means stop: nothing watches a position left open, so say so while one is. */}
+        {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0) && (
+          <Notice tone="warn">Stopped with an open position. Monday is not watching it: no stop loss and no daily loss limit. Close it on Perpl, use Kill and flatten, or start Monday again.</Notice>
+        )}
+        {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes pulled. Monday resumes on its own when data returns.</Notice>}
         {/* The newest warning from the agent itself: loss-limit approach, rate limits, blocked orders, disconnects. */}
         {warning && state.status !== 'killed' && <Notice tone="warn"><span className="num mr-2">{fmtTime(warning.at)}</span>{warning.message}</Notice>}
         {!connected && <Notice tone="warn">Live connection lost. Reconnecting.</Notice>}
@@ -207,7 +217,7 @@ export default function Terminal() {
               <span className="text-[11.5px] text-fg-3">Perpl</span>
             </header>
             <div className="scroll min-h-0 flex-1">
-              {side === 'book' ? <OrderBook m={m} rows={12} now={now} /> : <Tape m={m} limit={40} />}
+              {side === 'book' ? <OrderBook m={m} rows={12} now={now} ownOnBook={!state.sim && !state.paper} /> : <Tape m={m} limit={40} />}
             </div>
           </section>
 
@@ -245,7 +255,7 @@ export default function Terminal() {
       <dialog ref={killDialog} className="m-auto w-[min(92vw,26rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg">
         <h2 className="text-[17px] font-semibold tracking-tight">Kill and flatten?</h2>
         <p className="mt-2 text-[13px] text-fg-2">
-          Monday cancels every order, then closes all positions with reduce-only market orders. Closing at market can cost some slippage. The agent stays stopped until you restart it.
+          Monday cancels every open order on this account&apos;s BTC, ETH and SOL markets, then closes every open position there with reduce-only market orders, including orders and positions you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
         </p>
         <form method="dialog" className="mt-5 flex justify-end gap-2">
           <Button type="submit" variant="ghost">Keep running</Button>

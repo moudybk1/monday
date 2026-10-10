@@ -11,12 +11,12 @@ interface Row {
   cumUsd: number;
 }
 
-/** Merge Monday's resting quote into one side of the book, best price first. */
-function ladder(levels: BookLevel[], mine: QuoteTarget | null, side: Side, n: number): Row[] {
+/** Mark Monday's resting quote in one side of the book, best price first. A level the feed already counts it in is not grown again. */
+function ladder(levels: BookLevel[], mine: QuoteTarget | null, side: Side, n: number, onBook: boolean): Row[] {
   const rows = levels.map((l) => ({ price: l.price, size: l.size, mine: false, cumUsd: 0 }));
   if (mine) {
     const i = rows.findIndex((r) => (side === 'bid' ? r.price <= mine.price : r.price >= mine.price));
-    if (i >= 0 && rows[i].price === mine.price) rows[i] = { ...rows[i], size: rows[i].size + mine.size, mine: true };
+    if (i >= 0 && rows[i].price === mine.price) rows[i] = { ...rows[i], size: onBook ? rows[i].size : rows[i].size + mine.size, mine: true };
     else rows.splice(i < 0 ? rows.length : i, 0, { price: mine.price, size: mine.size, mine: true, cumUsd: 0 });
   }
   let acc = 0;
@@ -61,9 +61,10 @@ function Pulled({ side, m, now }: { side: Side; m: MarketState; now: number }) {
   );
 }
 
-export function OrderBook({ m, rows = 10, now = Date.now() }: { m: MarketState; rows?: number; now?: number }) {
-  const asks = ladder(m.asks, m.quotes.ask, 'ask', rows);
-  const bids = ladder(m.bids, m.quotes.bid, 'bid', rows);
+/** `ownOnBook`: a live Perpl feed already shows Monday's order inside its level; a paper or simulated book does not. */
+export function OrderBook({ m, rows = 10, now = Date.now(), ownOnBook = false }: { m: MarketState; rows?: number; now?: number; ownOnBook?: boolean }) {
+  const asks = ladder(m.asks, m.quotes.ask, 'ask', rows, ownOnBook);
+  const bids = ladder(m.bids, m.quotes.bid, 'bid', rows, ownOnBook);
   const max = Math.max(asks.at(-1)?.cumUsd ?? 1, bids.at(-1)?.cumUsd ?? 1);
   const pulled = m.reflex?.action === 'pull' ? m.reflex.side : null;
   const spreadBps = m.bestBid && m.bestAsk ? ((m.bestAsk - m.bestBid) / m.mark) * 1e4 : null;
@@ -83,7 +84,9 @@ export function OrderBook({ m, rows = 10, now = Date.now() }: { m: MarketState; 
       </ol>
       {/* The spread row every terminal has: the gap in ticks and bps, and the mark beside it. */}
       <div className="flex h-7 items-center justify-between border-y border-line bg-raised px-2.5">
-        <span className="num text-[13px] font-semibold tracking-tight">{fmtPrice(m.mark, m.spec)}</span>
+        <span className="num text-[13px] font-semibold tracking-tight" title="Mark price, what Perpl values positions at. It can sit outside the best bid and ask.">
+          {fmtPrice(m.mark, m.spec)} <span className="text-[10px] font-normal uppercase tracking-[0.04em] text-fg-3">mark</span>
+        </span>
         <span className="num text-[11px] text-fg-3">
           {spread != null && spreadBps != null ? <>spread {fmtPrice(spread, m.spec)} <span className="text-fg-2">{spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps</span></> : 'no book'}
         </span>

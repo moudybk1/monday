@@ -2,9 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxTrader } from '@monday/core';
+import type { PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxTrader, PxWindow } from '@monday/core';
 import { SignedBars } from '@/components/charts';
-import { AccountLink, Kpi, Segments, Skew, ago, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
+import { AccountLink, Kpi, Segments, Skew, ago, liqText, liqTone, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
 import { Notice, Panel, Skeleton, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 
@@ -12,7 +12,6 @@ import { api } from '@/lib/api';
 // Every account on the page opens its wallet profile.
 
 type Risk = { at: number; positions: number; markets: (PxMarketRisk & { map: { pct: number; longUsd: number; shortUsd: number }[] })[]; nearest: PxPosition[]; largest: PxPosition[] };
-type Win = '24h' | '7d' | '30d' | 'all';
 type Metric = 'volume' | 'fees' | 'traders' | 'flows' | 'liqs';
 
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -22,7 +21,7 @@ export default function StatsPage() {
   const ov = useQuery({ queryKey: ['stats-overview'], queryFn: () => api<PxOverview>('/stats/overview'), refetchInterval: 15_000 });
   const risk = useQuery({ queryKey: ['stats-risk'], queryFn: () => api<Risk>('/stats/risk'), refetchInterval: 30_000 });
   const liqs = useQuery({ queryKey: ['stats-liqs'], queryFn: () => api<PxLiquidation[]>('/stats/liquidations?limit=40'), refetchInterval: 10_000 });
-  const [win, setWin] = useState<Win>('24h');
+  const [win, setWin] = useState<PxWindow>('24h');
   const [sym, setSym] = useState<string | null>(null);
   useEffect(() => {
     document.title = 'Analytics - Monday';
@@ -33,14 +32,15 @@ export default function StatsPage() {
   const o = ov.data;
   const h = o.headline;
   const pick = sym ?? risk.data?.markets[0]?.sym ?? o.markets[0]?.sym;
-  // Indexed metrics only cover the days the indexer has seen; say so when the window reaches further back.
   const since = o.indexer.since;
-  const partial = (days: number) => since == null || since > Date.now() - days * 86_400_000;
   const vol = { '24h': h.volume24hUsd, '7d': h.volume7dUsd, '30d': h.volume30dUsd, all: h.volumeAllUsd }[win];
   const fees = { '24h': h.fees24hUsd, '7d': h.fees7dUsd, '30d': h.fees30dUsd, all: h.feesAllUsd }[win];
-  const traders = { '24h': h.activeTraders24h, '7d': h.activeTraders7d, '30d': h.activeTraders30d, all: null }[win];
+  const traders = { '24h': h.activeTraders24h, '7d': h.activeTraders7d, '30d': h.activeTraders30d, all: h.activeTraders30d }[win];
   const winDays = { '24h': 1, '7d': 7, '30d': 30, all: 100_000 }[win];
-  const sinceNote = since != null && partial(winDays) ? `since ${shortDay(since)}` : undefined;
+  // Indexed numbers (fees, traders, flows, liquidations) say so whenever part of their window is not indexed yet.
+  const PARTIAL = 'Partial history, still indexing';
+  const feesDone = h.complete[win];
+  const tradersDone = h.complete[win === 'all' ? '30d' : win];
 
   return (
     <div className="grid gap-1 pt-1">
@@ -55,10 +55,11 @@ export default function StatsPage() {
         <Kpi k={`Volume ${win === 'all' ? 'all time' : win}`} v={money(vol)} sub={win === '24h' ? `${money(h.volume7dUsd)} in 7 days` : `${money(vol / Math.min(winDays, o.daily.length))} a day`} />
         <Kpi k="Open interest" v={money(h.openInterestUsd)} sub="one side, at mark" />
         <Kpi k="TVL" v={money(h.tvlUsd)} sub="collateral held by the Exchange" />
-        <Kpi k={`Fees ${win === 'all' ? 'all time' : win}`} v={money(fees, true)} sub={sinceNote ?? (vol ? `${((fees ?? 0) / vol * 1e4).toFixed(2)} bps of volume` : undefined)} />
-        <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} v={(traders ?? h.activeTraders30d)?.toLocaleString('en-US') ?? 'n/a'} sub={sinceNote ?? 'accounts with a fill'} />
-        <Kpi k="Net flow 24h" v={h.netFlow24hUsd == null ? 'n/a' : signedMoney(h.netFlow24hUsd)} t={h.netFlow24hUsd} sub="deposits minus withdrawals" />
-        <Kpi k="Liquidated 24h" v={money(h.liquidations24hUsd)} sub={partial(1) ? sinceNote : 'notional at mark'} />
+        {/* A fee rate is only meaningful when fees and volume cover the same days. */}
+        <Kpi k={`Fees ${win === 'all' ? 'all time' : win}`} v={money(fees, true)} sub={!feesDone ? PARTIAL : vol ? `${((fees ?? 0) / vol * 1e4).toFixed(2)} bps of volume` : undefined} />
+        <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} v={traders?.toLocaleString('en-US') ?? 'n/a'} sub={tradersDone ? 'accounts with a fill' : PARTIAL} />
+        <Kpi k="Net flow 24h" v={h.netFlow24hUsd == null ? 'n/a' : signedMoney(h.netFlow24hUsd)} t={h.netFlow24hUsd} sub={h.complete['24h'] ? 'deposits minus withdrawals' : PARTIAL} />
+        <Kpi k="Liquidated 24h" v={money(h.liquidations24hUsd)} sub={h.complete['24h'] ? 'notional at mark' : PARTIAL} />
         <Kpi k="Accounts" v={h.accounts.toLocaleString('en-US')} sub="ever opened" />
       </dl>
 
@@ -73,10 +74,10 @@ export default function StatsPage() {
         <Panel title="Closest to liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
           {risk.data ? <PositionList rows={risk.data.nearest} /> : <Skeleton className="m-2 h-60" />}
         </Panel>
-        <Panel title="Latest liquidations" aside={<span>live</span>} className="h-[420px]">
+        <Panel title="Latest liquidations" aside={<span>{o.indexer.source === 'off' ? 'indexer off' : o.indexer.live ? 'live' : 'catching up'}</span>} className="h-[420px]">
           <LiquidationFeed rows={liqs.data} since={since} />
         </Panel>
-        <Traders />
+        <Traders complete={(days) => (days === 1 ? o.daily.at(-1)?.coverage === 'full' : h.complete[days === 7 ? '7d' : '30d'])} />
       </div>
     </div>
   );
@@ -86,13 +87,17 @@ function History({ o }: { o: PxOverview }) {
   const [metric, setMetric] = useState<Metric>('volume');
   const [range, setRange] = useState<30 | 90 | 0>(90);
   const rows = o.daily.filter((d) => !range || d.t >= Date.now() - range * 86_400_000);
-  const indexed = rows.filter((d) => d.feesUsd != null);
+  // Every calendar day keeps its slot: a day not indexed yet is drawn hatched, never dropped or shown as zero.
+  type Row = (typeof rows)[number];
+  const indexed = (d: Row, v: number | null, tip: string) => d.coverage === 'none'
+    ? { key: day(d.t), v: null, tip: `${shortDay(d.t)}: not indexed yet` }
+    : { key: day(d.t), v, tip: d.coverage === 'partial' ? `${tip}, partly indexed so far` : tip, faded: d.coverage === 'partial' };
   const data =
     metric === 'volume' ? rows.map((d) => ({ key: day(d.t), v: d.volumeUsd, tip: `${shortDay(d.t)}: ${money(d.volumeUsd)} traded. Top: ${Object.entries(d.byMarket).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([s, v]) => `${s} ${money(v)}`).join(', ')}` }))
-    : metric === 'fees' ? indexed.map((d) => ({ key: day(d.t), v: d.feesUsd ?? 0, tip: `${shortDay(d.t)}: ${money(d.feesUsd, true)} in fees` }))
-    : metric === 'traders' ? indexed.map((d) => ({ key: day(d.t), v: d.traders ?? 0, tip: `${shortDay(d.t)}: ${d.traders} accounts traded` }))
-    : metric === 'flows' ? rows.filter((d) => d.depositsUsd != null).map((d) => ({ key: day(d.t), v: (d.depositsUsd ?? 0) - (d.withdrawalsUsd ?? 0), tip: `${shortDay(d.t)}: ${money(d.depositsUsd)} in, ${money(d.withdrawalsUsd)} out` }))
-    : rows.filter((d) => d.feesUsd != null).map((d) => ({ key: day(d.t), v: d.liquidationsUsd ?? 0, tip: `${shortDay(d.t)}: ${money(d.liquidationsUsd ?? 0)} liquidated` }));
+    : metric === 'fees' ? rows.map((d) => indexed(d, d.feesUsd, `${shortDay(d.t)}: ${money(d.feesUsd, true)} in fees`))
+    : metric === 'traders' ? rows.map((d) => indexed(d, d.traders, `${shortDay(d.t)}: ${d.traders} accounts traded`))
+    : metric === 'flows' ? rows.map((d) => indexed(d, (d.depositsUsd ?? 0) - (d.withdrawalsUsd ?? 0), `${shortDay(d.t)}: ${money(d.depositsUsd)} in, ${money(d.withdrawalsUsd)} out`))
+    : rows.map((d) => indexed(d, d.liquidationsUsd, `${shortDay(d.t)}: ${money(d.liquidationsUsd ?? 0)} liquidated`));
   const fmt = metric === 'traders' ? (v: number) => String(Math.round(v)) : (v: number) => money(v);
   const toneOf = metric === 'flows' ? undefined : metric === 'liqs' ? 'ask' : 'muted';
 
@@ -116,7 +121,12 @@ function History({ o }: { o: PxOverview }) {
       ) : (
         <p className="flex h-[350px] items-center justify-center text-[12px] text-fg-3">The indexer has not covered a full day yet. This chart fills in as it catches up.</p>
       )}
-      {metric !== 'volume' && o.indexer.since != null && <p className="text-[11px] text-fg-3">Indexed from {shortDay(o.indexer.since)}. Volume comes from Perpl&apos;s own candles and goes back to launch.</p>}
+      {metric !== 'volume' && (
+        <p className="text-[11px] text-fg-3">
+          {o.indexer.backfillDays ? `${o.indexer.backfillDays} days are still being indexed, newest first: hatched days have no data yet, faded ones are partial. ` : 'Every day is indexed from the Exchange\'s events. '}
+          Volume comes from Perpl&apos;s own candles and goes back to launch.
+        </p>
+      )}
     </Panel>
   );
 }
@@ -178,7 +188,11 @@ function Markets({ o, pick, onPick }: { o: PxOverview; pick?: string; onPick: (s
             {o.markets.map((m) => {
               const apr = m.fundingRate * ((365 * 24 * 60) / Math.max(1, m.fundingIntervalMin)) * 100;
               return (
-                <tr key={m.id} onClick={() => onPick(m.sym)} className={cx('h-[28px] cursor-pointer border-t border-line', m.sym === pick ? 'bg-raised' : 'hover:bg-raised')}>
+                <tr
+                  key={m.id} onClick={() => onPick(m.sym)} tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(m.sym); } }}
+                  className={cx('h-[28px] cursor-pointer border-t border-line focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent', m.sym === pick ? 'bg-raised' : 'hover:bg-raised')}
+                >
                   <td className="pl-2.5 font-sans font-semibold">{m.sym}</td>
                   <td className="text-right">{price(m.mark)}</td>
                   <td className={cx('text-right', tone(m.change24hPct))}>{pct(m.change24hPct, 2)}</td>
@@ -212,7 +226,7 @@ function PositionList({ rows }: { rows: PxPosition[] }) {
             <td><span className="font-sans font-medium">{p.sym}</span> <span className={p.long ? 'text-bid-fg' : 'text-ask-fg'}>{p.long ? 'long' : 'short'}</span></td>
             <td className="text-right">{money(p.usd)}</td>
             <td className="text-right text-fg-2">{p.leverage.toFixed(1)}x</td>
-            <td className={cx('pr-2.5 text-right', p.liqDistancePct < 2 ? 'text-ask-fg' : p.liqDistancePct < 5 ? 'text-warn' : 'text-fg-2')}>{p.liqDistancePct.toFixed(2)}%</td>
+            <td className={cx('pr-2.5 text-right', liqTone(p.liqDistancePct))}>{liqText(p.liqDistancePct)}</td>
           </tr>
         ))}
       </tbody>
@@ -245,7 +259,8 @@ function LiquidationFeed({ rows, since }: { rows?: PxLiquidation[]; since: numbe
   );
 }
 
-function Traders() {
+/** Leaderboard by UTC day: Today, or the last 7 or 30 days including today, the same days as the 7D and 30D numbers. */
+function Traders({ complete }: { complete: (days: 1 | 7 | 30) => boolean }) {
   const [days, setDays] = useState<1 | 7 | 30>(7);
   const [sort, setSort] = useState<'net' | 'volume'>('net');
   const q = useQuery({ queryKey: ['stats-traders', days, sort], queryFn: () => api<PxTrader[]>(`/stats/traders?days=${days}&sort=${sort}`), refetchInterval: 60_000 });
@@ -255,11 +270,12 @@ function Traders() {
       aside={
         <>
           <Segments label="Sort" value={sort} onChange={setSort} options={[['net', 'PnL'], ['volume', 'Volume']] as const} />
-          <Segments label="Days" value={days} onChange={setDays} options={[[1, '1D'], [7, '7D'], [30, '30D']] as const} />
+          <Segments label="Days" value={days} onChange={setDays} options={[[1, 'Today'], [7, '7D'], [30, '30D']] as const} />
         </>
       }
       className="h-[420px]"
     >
+      {!complete(days) && <p className="border-b border-line px-2.5 py-1 text-[11px] text-warn">Partial history: some of these days are still being indexed.</p>}
       {!q.data ? <Skeleton className="m-2 h-60" /> : !q.data.length ? <p className="px-2.5 py-4 text-[12px] text-fg-3">No indexed fills in this window yet.</p> : (
         <table className="w-full text-[11.5px]">
           <thead>
