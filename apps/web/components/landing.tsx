@@ -3,7 +3,7 @@
 import { PauseIcon, PlayIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
 import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MARKETS, type Decision, type Evidence, type MarketState, type MarketSym } from '@monday/core';
 import { api } from '@/lib/api';
 import { fmtPrice, fmtTime } from '@/lib/format';
@@ -14,15 +14,23 @@ import { PriceChart } from './price-chart';
 import { FlowBars, SmartTape } from './smart-money';
 import { Panel, Skeleton, Tag, cx } from './ui';
 
-/** The live terminal, mounted (and its stream opened) only once the reader scrolls near it. */
-export function LiveMarket() {
-  const ref = useRef<HTMLDivElement>(null);
-  const near = useInView(ref, { once: true, margin: '0px 0px 150px 0px' });
-  return <div ref={ref}>{near ? <LiveTerminal /> : <Skeleton className="h-[420px]" />}</div>;
+/** A block that rises into place as it scrolls into view. Still under reduced motion. */
+export function Reveal({ children, className, delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      className={className} initial={reduce ? false : { opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }} transition={{ duration: 0.7, delay, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
 }
 
-/** The product itself: the house account's terminal on the live market. */
-function LiveTerminal() {
+const pct = (c: number) => `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+
+/** The product itself, in the hero: the house account's terminal on the live market. */
+export function LiveMarket() {
   const { state, connected } = useLive('public');
   // A first snapshot takes a moment: say "connecting" until it is clearly overdue.
   const [overdue, setOverdue] = useState(false);
@@ -38,23 +46,29 @@ function LiveTerminal() {
   if (!state || !m) {
     return (
       <div className="rounded-lg border border-line bg-canvas p-1">
-        <Skeleton className="h-[420px]" />
-        <p className="px-2 py-2 text-[12px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough above shows what Monday does.' : 'Connecting to the live market.'}</p>
+        <Skeleton className="h-[420px] lg:h-[560px]" />
+        <p className="px-2 py-2 text-[12px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough below shows what Monday does.' : 'Connecting to the live market.'}</p>
       </div>
     );
   }
   const quoting = state.status === 'quoting';
+  const venue = state.sim ? 'simulated book' : state.paper ? 'paper on Perpl' : 'Perpl';
   return (
     <figure>
       <div className="flex flex-col gap-1 rounded-lg border border-line bg-void p-1">
         <div className="panel flex-row flex-wrap items-stretch">
-          <div role="tablist" aria-label="Market" className="flex">
+          {/* Phones: the three tabs share the row and the day's change waits for a wider screen. */}
+          <div role="tablist" aria-label="Market" className="flex w-full sm:w-auto">
             {syms.map((s) => {
               const x = state.markets[s]!;
+              const c = x.day.changePct;
               return (
-                <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-11 min-w-[6.75rem] flex-col justify-center border-r border-line px-3 text-left', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
+                <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-12 flex-1 flex-col justify-center border-r border-line px-3 text-left sm:min-w-[7.5rem] sm:flex-none', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
                   <span className="text-[12px] font-semibold leading-tight">{s} <span className="font-normal text-fg-3">perp</span></span>
-                  <span className="num text-[11.5px] leading-tight text-fg-2">{fmtPrice(x.mark, x.spec)}</span>
+                  <span className="num text-[11.5px] leading-tight text-fg-2">
+                    {fmtPrice(x.mark, x.spec)}
+                    {c != null && <span className={cx('ml-1.5 hidden sm:inline', c >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{pct(c)}</span>}
+                  </span>
                 </button>
               );
             })}
@@ -63,25 +77,30 @@ function LiveTerminal() {
             {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: smart money {m.reflex.side === 'ask' ? 'buying' : 'selling'}</Tag>
               : quoting ? <Tag tone="accent">Monday is quoting</Tag> : <Tag>book only</Tag>}
             {quoting && <Tag>{m.params.regime} regime</Tag>}
+            {/* The one live indicator on the page: real state, not decoration. */}
+            <span className="num ml-1 inline-flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.04em] text-fg-2">
+              <span aria-hidden className={cx('size-1.5 rounded-full', connected ? 'live-dot bg-bid' : 'bg-warn')} />
+              {connected ? `Live, ${venue}` : 'Reconnecting'}
+            </span>
           </div>
         </div>
-        <div className="grid gap-1 lg:h-[388px] lg:grid-cols-[272px_minmax(0,1fr)_332px]">
+        <div className="grid gap-1 lg:h-[520px] lg:grid-cols-[292px_minmax(0,1fr)_340px]">
           <Panel title="Order book" aside={<span>Perpl</span>} bodyClassName="!overflow-hidden">
-            <OrderBook m={m} rows={7} now={state.at} />
+            <OrderBook m={m} rows={10} now={state.at} />
           </Panel>
-          <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[300px] lg:h-auto" />
-          <Panel title="Smart money on Hyperliquid" className="h-[300px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
+          <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[320px] lg:h-auto" />
+          <Panel title="Smart money on Hyperliquid" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
             <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
-            <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={14} /></div>
+            <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={20} /></div>
           </Panel>
         </div>
       </div>
       {/* "Live" only while the stream is: a frozen book must say it is frozen. */}
-      <figcaption className={cx('mt-2 text-[12px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
+      <figcaption className={cx('mt-2.5 text-[12.5px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
         {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
-          : state.sim ? "Live: Monday's house account quoting on a simulated book. Pick a market. "
-          : state.paper ? "Live: Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
-          : `Live Perpl order book${m.signal ? ' with Nansen smart-money flow' : ''}. `}
+          : state.sim ? "Monday's house account quoting on a simulated book, streaming from its server. Pick a market. "
+          : state.paper ? "Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
+          : `Perpl's live order book${m.signal ? ' and Nansen smart-money flow' : ''}, streaming from Monday's server. Not an illustration. `}
         {!state.sim && !state.paper && "Monday's own quotes appear in your terminal once you start it."}
       </figcaption>
     </figure>
@@ -133,13 +152,14 @@ const CARDS: Pick<Decision, 'id' | 'source' | 'reason'>[] = [
 type Play = 'ready' | 'playing' | 'paused' | 'done';
 
 /**
- * The walkthrough. It plays once, from the moment it is on screen, and stops on the last step with Replay; a step
- * picked by hand pauses it. Out of view it holds still. With reduced motion it never plays by itself.
+ * The walkthrough: the steps down the left, the terminal panels beside them. It plays once, from the moment it is on
+ * screen, and stops on the last step with Replay; a step picked by hand pauses it. Out of view it holds still. With
+ * reduced motion it never plays by itself.
  * `onchain`: the Monad registry is live, so the governor's record can say it is anchored there.
  */
 export function Story({ onchain = false }: { onchain?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { amount: 0.5 });
+  const inView = useInView(ref, { amount: 0.4 });
   const reduce = useReducedMotion();
   const [step, setStep] = useState(0);
   const [play, setPlay] = useState<Play>('ready');
@@ -167,41 +187,44 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
   };
   const m = scene(step);
   return (
-    <div ref={ref}>
-      <div className="flex items-stretch gap-2">
-        <ol className="grid min-w-0 flex-1 grid-cols-4 rounded-md border border-line-2" aria-label="What happens during a smart-money burst">
-          {STEPS.map((s, i) => (
-            <li key={s.verb} className="relative min-w-0 border-l border-line-2 first:border-l-0">
-              <button
-                type="button" aria-current={i === step ? 'step' : undefined} onClick={() => { setStep(i); setPlay('paused'); }}
-                className={cx('flex h-11 w-full items-center justify-center px-1.5 text-center text-[12.5px] font-medium leading-tight sm:text-[13px]', i === step ? 'bg-accent/12 text-accent' : 'text-fg-3 hover:bg-raised hover:text-fg')}
-              >
-                <span className="num mr-1.5 hidden text-[11px] opacity-70 sm:inline">{i + 1}</span>{s.verb}
-              </button>
-              {/* How long this step has left: drawn only while it plays, so a pause never shows a frozen bar. */}
-              {i === step && play === 'playing' && seen && !reduce && (
-                <motion.span key={step} aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-accent" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: s.ms / 1000, ease: 'linear' }} />
-              )}
-            </li>
-          ))}
+    <div ref={ref} className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+      <div>
+        <ol aria-label="What happens during a smart-money burst" className="border-t border-line-2">
+          {STEPS.map((s, i) => {
+            const on = i === step;
+            return (
+              <li key={s.verb} className="relative border-b border-line-2">
+                <button
+                  type="button" aria-current={on ? 'step' : undefined} onClick={() => { setStep(i); setPlay('paused'); }}
+                  className={cx('block w-full border-l-2 py-4 pl-4 pr-2 text-left transition-colors duration-300', on ? 'border-accent' : 'border-transparent hover:bg-raised/60')}
+                >
+                  <span className={cx('block text-[18px] font-semibold tracking-tight', on ? 'text-fg' : 'text-fg-3')}>{s.verb}</span>
+                  <span className={cx('mt-1 block max-w-[46ch] text-[14px] leading-snug', on ? 'text-fg-2' : 'text-fg-3')}>{s.text}</span>
+                </button>
+                {/* How long this step has left: drawn only while it plays, so a pause never shows a frozen bar. */}
+                {on && play === 'playing' && seen && !reduce && (
+                  <motion.span key={step} aria-hidden className="absolute inset-x-0 bottom-[-1px] h-px origin-left bg-accent" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: s.ms / 1000, ease: 'linear' }} />
+                )}
+              </li>
+            );
+          })}
         </ol>
-        <button type="button" onClick={toggle} aria-label={play === 'playing' ? 'Pause the walkthrough' : play === 'done' ? 'Replay the walkthrough' : 'Play the walkthrough'}
-          className="grid h-11 w-11 flex-none place-items-center rounded-md border border-line-2 text-fg-2 hover:border-fg-3 hover:text-fg">
-          {play === 'playing' ? <PauseIcon size={16} weight="fill" /> : play === 'done' ? <ArrowCounterClockwiseIcon size={16} /> : <PlayIcon size={16} weight="fill" />}
-        </button>
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <button type="button" onClick={toggle} className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-2 px-3 text-[12.5px] font-medium text-fg-2 hover:border-fg-3 hover:text-fg">
+            {play === 'playing' ? <><PauseIcon size={14} weight="fill" /> Pause</> : play === 'done' ? <><ArrowCounterClockwiseIcon size={14} /> Replay</> : <><PlayIcon size={14} weight="fill" /> Play</>}
+          </button>
+          <p className="text-[12px] text-fg-3">Example data, drawn with the terminal&apos;s own components. In the product the reflex acts within a second and the governor every 15 minutes.</p>
+        </div>
       </div>
-      <p aria-live="polite" className="mt-3 min-h-[3.75rem] text-[14px] leading-snug text-fg-2 sm:min-h-[2.75rem]">
-        <span className="font-semibold text-fg">{STEPS[step].verb}.</span> {STEPS[step].text}
-      </p>
-      <div className="mt-3 grid gap-1 rounded-lg border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
+      <div className="grid gap-1 self-start rounded-lg border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
         <Panel title="Order book" aside={<span>BTC perp</span>} bodyClassName="!overflow-hidden">
-          <OrderBook m={m} rows={5} now={T0} />
+          <OrderBook m={m} rows={6} now={T0} />
         </Panel>
         <div className="flex min-h-0 flex-col gap-1">
           <Panel title="Smart money on Hyperliquid" className="flex-none" bodyClassName="!overflow-visible">
             <FlowBars m={m} />
           </Panel>
-          <Panel title="Decisions" className="min-h-[9rem] flex-1">
+          <Panel title="Decisions" className="min-h-[10rem] flex-1">
             <AnimatePresence initial={false} mode="popLayout">
               {step < 2 && (
                 <motion.p key="none" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="px-2.5 py-3 text-[12.5px] text-fg-3">
@@ -222,7 +245,6 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           </Panel>
         </div>
       </div>
-      <p className="mt-2 text-[12px] text-fg-3">Example data, drawn with the same components as the terminal. The steps are shortened; in the product the reflex acts within a second and the governor every 15 minutes.</p>
     </div>
   );
 }

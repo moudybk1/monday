@@ -1,11 +1,12 @@
-import { CaretDownIcon, HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon } from '@phosphor-icons/react/dist/ssr';
+import { ArrowLeftIcon, ArrowsLeftRightIcon, CaretDownIcon, HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
 import type { AppConfig } from '@monday/core';
-import { EvidenceTeaser, LiveMarket, Story } from '@/components/landing';
+import { EvidenceTeaser, LiveMarket, Reveal, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
-import { ButtonLink } from '@/components/ui';
+import { ButtonLink, Mark, Tag, cx } from '@/components/ui';
 
 const WRAP = 'mx-auto max-w-[1320px] px-4 sm:px-8';
-const H2 = 'display text-3xl md:text-[2.75rem]';
+const H2 = 'display text-[2.25rem] md:text-5xl';
+const LEAD = 'mt-5 max-w-[58ch] text-[16px] text-fg-2 md:text-[17px]';
 
 const LOOPS = [
   {
@@ -20,6 +21,13 @@ const LOOPS = [
     name: 'Governor', cadence: 'every 15 minutes', marks: 'sparse',
     text: 'An LLM picks a regime inside hard bounds and explains it. If it fails or answers out of range, rules take over.',
   },
+] as const;
+
+/** Who holds what. Monday never touches the money: it only ever reaches the account through a key that cannot move funds. */
+const NODES = [
+  { icon: WalletIcon, title: 'You', text: 'Your wallet signs in, deposits and withdraws on Perpl, and can stop, kill or revoke at any time.' },
+  { icon: VaultIcon, title: 'Your Perpl account', text: 'Holds the collateral. Every order and fill settles here, on Monad.', funds: true },
+  { icon: Mark, title: 'Monday', text: 'Quotes through a trade-scoped API key. Perpl never lets any API key withdraw or transfer funds.' },
 ] as const;
 
 const custody = (onchain: boolean) => [
@@ -69,69 +77,75 @@ export default async function Landing() {
     <>
       <SiteHeader />
       <main>
-        {/* Hero: the claim and the action together, the walkthrough beside them. */}
-        <section className={`${WRAP} grid items-center gap-10 pb-16 pt-10 md:pt-14 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
-          <div>
-            <h1 className="display rise text-[2.1rem] sm:text-5xl xl:text-[3.6rem]">
-              Quotes both sides. <span className="text-accent">Steps aside</span> for smart money.
-            </h1>
-            <p className="rise mt-5 max-w-[44ch] text-[16px] text-fg-2 sm:text-[17px]" style={{ '--i': 1 } as React.CSSProperties}>
+        {/* Hero: the claim, then the product itself on the live market. */}
+        <section className={`${WRAP} pt-14 md:pt-20`}>
+          <h1 className="display rise text-[2.6rem] sm:text-5xl lg:text-6xl xl:text-[5rem]">
+            Quotes both sides.<br />
+            <span className="text-accent">Steps aside</span> for smart money.
+          </h1>
+          <div className="mt-7 flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-10">
+            <p className="rise max-w-[46ch] text-[17px] text-fg-2 md:text-[19px]" style={{ '--i': 1 } as React.CSSProperties}>
               An AI agent that market-makes on Perpl from your own account and pulls its quotes when smart money moves.
             </p>
-            <div className="rise mt-7 flex flex-wrap gap-2.5" style={{ '--i': 2 } as React.CSSProperties}>
-              <ButtonLink href="/app" size="lg">Launch app</ButtonLink>
+            <div className="rise flex flex-none flex-wrap gap-2.5" style={{ '--i': 2 } as React.CSSProperties}>
+              <ButtonLink href="/app" size="lg" className="px-6">Launch app</ButtonLink>
               <ButtonLink href="#how" size="lg" variant="ghost">How it works</ButtonLink>
             </div>
           </div>
-          <div className="rise min-w-0" style={{ '--i': 3 } as React.CSSProperties}>
-            <Story onchain={onchain} />
-          </div>
-        </section>
-
-        {/* The real thing, once the reader knows what to look for. */}
-        <section className="border-t border-line">
-          <div className={`${WRAP} py-16 md:py-20`}>
-            <h2 className={`${H2} max-w-[20ch]`}>The live market</h2>
-            <p className="mt-4 max-w-[60ch] text-[15px] text-fg-2">
-              Perpl&apos;s order book and the smart-money flow Monday reads, streaming from its server now. Not an illustration.
-            </p>
-            <div className="mt-8">
+          <div className="relative mt-12 md:mt-16">
+            {/* Amber light behind the terminal: the one place the page glows. */}
+            <div aria-hidden className="pointer-events-none absolute -inset-x-24 -top-[22rem] h-[24rem] bg-[radial-gradient(55%_75%_at_50%_100%,color-mix(in_oklab,var(--accent)_22%,transparent),transparent_72%)]" />
+            <div className="rise relative" style={{ '--i': 3 } as React.CSSProperties}>
               <LiveMarket />
             </div>
           </div>
         </section>
 
-        {/* Three loops: cadence drawn as rhythm. */}
-        <section id="how" className="scroll-mt-14 border-t border-line bg-canvas">
+        {/* How it works: one burst played step by step, then the three loops behind it. */}
+        <section id="how" className="mt-14 scroll-mt-14 border-t border-line bg-canvas md:mt-20">
           <div className={`${WRAP} py-20 md:py-28`}>
-            <h2 className={`${H2} max-w-[24ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
-            <ol className="mt-12 border-t border-line-2">
-              {LOOPS.map((l) => (
-                <li key={l.name} className="grid gap-x-10 gap-y-3 border-b border-line-2 py-6 md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,26rem)] md:items-center">
-                  <div>
-                    <p className="text-xl font-semibold tracking-tight">{l.name}</p>
-                    <p className="num mt-1 text-[12px] text-fg-3">{l.cadence}</p>
-                  </div>
-                  <Rhythm kind={l.marks} />
-                  <p className="text-[14px] text-fg-2">{l.text}</p>
-                </li>
-              ))}
-            </ol>
+            <Reveal>
+              <h2 className={`${H2} max-w-[22ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
+              <p className={LEAD}>Watch one smart-money burst from the first quote to the written reason, on the same panels the terminal uses.</p>
+            </Reveal>
+            <div className="mt-12">
+              <Story onchain={onchain} />
+            </div>
+            <Reveal className="mt-20 md:mt-24">
+              <h3 className="text-[22px] font-semibold tracking-tight">Three loops, three clocks</h3>
+              <ol className="mt-6 border-t border-line-2">
+                {LOOPS.map((l) => (
+                  <li key={l.name} className="grid gap-x-10 gap-y-3 border-b border-line-2 py-6 md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,26rem)] md:items-center">
+                    <div>
+                      <p className="text-xl font-semibold tracking-tight">{l.name}</p>
+                      <p className="num mt-1 text-[12px] text-fg-3">{l.cadence}</p>
+                    </div>
+                    <Rhythm kind={l.marks} />
+                    <p className="text-[14px] text-fg-2">{l.text}</p>
+                  </li>
+                ))}
+              </ol>
+            </Reveal>
           </div>
         </section>
 
-        {/* Custody: one statement, four facts. */}
+        {/* Custody: one statement, the picture of who holds what, four facts. */}
         <section id="custody" className="scroll-mt-14 border-t border-line">
           <div className={`${WRAP} py-20 md:py-28`}>
-            <h2 className="display max-w-[17ch] text-4xl md:text-6xl">
-              Your funds <span className="text-accent">never leave</span> your Perpl account.
-            </h2>
-            <dl className="mt-12 grid gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-2">
+            <Reveal>
+              <h2 className="display max-w-[17ch] text-4xl md:text-6xl">
+                Your funds <span className="text-accent">never leave</span> your Perpl account.
+              </h2>
+            </Reveal>
+            <Reveal className="mt-12" delay={0.1}>
+              <Custody />
+            </Reveal>
+            <dl className="mt-14 grid gap-x-12 gap-y-9 md:grid-cols-2">
               {custody(onchain).map((c) => (
-                <div key={c.title} className="grid grid-cols-[2.25rem_1fr] bg-canvas p-5">
-                  <c.icon size={20} weight="regular" aria-hidden className="mt-0.5 text-accent" />
+                <div key={c.title} className="grid grid-cols-[2.25rem_1fr]">
+                  <c.icon size={22} weight="regular" aria-hidden className="mt-0.5 text-accent" />
                   <div>
-                    <dt className="text-[15px] font-semibold">{c.title}</dt>
+                    <dt className="text-[17px] font-semibold tracking-tight">{c.title}</dt>
                     <dd className="mt-1.5 max-w-[52ch] text-[14px] text-fg-2">{c.text}</dd>
                   </div>
                 </div>
@@ -141,17 +155,17 @@ export default async function Landing() {
         </section>
 
         {/* Limits: what each control does, in the words the app uses. */}
-        <section className="border-t border-line">
-          <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
-            <div>
-              <h2 className={`${H2} max-w-[16ch]`}>You set the limits. Monday stops when one is hit.</h2>
-              <p className="mt-4 max-w-[48ch] text-[15px] text-fg-2">Pick a margin and a leverage in Bot settings and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
-            </div>
-            <dl className="grid content-start border-t border-line-2">
+        <section className="border-t border-line bg-canvas">
+          <div className={`${WRAP} py-20 md:py-28`}>
+            <Reveal>
+              <h2 className={`${H2} max-w-[18ch]`}>You set the limits. Monday stops when one is hit.</h2>
+              <p className={LEAD}>Pick a margin and a leverage in Bot settings and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
+            </Reveal>
+            <dl className="mt-12 grid gap-8 md:grid-cols-3 md:gap-10">
               {CONTROLS.map((c) => (
-                <div key={c.k} className="grid gap-1 border-b border-line-2 py-5 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6">
-                  <dt className="text-[15px] font-semibold">{c.k}</dt>
-                  <dd className="text-[14px] text-fg-2">{c.v}</dd>
+                <div key={c.k} className="border-t border-line-2 pt-5">
+                  <dt className="text-[17px] font-semibold tracking-tight">{c.k}</dt>
+                  <dd className="mt-2 text-[14px] text-fg-2">{c.v}</dd>
                 </div>
               ))}
             </dl>
@@ -159,12 +173,14 @@ export default async function Landing() {
         </section>
 
         {/* Evidence: figures first, chart under them. */}
-        <section className="border-t border-line bg-canvas">
+        <section className="border-t border-line">
           <div className={`${WRAP} py-20 md:py-28`}>
-            <h2 className={`${H2} max-w-[20ch]`}>The edge is measured, not claimed.</h2>
-            <p className="mt-4 max-w-[60ch] text-[15px] text-fg-2">
-              An event study checks whether smart-money flow leads price. A replay runs a naive maker and Monday over the same minutes. Both publish their assumptions next to the numbers.
-            </p>
+            <Reveal>
+              <h2 className={`${H2} max-w-[20ch]`}>The edge is measured, not claimed.</h2>
+              <p className={LEAD}>
+                An event study checks whether smart-money flow leads price. A replay runs a naive maker and Monday over the same minutes. Both publish their assumptions next to the numbers.
+              </p>
+            </Reveal>
             <div className="mt-10">
               <EvidenceTeaser />
             </div>
@@ -172,7 +188,7 @@ export default async function Landing() {
         </section>
 
         {/* Questions: native disclosures, readable without JavaScript. */}
-        <section className="border-t border-line">
+        <section className="border-t border-line bg-canvas">
           <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
             <h2 className={`${H2} max-w-[14ch]`}>Questions before you start</h2>
             <div className="border-t border-line-2">
@@ -190,14 +206,47 @@ export default async function Landing() {
         </section>
 
         <section className="border-t border-line">
-          <div className={`${WRAP} flex flex-col items-start gap-8 py-20 md:flex-row md:items-end md:justify-between md:py-28`}>
-            <h2 className="display max-w-[18ch] text-4xl md:text-6xl">Quote both sides without betting on direction.</h2>
-            <ButtonLink href="/app" size="lg">Launch app</ButtonLink>
+          <div className={`${WRAP} flex flex-col items-start gap-8 py-24 md:flex-row md:items-end md:justify-between md:py-36`}>
+            <Reveal>
+              <h2 className="display max-w-[16ch] text-4xl md:text-6xl xl:text-7xl">Quote both sides without betting on direction.</h2>
+            </Reveal>
+            <ButtonLink href="/app" size="lg" className="px-6">Launch app</ButtonLink>
           </div>
         </section>
       </main>
       <SiteFooter />
     </>
+  );
+}
+
+/** Who holds what: you, your Perpl account in the middle with the money, Monday reaching it through a key that cannot move funds. */
+function Custody() {
+  // Left to right on wide screens, top to bottom on phones: the arrows turn with the layout.
+  const links = [
+    { icon: ArrowsLeftRightIcon, text: 'deposit, withdraw, revoke' },
+    { icon: ArrowLeftIcon, text: 'trade-only key' },
+  ];
+  return (
+    <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-0">
+      {NODES.map((n, i) => (
+        <div key={n.title} className="contents">
+          {i > 0 && (
+            <div className="flex items-center justify-center gap-2 py-1 text-fg-3 lg:w-44 lg:flex-col lg:px-3">
+              {(() => { const Arrow = links[i - 1].icon; return <Arrow size={18} aria-hidden className="rotate-90 lg:rotate-0" />; })()}
+              <span className="label text-center">{links[i - 1].text}</span>
+            </div>
+          )}
+          <div className={cx('panel p-5 md:p-6', 'funds' in n && 'border-accent/50')}>
+            <div className="flex items-center justify-between gap-3">
+              <n.icon size={26} weight="regular" aria-hidden className={'funds' in n ? 'text-accent' : 'text-fg-2'} />
+              {'funds' in n && <Tag tone="accent">funds stay here</Tag>}
+            </div>
+            <p className="mt-5 text-[19px] font-semibold tracking-tight">{n.title}</p>
+            <p className="mt-1.5 text-[14px] text-fg-2">{n.text}</p>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
