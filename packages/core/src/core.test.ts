@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  riskGate, inventoryStage, orderJobs, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
+  riskGate, inventoryStage, lossBps, orderJobs, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
 
@@ -313,6 +313,15 @@ describe('inventory lifecycle', () => {
     expect(inventoryStage({ ...p, inPolicy: false })).toBe('reduce'); // dropped from the policy: work the exit
     expect(inventoryStage({ ...p, positionUsd: 700 })).toBe('urgent'); // limits lowered under the position
     expect(inventoryStage({ ...p, unrealizedUsd: -13 })).toBe('urgent');
+  });
+  it('closes a position 20 bps under its entry at the best price, and keeps closing it once the stop was hit', () => {
+    expect(lossBps(100, -0.2)).toBeCloseTo(20);
+    expect(lossBps(-100, 0.5)).toBe(0); // a short in profit
+    expect(inventoryStage({ ...p, unrealizedUsd: -0.19 })).toBe('normal'); // 19 bps: still waiting for its target
+    expect(inventoryStage({ ...p, unrealizedUsd: -0.2 })).toBe('urgent'); // 20 bps: the stop loss
+    expect(inventoryStage({ ...p, positionUsd: -100, unrealizedUsd: -0.25 })).toBe('urgent'); // shorts too
+    expect(inventoryStage({ ...p, unrealizedUsd: 0.4, stopped: true })).toBe('urgent'); // a bounce does not undo it
+    expect(inventoryStage({ ...p, positionUsd: 0.2, stopped: true })).toBe('normal'); // nothing left to close
   });
   it('stops adding, works the exit, and keeps the exit even when a reflex would pull it', () => {
     const long = { ...base, positionUsd: 400, positionBase: 400 / 85_000 };

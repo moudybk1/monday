@@ -9,7 +9,7 @@
 // behind it, and a restart does not lose positions, PnL or unfinished cleanup.
 
 import {
-  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, inventoryStage, marginFloorUsd,
+  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STAGE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, inventoryStage, lossBps, marginFloorUsd,
   markoutBps, median, nextReflex, orderJobs, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
   type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type Priority,
@@ -91,6 +91,8 @@ interface MarketRt {
   stage: InventoryStage;
   posSince: number;
   posSign: number;
+  /** The stop loss was hit for the position held now: it is closed at the best price, and a bounce does not undo that. */
+  stopped: boolean;
   basis: { bps: number; dev: number; gap: number; n: number };
   gapAlarm: boolean;
   why: string;
@@ -465,7 +467,7 @@ export class Runner {
       params: { market: sym, enabled: true, spread_mult: 2, skew_bias_bps: 0, size_mult: 0.5, max_inventory_usd: this.policy.maxInventoryUsd, ttl_min: 15, regime: 'stale', reason: 'Waiting for the first governor decision.' },
       paramsSource: 'fallback', paramsUntil: 0, nextGovAt: 0, lastGovAt: 0, govBusy: false, govAsap: false, wasStorm: false, wasStale: false, reflex: null, lastBigTs: Date.now(),
       lastSent: { bid: 0, ask: 0 }, inflight: { bid: false, ask: false }, sending: { bid: null, ask: null }, since: { bid: 0, ask: 0 }, held: { bid: null, ask: null },
-      block: { bid: null, ask: null }, ackedAt: { bid: 0, ask: 0 }, resting: { bid: null, ask: null }, model: null, stage: 'normal', posSince: 0, posSign: 0,
+      block: { bid: null, ask: null }, ackedAt: { bid: 0, ask: 0 }, resting: { bid: null, ask: null }, model: null, stage: 'normal', posSince: 0, posSign: 0, stopped: false,
       basis: { bps: 0, dev: 0, gap: 0, n: 0 }, gapAlarm: false, why: '', min: null, bothHist: [], lastDecisionId: null, series: [], bandAlertAt: 0,
     });
   }
@@ -559,10 +561,18 @@ export class Runner {
       const pos = v.position(sym);
       const posUsd = pos.size * snap.mark;
       const cap = this.capUsd(rt);
-      rt.stage = inventoryStage({
-        positionUsd: posUsd, capUsd: cap, ageMs: this.positionAge(rt, pos.size, now), unrealizedUsd: pos.size * (snap.mark - pos.entryPrice),
-        dailyLossUsd: this.policy.maxDailyLossUsd, inPolicy,
-      });
+      const ageMs = this.positionAge(rt, pos.size, now);
+      const unrealizedUsd = pos.size * (snap.mark - pos.entryPrice);
+      // Stop loss per position (STAGE.stopLossBps). It holds once hit, so a bounce back above it cannot bring back the
+      // profit target and the wait; positionAge clears it when the position is closed or turns over.
+      if (!rt.stopped && pos.size && pos.entryPrice > 0 && lossBps(posUsd, unrealizedUsd) >= STAGE.stopLossBps) {
+        rt.stopped = true;
+        const text = `${sym} ${pos.size > 0 ? 'long' : 'short'} is ${STAGE.stopLossBps} bps under its entry: stop loss, closing it at the best price.`;
+        this.alert('warn', text);
+        this.deps.notify(`Monday stop loss for ${this.wallet.slice(0, 8)}: ${text}`);
+        event(this.userId, 'stop_loss', { market: sym, size: pos.size, entry: pos.entryPrice, mark: snap.mark });
+      }
+      rt.stage = inventoryStage({ positionUsd: posUsd, capUsd: cap, ageMs, unrealizedUsd, dailyLossUsd: this.policy.maxDailyLossUsd, inPolicy, stopped: rt.stopped });
       // A Perpl/Hyperliquid gap far from its usual level: quote wider and smaller until it settles, rather than treat it as an opportunity.
       const gov = { ...rt.params, max_inventory_usd: cap, enabled: inPolicy && rt.params.enabled };
       if (rt.gapAlarm) Object.assign(gov, { spread_mult: gov.spread_mult * 1.5, size_mult: gov.size_mult * 0.5 });
@@ -837,11 +847,13 @@ export class Runner {
   private positionAge(rt: MarketRt, size: number, now: number): number {
     if (size === 0) {
       rt.posSince = rt.posSign = 0;
+      rt.stopped = false;
       return 0;
     }
     if (Math.sign(size) !== rt.posSign || !rt.posSince) {
       rt.posSign = Math.sign(size);
       rt.posSince = now;
+      rt.stopped = false; // a new position: its own stop loss
       // Walk back through the fills until the position was flat or the other way: that fill opened this one.
       let s = size;
       for (const f of db.prepare('select side, size, ts from fills where user_id = ? and sym = ? order by ts desc limit 500').all(this.userId, rt.sym) as { side: Side; size: number; ts: number }[]) {

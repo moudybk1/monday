@@ -57,16 +57,26 @@ export const STAGE = {
   reduceAgeMs: 20 * 60_000,
   urgentAgeMs: 60 * 60_000,
   urgentLossFrac: 0.25, // open loss as a share of the daily loss limit
+  // Stop loss per position: this far under its entry, the position is closed at the best price whatever the profit
+  // target says, and it stays that way until the position is closed (the runner holds it). Fixed for every user, set on
+  // 2026-10-10. On the 8 to 10 Oct fills, 3 of 25 positions dipped this far before they would have recovered to their
+  // target, so it costs about 3 bps a round trip there; in exchange no position rides a loss past 20 bps by choice.
+  stopLossBps: 20,
 };
+
+/** How far a position is under its entry, in bps of its notional: 0 in profit. */
+export const lossBps = (positionUsd: number, unrealizedUsd: number) => (positionUsd ? Math.max(0, (-unrealizedUsd / Math.abs(positionUsd)) * 1e4) : 0);
 
 /**
  * Where a position is in its life. normal: quote both sides, skewed. reduce: stop adding, quote the exit tighter.
- * urgent: the exit joins the best price. The hard limits (loss, margin) are kills, handled by the runner.
+ * urgent: the exit joins the best price, profit target or not. The hard limits (loss, margin) are kills, handled by the
+ * runner. `stopped`: the stop loss was hit earlier in this position's life and holds until it is closed.
  */
-export function inventoryStage(i: { positionUsd: number; capUsd: number; ageMs: number; unrealizedUsd: number; dailyLossUsd: number; inPolicy: boolean }): InventoryStage {
+export function inventoryStage(i: { positionUsd: number; capUsd: number; ageMs: number; unrealizedUsd: number; dailyLossUsd: number; inPolicy: boolean; stopped?: boolean }): InventoryStage {
   const size = Math.abs(i.positionUsd);
   if (size < 0.5) return 'normal';
   const q = i.capUsd > 0 ? size / i.capUsd : Infinity;
+  if (i.stopped || lossBps(i.positionUsd, i.unrealizedUsd) >= STAGE.stopLossBps) return 'urgent';
   if (i.ageMs >= STAGE.urgentAgeMs || i.unrealizedUsd <= -STAGE.urgentLossFrac * i.dailyLossUsd || (i.inPolicy && q >= STAGE.urgentQ)) return 'urgent';
   if (!i.inPolicy || q >= STAGE.reduceQ || i.ageMs >= STAGE.reduceAgeMs) return 'reduce';
   return 'normal';
