@@ -1,8 +1,16 @@
 node_modules
 **/node_modules
 **/.next
+**/.next-*
 contracts
 .git
 .env
+**/.env*
+!.env.example
 data
+apps/server/data
+**/*.sqlite
+**/*.sqlite-*
+reports
+research_notes
 *.md

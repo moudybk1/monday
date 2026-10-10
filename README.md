@@ -158,12 +158,21 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 
 ## Deploy
 
+One machine runs everything: the server (API and agents), the Perpl stats indexer, the web app, and Caddy for TLS.
+Host it where Perpl serves users (not the US or the UK, for example; Singapore or Tokyo work).
+
 ```bash
-cp .env.example .env     # fill SESSION_SECRET, MONDAY_MASTER_KEY, WEB_ORIGIN, API_PUBLIC_URL at minimum
-API_DOMAIN=api.example.com docker compose -f infra/docker-compose.yml up -d --build
+git clone https://github.com/moudybk1/monday.git && cd monday
+cp .env.example .env     # fill it in: DOMAIN, WEB_ORIGIN and API_PUBLIC_URL (https://<DOMAIN>), SESSION_SECRET, MONDAY_MASTER_KEY
+docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 ```
 
-Deploy `apps/web` to Vercel with `API_URL=https://api.example.com` and `NEXT_PUBLIC_WS_URL=wss://api.example.com/ws`.
+Point the domain's A record at the machine and open ports 80 and 443; Caddy fetches the certificate. Data lives in
+`apps/server/data` on the host, so a rebuild keeps it.
+
+Moving a running Monday (a laptop, say): stop it there first, then copy `apps/server/data/monday-<network>.sqlite` to
+the same path here and keep the same `MONDAY_MASTER_KEY`, or the stored Perpl keys cannot be decrypted. Never run two
+Mondays on the same Perpl account.
 
 ## Disclosures
 

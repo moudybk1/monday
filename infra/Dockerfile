@@ -1,6 +1,8 @@
 # Monday server: API, agent runners and the Nansen collector in one process.
 FROM node:22-slim
 WORKDIR /app
+# A wallet library pulls in bufferutil, which compiles from source where no prebuilt binary fits the platform.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/

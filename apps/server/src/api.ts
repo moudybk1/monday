@@ -107,7 +107,9 @@ function rollUp(cs: Candle[], spanMs: number): Candle[] {
 }
 
 export async function buildApi(deps: ApiDeps) {
-  const app = Fastify({ logger: { level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'] } });
+  // Behind Caddy or the web app's proxy every visitor arrives from a private address; trust the forwarded client address
+  // from those only, so per-address rate limits count visitors and not the proxy. A direct public caller cannot spoof it.
+  const app = Fastify({ trustProxy: ['loopback', 'uniquelocal'], logger: { level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'] } });
   await app.register(cookie);
   // Clients only ever send a one-line hello; anything bigger is not ours.
   await app.register(websocket, { options: { maxPayload: 4_096 } });

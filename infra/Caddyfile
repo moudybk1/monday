@@ -1,4 +1,13 @@
-# TLS is automatic once API_DOMAIN points at this machine.
-{$API_DOMAIN} {
-	reverse_proxy server:3001
+# One domain for everything, TLS automatic once DOMAIN points at this machine. The API and its WebSocket go to the
+# server; every other path is the web app. Same origin, so the session cookie stays first-party.
+{$DOMAIN} {
+	handle /api/* {
+		reverse_proxy server:3001
+	}
+	handle /ws {
+		reverse_proxy server:3001
+	}
+	handle {
+		reverse_proxy web:3000
+	}
 }

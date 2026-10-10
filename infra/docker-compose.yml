@@ -1,16 +1,16 @@
-# One command brings up the backend:  docker compose -f infra/docker-compose.yml up -d --build
-# The web app deploys to Vercel with API_URL and NEXT_PUBLIC_WS_URL pointing here.
+# Monday on one machine: API and agents, the Perpl stats indexer, the web app, and Caddy for TLS.
+#   docker compose --env-file .env -f infra/docker-compose.yml up -d --build      (from the repo root)
+# DOMAIN in .env must point at this machine. Never run a second Monday (a laptop, say) on the same Perpl accounts.
 services:
   server:
     build:
       context: ..
       dockerfile: infra/Dockerfile
     env_file: ../.env
-    environment:
-      DATABASE_PATH: /data/monday.sqlite
     volumes:
-      - monday-data:/data
+      - ../apps/server/data:/app/apps/server/data # the account database and the stats database, kept across rebuilds
     restart: always
+    stop_grace_period: 20s # on SIGTERM the server cancels resting orders before it exits (10 s at most)
     expose:
       - "3001"
     healthcheck:
@@ -19,6 +19,32 @@ services:
       timeout: 5s
       retries: 3
 
+  # With real funds the stats indexer is its own process, so its SQLite batches never stall the trading socket.
+  indexer:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["npx", "tsx", "src/stats/run.ts"]
+    env_file: ../.env
+    volumes:
+      - ../apps/server/data:/app/apps/server/data
+    restart: on-failure # without real funds it exits at once (the server indexes in-process); a crash restarts it
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+      args:
+        NETWORK: ${NETWORK:-mainnet}
+        NEXT_PUBLIC_WS_URL: wss://${DOMAIN:?set DOMAIN in .env}/ws
+        NEXT_PUBLIC_MONAD_RPC_URL: ${NEXT_PUBLIC_MONAD_RPC_URL:-}
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+    environment:
+      API_URL: http://server:3001
+    restart: always
+    expose:
+      - "3000"
+
   caddy:
     image: caddy:2
     restart: always
@@ -26,11 +52,10 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      API_DOMAIN: ${API_DOMAIN:-localhost}
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
 
 volumes:
-  monday-data:
   caddy-data:

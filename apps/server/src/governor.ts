@@ -170,7 +170,9 @@ async function askOpenAiCompatible(user: string): Promise<Answer> {
       messages: [{ role: 'system', content: `${SYSTEM}\n\nReply with a single JSON object matching this schema: ${JSON.stringify(OUTPUT_SCHEMA)}` }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
     }),
-    signal: AbortSignal.timeout(60_000),
+    // Kimi on b.ai answers a full snapshot in 30 to 90 s (measured 2026-10-10). The runner still applies an answer up to
+    // LATE_DECISION_MS (120 s) after asking, so wait just short of that; the rules hold the book meanwhile.
+    signal: AbortSignal.timeout(110_000),
   });
   if (!res.ok) throw new Error(`LLM ${res.status}`);
   const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
