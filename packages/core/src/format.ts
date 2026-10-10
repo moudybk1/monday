@@ -33,6 +33,9 @@ export function policyForHash(p: Policy) {
     minHalfSpreadBps: p.minHalfSpreadBps,
     maxDailyLossUsd: p.maxDailyLossUsd,
     maxLeverage: p.maxLeverage,
+    refMode: p.refMode ?? 'grid',
+    blendWeight: p.refMode === 'blend' ? p.blendWeight ?? 0.5 : null,
+    participation: p.participation ?? 'normal',
   };
 }
 

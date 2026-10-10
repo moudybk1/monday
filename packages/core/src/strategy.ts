@@ -2,7 +2,7 @@
 // Pure functions only: no I/O, no clock, no randomness.
 
 import type { InventoryStage } from './execution';
-import type { BookLevel, GovernorParams, MarketSpec, MarketSym, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
+import type { BookLevel, GovernorParams, MarketSpec, MarketSym, Participation, Policy, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
 export const STRATEGY_VERSION = '2026-10-10.1';
@@ -97,6 +97,23 @@ export const DEFAULT_CONFIG: StrategyConfig = {
 };
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+/** Each quote is at most this share of the market's average hourly volume (Tread's participation presets). */
+export const PARTICIPATION: Record<Participation, number> = { aggressive: 0.1, normal: 0.05, passive: 0.01 };
+
+/**
+ * A user's quoting choices, Tread style, on top of DEFAULT_CONFIG.
+ * mid: Perpl's own mid is the reference and exits are priced off the market (Tread's Mid mode).
+ * grid: Hyperliquid blended in at half, and the exit never rests better for the taker than the entry plus fees (7c),
+ * as Tread's Grid mode never sells below what it bought. The default, and what the policies saved before had.
+ * blend: the chosen Hyperliquid weight, exits off the market (Tread's Blend mode).
+ * The Hyperliquid touch guard (7b) and the per-position stop loss apply in every mode.
+ */
+export function quotingFor(p: Pick<Policy, 'refMode' | 'blendWeight' | 'participation'>): { cfg: Pick<StrategyConfig, 'blend' | 'participation'>; profitExit: boolean } {
+  const mode = p.refMode ?? 'grid';
+  const blend = mode === 'mid' ? 0 : mode === 'blend' ? clamp(p.blendWeight ?? DEFAULT_CONFIG.blend, 0, 1) : DEFAULT_CONFIG.blend;
+  return { cfg: { blend, participation: PARTICIPATION[p.participation ?? 'normal'] }, profitExit: mode === 'grid' };
+}
 
 // Float-safe rounding to a grid: 85181.8 / 0.1 is not an integer in IEEE 754.
 const EPS = 1e-9;

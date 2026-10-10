@@ -2,7 +2,7 @@
 
 import { CaretDownIcon, CheckIcon, SlidersHorizontalIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { MARKETS, PRESETS, balanceNeededUsd, fitLimits, usd, type MarketSpec, type MarketSym, type PolicyLimits, type PresetName } from '@monday/core';
+import { MARKETS, PARTICIPATION, PRESETS, STAGE, balanceNeededUsd, fitLimits, usd, type MarketSpec, type MarketSym, type Participation, type PolicyLimits, type PresetName, type RefMode } from '@monday/core';
 import { INPUT, Panel, cx } from './ui';
 
 export type Caps = Pick<PolicyLimits, 'quoteSizeUsd' | 'maxInventoryUsd' | 'maxDailyLossUsd'>;
@@ -14,11 +14,21 @@ export interface PolicyDraft {
   limits: PolicyLimits;
   /** The margin as typed. Never saved: without it the form shows the collateral the limits need. */
   margin?: string;
+  /** How quotes are priced, as Tread's reference price modes: see quotingFor in core. */
+  refMode: RefMode;
+  /** Blend mode: Hyperliquid's share of the reference price. */
+  blendWeight: number;
+  participation: Participation;
+  /** Take profit as a share of the margin, for the next Start; null runs until stopped. Not part of the policy. */
+  takeProfitPct?: number | null;
 }
 
 export const draftFrom = (p?: Partial<PolicyDraft> & Partial<PolicyLimits> | null): PolicyDraft => ({
   preset: p?.preset ?? 'balanced',
   markets: p?.markets?.length ? p.markets : ['BTC'],
+  refMode: p?.refMode ?? 'grid',
+  blendWeight: p?.blendWeight ?? 0.5,
+  participation: p?.participation ?? 'normal',
   limits: p && 'quoteSizeUsd' in p && p.quoteSizeUsd ? { quoteSizeUsd: p.quoteSizeUsd, maxInventoryUsd: p.maxInventoryUsd!, minHalfSpreadBps: p.minHalfSpreadBps!, maxDailyLossUsd: p.maxDailyLossUsd!, maxLeverage: p.maxLeverage! } : PRESETS[p?.preset && p.preset !== 'custom' ? p.preset : 'balanced'],
 });
 
@@ -28,7 +38,14 @@ const TEMPLATES: { id: Exclude<PresetName, 'custom'>; label: string; note: strin
   { id: 'active', label: 'Active', note: 'Larger and tighter' },
   { id: 'high', label: 'High leverage', note: 'Balanced at 10x' },
 ];
-const LOSS_PCT = [0.05, 0.1, 0.2];
+const LOSS_PCT = [0.05, 0.1, 0.25, 0.5]; // Tread's stop loss choices; 100% would leave no margin for a position
+const TP_PCT = [0.1, 0.25, 0.5, 1, null];
+const REF_MODES: { id: RefMode; label: string; note: string }[] = [
+  { id: 'mid', label: 'Mid', note: "Quotes around Perpl's own mid and exits at the market. Fills most often; a fast move can close a trade at a loss." },
+  { id: 'grid', label: 'Grid', note: `Never sells below what it bought, nor buys back above what it sold: an exit rests at the entry plus fees and 1 bp, or closes at the best price once the position is ${STAGE.stopLossBps} bps under its entry.` },
+  { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's and Hyperliquid's mid, where price moves first, and exits at the market." },
+];
+const PARTICIPATIONS: { id: Participation; label: string }[] = [{ id: 'aggressive', label: 'Aggressive' }, { id: 'normal', label: 'Normal' }, { id: 'passive', label: 'Passive' }];
 const EPS = 1e-9;
 
 /** Same rule the server applies on save (FR-POL-2). Unknown balance: let the server decide. */
@@ -37,7 +54,8 @@ export const draftFits = (d: PolicyDraft, balance: number | null) => balance == 
 /** A first draft that will save: Balanced when the account carries it in full, else Conservative shrunk to fit. */
 export function draftForBalance(balance: number, caps: Caps | null, markets: MarketSym[] = ['BTC']): PolicyDraft {
   const balanced = fitLimits(PRESETS.balanced, balance, markets.length, caps);
-  return balanced === PRESETS.balanced ? { preset: 'balanced', markets, limits: balanced } : { preset: 'conservative', markets, limits: fitLimits(PRESETS.conservative, balance, markets.length, caps) };
+  const base = draftFrom({ markets });
+  return balanced === PRESETS.balanced ? { ...base, preset: 'balanced', limits: balanced } : { ...base, preset: 'conservative', limits: fitLimits(PRESETS.conservative, balance, markets.length, caps) };
 }
 
 /** The selected market with the lowest leverage cap, and that cap (the schema stops at 50x). */
@@ -73,7 +91,7 @@ export function draftProblems(d: PolicyDraft, caps: Caps | null, specs: Specs): 
   const lev = leverageCap(d.markets, specs);
   if (!(l.maxLeverage >= 1)) p.maxLeverage = 'At least 1x.';
   else if (l.maxLeverage > lev.max) p.maxLeverage = `${lev.sym} allows at most ${lev.max}x.`;
-  if (d.margin != null && !(Number(d.margin) > l.maxDailyLossUsd)) p.margin = 'Must be more than the daily loss limit.';
+  if (d.margin != null && !(Number(d.margin) > l.maxDailyLossUsd)) p.margin = 'Must be more than the stop loss.';
   return Object.fromEntries(Object.entries(p).filter(([, v]) => v)) as Problems;
 }
 
@@ -83,12 +101,17 @@ export const draftOk = (d: PolicyDraft, balance: number | null, caps: Caps | nul
 const money = (v: number, digits = Number.isInteger(v) ? 0 : 2) => (Number.isFinite(v) ? usd(v, digits) : '-');
 const parse = (s: string) => (s.trim() === '' ? NaN : Number(s));
 
+/** The margin the draft is sized from: as typed, else the collateral its limits need. */
+export const draftMargin = (d: PolicyDraft) => (d.margin != null ? parse(d.margin) : balanceNeededUsd(d.limits, d.markets.length));
+/** The take profit the next Start asks for, in dollars, or null for none. */
+export const takeProfitUsd = (d: PolicyDraft) => (d.takeProfitPct ? Math.floor(draftMargin(d) * d.takeProfitPct * 100) / 100 : null);
+
 /**
  * The bot settings editor, laid out like Tread's bot form: the inputs on the left, what they add up to on the right
  * next to the page's own action (`children`). Margin, leverage, daily loss and markets size the limits; typing a
  * position limit instead makes the margin follow it, so the two always agree.
  */
-export function PolicyForm({ value, onChange, available, caps = null, balance = null, specs = {}, children }: { value: PolicyDraft; onChange: (d: PolicyDraft) => void; available: MarketSym[]; caps?: Caps | null; balance?: number | null; specs?: Specs; children?: ReactNode }) {
+export function PolicyForm({ value, onChange, available, caps = null, balance = null, specs = {}, takeProfit = false, children }: { value: PolicyDraft; onChange: (d: PolicyDraft) => void; available: MarketSym[]; caps?: Caps | null; balance?: number | null; specs?: Specs; takeProfit?: boolean; children?: ReactNode }) {
   const l = value.limits;
   const n = value.markets.length;
   const need = balanceNeededUsd(l, n);
@@ -104,11 +127,11 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
   const fitted = (id: Exclude<PresetName, 'custom'>, markets = n) => fitLimits(PRESETS[id], balance ?? Infinity, markets, caps);
   const template = (id: string) => {
     const t = TEMPLATES.find((x) => x.id === id);
-    if (t) onChange({ preset: t.id, markets: value.markets, limits: fitted(t.id) });
+    if (t) onChange({ ...value, preset: t.id, margin: undefined, limits: fitted(t.id) });
   };
   const resize = (patch: Partial<Pick<PolicyLimits, 'maxLeverage' | 'maxDailyLossUsd'>>, markets = value.markets, typed = shown) => {
     const next = { ...l, ...patch };
-    onChange({ preset: 'custom', markets, margin: typed, limits: { ...next, ...sized(parse(typed), next, markets.length, caps) } });
+    onChange({ ...value, preset: 'custom', markets, margin: typed, limits: { ...next, ...sized(parse(typed), next, markets.length, caps) } });
   };
   const toggle = (m: MarketSym) => {
     const next = MARKETS.filter((x) => (x === m ? !value.markets.includes(m) : value.markets.includes(x)));
@@ -165,9 +188,9 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
             <Row id="margin" label="Margin" note="Sizes the limits. It does not reserve or move funds." error={bad.margin}>
               <Money id="margin" value={shown} invalid={!!bad.margin} onChange={(s) => resize({}, value.markets, s)} />
             </Row>
-            <Row id="loss" label="Daily loss limit" note="At this loss Monday stops and closes positions for the day. Resets 00:00 UTC." error={bad.maxDailyLossUsd}>
-              <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2">
-                <div role="group" aria-label="Daily loss as a share of margin" className={SEG}>
+            <Row id="loss" label="Stop loss" note="Your most to lose in a day. At this loss Monday stops, cancels its orders and closes positions. Resets 00:00 UTC; a fast market can go past it." error={bad.maxDailyLossUsd}>
+              <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
+                <div role="group" aria-label="Stop loss as a share of margin" className={SEG}>
                   {LOSS_PCT.map((pct) => {
                     const v = Math.max(1, Math.floor(marginNum * pct + EPS));
                     return <Chip key={pct} type="radio" name="loss" checked={Number.isFinite(marginNum) && l.maxDailyLossUsd === v} disabled={!(marginNum > 0)} onChange={() => resize({ maxDailyLossUsd: v })}>{pct * 100}%</Chip>;
@@ -177,28 +200,64 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
               </div>
             </Row>
 
-            <Row id="inventory" label="Position limit per market" note="Margin less the daily loss, times leverage, split across markets." error={bad.maxInventoryUsd}>
-              <Money id="inventory" value={num(l.maxInventoryUsd)} invalid={!!bad.maxInventoryUsd} onChange={(s) => setLimit('maxInventoryUsd', parse(s))} />
-            </Row>
-            <Row id="quote" label="Quote per side" note="A tenth of the position limit. In a calm market one order may grow to 1.5 times it." error={bad.quoteSizeUsd}>
-              <Money id="quote" value={num(l.quoteSizeUsd)} invalid={!!bad.quoteSizeUsd} onChange={(s) => setLimit('quoteSizeUsd', parse(s))} />
-            </Row>
+            <Choices legend="Reference price" note={REF_MODES.find((m) => m.id === value.refMode)?.note} wide>
+              {REF_MODES.map((m) => (
+                <Chip key={m.id} type="radio" name="ref" checked={value.refMode === m.id} onChange={() => onChange({ ...value, refMode: m.id })}>{m.label}</Chip>
+              ))}
+            </Choices>
+            {value.refMode === 'blend' && (
+              <Choices legend="Hyperliquid weight" note="Hyperliquid's share of the price Monday quotes around; the rest is Perpl's own mid." wide>
+                {[0.5, 1].map((w) => (
+                  <Chip key={w} type="radio" name="blend" checked={value.blendWeight === w} onChange={() => onChange({ ...value, blendWeight: w })}>{w * 100}%</Chip>
+                ))}
+              </Choices>
+            )}
 
-            <Row id="spread" label="Base spread" value={`${l.minHalfSpreadBps} bps`} note="How far from fair price Monday starts quoting; 1 bp is 0.01%. In a calm market it may quote at the best price instead." error={bad.minHalfSpreadBps} className="@2xl:col-span-2">
+            <Choices legend="Participation" note={`Each quote is at most ${PARTICIPATION[value.participation] * 100}% of the market's hourly volume. Bigger quotes fill faster and carry more inventory.`}>
+              {PARTICIPATIONS.map((p) => (
+                <Chip key={p.id} type="radio" name="participation" checked={value.participation === p.id} onChange={() => onChange({ ...value, participation: p.id })}>{p.label}</Chip>
+              ))}
+            </Choices>
+            <Row id="spread" label="Base spread" value={`${l.minHalfSpreadBps} bps`} note="How far from fair price Monday starts quoting; 1 bp is 0.01%. In a calm market it may quote at the best price instead." error={bad.minHalfSpreadBps}>
               <Slider id="spread" min={1} max={Math.max(20, l.minHalfSpreadBps || 0)} step={0.5} value={l.minHalfSpreadBps} unit=" bps" onChange={(v) => setLimit('minHalfSpreadBps', v)} />
             </Row>
+
+            {takeProfit && (
+              <Choices legend="Take profit" note={value.takeProfitPct ? `Once this run makes ${money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2)}, Monday stops and closes the position.` : 'No target: Monday quotes until you stop it.'} wide>
+                {TP_PCT.map((pct) => (
+                  <Chip key={pct ?? 'none'} type="radio" name="tp" checked={(value.takeProfitPct ?? null) === pct} onChange={() => onChange({ ...value, takeProfitPct: pct })}>{pct ? `${pct * 100}%` : 'Uncapped'}</Chip>
+                ))}
+              </Choices>
+            )}
+
+            <details className="group border-t border-line pt-4 @2xl:col-span-2" open={bad.maxInventoryUsd || bad.quoteSizeUsd ? true : undefined}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12.5px] [&::-webkit-details-marker]:hidden">
+                <span className="font-medium">Order sizes</span>
+                <span className="num flex items-center gap-2 text-fg-3">{money(l.maxInventoryUsd)} per market, {money(l.quoteSizeUsd)} per side <CaretDownIcon size={12} className="transition-transform group-open:rotate-180" /></span>
+              </summary>
+              <div className="mt-4 grid gap-x-5 gap-y-5 @2xl:grid-cols-2">
+                <Row id="inventory" label="Position limit per market" note="Margin less the stop loss, times leverage, split across markets." error={bad.maxInventoryUsd}>
+                  <Money id="inventory" value={num(l.maxInventoryUsd)} invalid={!!bad.maxInventoryUsd} onChange={(s) => setLimit('maxInventoryUsd', parse(s))} />
+                </Row>
+                <Row id="quote" label="Quote per side" note="A tenth of the position limit. In a calm market one order may grow to 1.5 times it." error={bad.quoteSizeUsd}>
+                  <Money id="quote" value={num(l.quoteSizeUsd)} invalid={!!bad.quoteSizeUsd} onChange={(s) => setLimit('quoteSizeUsd', parse(s))} />
+                </Row>
+              </div>
+            </details>
           </div>
         </Panel>
 
-        <Panel title="Summary" aside={value.markets.join(', ')}>
+        <Panel title="Pre-trade summary" aside={value.markets.join(', ')}>
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
             <Line k="Balance on Perpl" v={balance == null ? '-' : money(balance, 2)} />
             <Line k="Margin needed" v={money(need, 2)} tone={!fits ? 'text-ask-fg' : undefined} />
-            <Line k="Quote per side" v={money(l.quoteSizeUsd)} />
+            <Line k="Max loss (stop loss)" v={money(l.maxDailyLossUsd)} />
+            {takeProfit && <Line k="Take profit" v={value.takeProfitPct ? money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2) : 'Uncapped'} />}
             <Line k="Position limit" v={`${money(l.maxInventoryUsd)} per market`} />
-            <Line k="Daily loss limit" v={money(l.maxDailyLossUsd)} />
-            <Line k="Leverage" v={Number.isFinite(l.maxLeverage) ? `${l.maxLeverage}x` : '-'} />
-            <Line k="Base spread" v={`${l.minHalfSpreadBps} bps`} />
+            <Line k="Quote per side" v={money(l.quoteSizeUsd)} />
+            <Line k="Reference price" v={value.refMode === 'blend' ? `Blend ${value.blendWeight * 100}%` : REF_MODES.find((m) => m.id === value.refMode)?.label ?? '-'} />
+            <Line k="Participation" v={`${PARTICIPATIONS.find((p) => p.id === value.participation)?.label}, ${PARTICIPATION[value.participation] * 100}%`} />
+            <Line k="Stop per position" v={`${STAGE.stopLossBps} bps`} />
           </dl>
           {balance != null && !fits && (
             <p role="alert" className="mx-3 mb-3 text-[12px] text-ask-fg">
@@ -208,13 +267,13 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
           )}
           {shrunk && (
             <p role="status" className="num mx-3 mb-3 text-[12px] text-fg-2">
-              <span className="font-sans">Fitted: </span>quote {money(shrunk.from.quoteSizeUsd)} to {money(shrunk.to.quoteSizeUsd)}, position {money(shrunk.from.maxInventoryUsd)} to {money(shrunk.to.maxInventoryUsd)}, daily loss {money(shrunk.from.maxDailyLossUsd)} to {money(shrunk.to.maxDailyLossUsd)}.
+              <span className="font-sans">Fitted: </span>quote {money(shrunk.from.quoteSizeUsd)} to {money(shrunk.to.quoteSizeUsd)}, position {money(shrunk.from.maxInventoryUsd)} to {money(shrunk.to.maxInventoryUsd)}, stop loss {money(shrunk.from.maxDailyLossUsd)} to {money(shrunk.to.maxDailyLossUsd)}.
               <span className="font-sans text-fg-3"> Nothing is saved until you save.</span>
             </p>
           )}
           {caps && (
             <p className="mx-3 mb-3 text-[12px] text-fg-3">
-              Real funds: this server caps every policy at <span className="num">{usd(caps.quoteSizeUsd)}</span> per side, <span className="num">{usd(caps.maxInventoryUsd)}</span> per market and a <span className="num">{usd(caps.maxDailyLossUsd)}</span> daily loss.
+              Real funds: this server caps every policy at <span className="num">{usd(caps.quoteSizeUsd)}</span> per side, <span className="num">{usd(caps.maxInventoryUsd)}</span> per market and a <span className="num">{usd(caps.maxDailyLossUsd)}</span> stop loss.
             </p>
           )}
           {children && <div className="grid gap-2 border-t border-line p-3">{children}</div>}
@@ -238,9 +297,9 @@ function Chip({ type, name, checked, disabled, onChange, children }: { type: 'ra
   );
 }
 
-function Choices({ legend, note, error, children }: { legend: string; note: ReactNode; error?: string; children: ReactNode }) {
+function Choices({ legend, note, error, wide, children }: { legend: string; note: ReactNode; error?: string; wide?: boolean; children: ReactNode }) {
   return (
-    <fieldset className="min-w-0">
+    <fieldset className={cx('min-w-0', wide && '@2xl:col-span-2')}>
       <legend className="mb-2 text-[12.5px] font-medium">{legend}</legend>
       <div className={SEG}>{children}</div>
       <p className={cx('mt-2 text-[12px]', error ? 'text-ask-fg' : 'text-fg-3')}>{error ?? note}</p>
@@ -365,4 +424,7 @@ function Line({ k, v, tone }: { k: string; v: string; tone?: string }) {
 }
 
 /** What gets sent to PUT /api/policy. */
-export const toBody = (d: PolicyDraft) => ({ preset: d.preset, markets: d.markets, ...(d.preset === 'custom' ? { limits: d.limits } : {}) });
+export const toBody = (d: PolicyDraft) => ({
+  preset: d.preset, markets: d.markets, ...(d.preset === 'custom' ? { limits: d.limits } : {}),
+  refMode: d.refMode, participation: d.participation, ...(d.refMode === 'blend' ? { blendWeight: d.blendWeight } : {}),
+});

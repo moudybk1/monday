@@ -4,8 +4,9 @@ import { ArrowSquareOutIcon } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import type { Policy, PolicyLimits } from '@monday/core';
-import { PolicyForm, draftFrom, draftOk, toBody, type PolicyDraft } from '@/components/policy-form';
+import type { DashboardState, Policy, PolicyLimits } from '@monday/core';
+import { statusText } from '@/components/agent';
+import { PolicyForm, draftFrom, draftOk, takeProfitUsd, toBody, type PolicyDraft } from '@/components/policy-form';
 import { Button, Notice, Panel, Skeleton, Tag } from '@/components/ui';
 import { api } from '@/lib/api';
 import { shortHash } from '@/lib/format';
@@ -20,6 +21,8 @@ export default function PolicyPage() {
   const authorized = useAgentAuthorized(me.demo ? null : (cfg?.registry as `0x${string}` | null | undefined), cfg?.agentAddress as `0x${string}` | null | undefined);
   const view = useQuery({ queryKey: ['policy'], queryFn: () => api<PolicyView>('/policy') });
   const balance = useQuery({ queryKey: ['perpl-account'], queryFn: () => api<{ balanceUsd: number | null }>('/perpl/account') }).data?.balanceUsd ?? null;
+  // The bot's own state, for Start and Stop here as on Tread's form. Polled: the terminal holds the live stream.
+  const bot = useQuery({ queryKey: ['agent-state'], queryFn: () => api<DashboardState>('/state'), refetchInterval: 5_000 }).data;
   const [draft, setDraft] = useState<PolicyDraft | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
@@ -48,8 +51,8 @@ export default function PolicyPage() {
     setBusy('Saving');
     try {
       const res = await api<PolicyView>('/policy', { method: 'PUT', body: toBody(draft) });
-      // The server refits a template to the balance it reads now: show exactly what it saved.
-      setDraft(draftFrom(res.pending?.policy ?? res.policy));
+      // The server refits a template to the balance it reads now: show exactly what it saved (the take profit is the page's).
+      setDraft({ ...draftFrom(res.pending?.policy ?? res.policy), takeProfitPct: draft.takeProfitPct });
       if (res.pending?.onchain) await registry.publish(res.pending.onchain, setBusy);
       await refresh();
       setNote({ ok: true, text: res.pending ? 'Published on Monad. Monday uses the new settings from its next tick.' : 'Saved. Monday uses the new settings from its next tick.' });
@@ -85,6 +88,20 @@ export default function PolicyPage() {
       setBusy(null);
     }
   };
+  // Start and Stop act on the settings in force, so they only show once nothing is waiting to be saved or signed.
+  const botAction = async (what: 'start' | 'pause') => {
+    setNote(null);
+    setBusy(what === 'start' ? 'Starting' : 'Stopping');
+    try {
+      await api(`/agent/${what}`, { method: 'POST', body: what === 'start' ? { takeProfitUsd: takeProfitUsd(draft) } : undefined });
+      await qc.invalidateQueries({ queryKey: ['agent-state'] });
+      setNote({ ok: true, text: what === 'start' ? 'Monday is quoting with these settings.' : "Stopped. Monday's orders are cancelled; any position stays open for you." });
+    } catch (e) {
+      setNote({ ok: false, text: e instanceof Error ? e.message.split('\n')[0] : 'Could not reach the bot.' });
+    } finally {
+      setBusy(null);
+    }
+  };
   const remove = async () => {
     setNote(null);
     try {
@@ -104,7 +121,9 @@ export default function PolicyPage() {
       ? <Button size="lg" className="w-full" onClick={registry.reconnect}>Reconnect wallet</Button>
       : pending?.onchain
         ? <Button size="lg" className="w-full" onClick={sign} disabled={busy !== null}>{busy ?? 'Sign on Monad'}</Button>
-        : null; // nothing to save: the status says it is in force, and a change brings the button back
+        : bot && bot.status === 'quoting'
+          ? <Button size="lg" variant="ghost" className="w-full" onClick={() => void botAction('pause')} disabled={busy !== null}>{busy ?? 'Stop bot'}</Button>
+          : bot && <Button size="lg" className="w-full" onClick={() => void botAction('start')} disabled={busy !== null || bot.closing != null}>{busy ?? 'Start bot'}</Button>;
 
   return (
     <div className="grid gap-5 py-8">
@@ -129,14 +148,20 @@ export default function PolicyPage() {
         </Notice>
       )}
 
-      <PolicyForm value={draft} onChange={(d) => { setDraft(d); setNote(null); }} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={caps} balance={balance} specs={specs}>
+      <PolicyForm takeProfit value={draft} onChange={(d) => { setDraft(d); setNote(null); }} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={caps} balance={balance} specs={specs}>
         <div className="flex items-center justify-between text-[12px]">
-          <span className="text-fg-3">Status</span>
+          <span className="text-fg-3">Settings</span>
           <Tag tone={unsaved || pending ? 'warn' : 'neutral'}>{unsaved ? 'Unsaved changes' : pending ? 'Waiting for signature' : 'In force'}</Tag>
         </div>
+        {bot && (
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-fg-3">Bot</span>
+            <Tag tone={bot.closing ? 'warn' : bot.status === 'quoting' ? 'bid' : bot.status === 'killed' ? 'ask' : 'neutral'}>{statusText(bot)}{bot.status === 'killed' && bot.killReason ? `: ${bot.killReason.replace('_', ' ')}` : ''}</Tag>
+          </div>
+        )}
         {action}
         {note && <p role={note.ok ? 'status' : 'alert'} className={note.ok ? 'text-[12px] text-fg-2' : 'text-[12px] text-ask-fg'}>{note.text}</p>}
-        <p className="text-[12px] text-fg-3">Saving does not start or stop the bot. A running bot follows the new settings from its next tick.</p>
+        <p className="text-[12px] text-fg-3">{bot?.status === 'quoting' ? 'Saving applies to the running bot from its next tick. Stop cancels its orders and leaves positions; Kill and flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
         {view.data.onchainTx && (
           <p className="text-[12px] text-fg-3">
             In force on Monad since {cfg ? <a className="num underline underline-offset-2" href={`${cfg.explorerUrl}/tx/${view.data.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.data.onchainTx)}</a> : <span className="num">{shortHash(view.data.onchainTx)}</span>}.
@@ -176,7 +201,9 @@ export default function PolicyPage() {
   );
 }
 
-/** The draft says the same as a saved policy: same markets, same limits. The preset's name alone is no change. */
+/** The draft says the same as a saved policy: same markets, limits and quoting. The preset's name alone is no change. */
 function sameLimits(p: Policy | null, d: PolicyDraft): boolean {
-  return p != null && p.markets.join() === d.markets.join() && (Object.keys(d.limits) as (keyof PolicyLimits)[]).every((k) => p[k] === d.limits[k]);
+  if (!p || p.markets.join() !== d.markets.join() || !(Object.keys(d.limits) as (keyof PolicyLimits)[]).every((k) => p[k] === d.limits[k])) return false;
+  const refMode = p.refMode ?? 'grid';
+  return refMode === d.refMode && (p.participation ?? 'normal') === d.participation && (refMode !== 'blend' || (p.blendWeight ?? 0.5) === d.blendWeight);
 }

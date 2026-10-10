@@ -34,7 +34,7 @@ const custody = (onchain: boolean) => [
 
 const CONTROLS = [
   { k: 'Position limit', v: 'The most Monday may hold in each market. Margin and leverage set it, or you type it.' },
-  { k: 'Daily loss limit', v: 'At this loss Monday stops quoting and closes positions for the day. Fast markets can overshoot it.' },
+  { k: 'Stop loss', v: 'A share of your margin: at this loss Monday stops quoting and closes positions for the day. Each position also closes 20 bps under its entry. Fast markets can overshoot both.' },
   { k: 'Stop and kill', v: 'Stop pulls Monday\'s orders. Kill also closes positions. Both are one click in the terminal.' },
 ];
 
@@ -42,7 +42,7 @@ const CONTROLS = [
 const faq = (onchain: boolean) => [
   { q: 'What do I need to use Monday?', a: 'A wallet to sign in with, a Perpl account with collateral, and a Perpl API key that can trade. The app walks you through each step before anything is quoted.' },
   { q: 'Where are my funds held?', a: 'In your own Perpl account. Monday trades with an API key that Perpl never lets withdraw or transfer funds, and you withdraw on Perpl yourself.' },
-  { q: 'Can Monday lose money?', a: 'Yes. Market making carries inventory and execution risk, smart-money signals can be wrong or late, and fees count against every fill. The daily loss limit stops Monday, but a fast market can overshoot it.' },
+  { q: 'Can Monday lose money?', a: 'Yes. Market making carries inventory and execution risk, smart-money signals can be wrong or late, and fees count against every fill. The stop loss halts Monday for the day and each position closes 20 bps under its entry, but a fast market can overshoot both.' },
   { q: 'What is the difference between Stop and Kill?', a: 'Stop cancels Monday\'s orders and leaves open positions for you to manage. Kill cancels every order in the account and closes positions. Closing can take time, and waits if Perpl is unreachable.' },
   { q: 'What happens if the data or the connection fails?', a: 'If market data is more than 5 seconds old Monday pulls its quotes, and after 30 seconds it stops and closes positions. Any cancel or close it still owes is retried until Perpl confirms it. You can always act on Perpl directly.' },
   {

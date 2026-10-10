@@ -19,10 +19,20 @@ export interface PolicyLimits {
   maxLeverage: number;
 }
 
+/** Tread's reference price modes that Monday's engine implements (see quotingFor). */
+export type RefMode = 'mid' | 'grid' | 'blend';
+/** Tread's participation presets: how big each quote may be against the market's volume. */
+export type Participation = 'aggressive' | 'normal' | 'passive';
+
 export interface Policy extends PolicyLimits {
   mode: Mode;
   markets: MarketSym[];
   preset: PresetName;
+  /** Missing in policies saved before 2026-10-11, which quoted as grid with normal participation. */
+  refMode?: RefMode;
+  /** Blend mode only: Hyperliquid's share of the reference price, 0 to 1. */
+  blendWeight?: number;
+  participation?: Participation;
 }
 
 // PRD 5.2. Quote sizes are a tenth of max inventory: the replay's losses scaled linearly with size, so quote small

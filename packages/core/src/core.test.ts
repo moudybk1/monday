@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  riskGate, inventoryStage, lossBps, orderJobs, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
+  riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
 
@@ -578,5 +578,22 @@ describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', ()
     expect(computeQuotes({ ...short, entryPrice: 84_900 }).bid!.price).toBe(84_883.8); // 84,900 x (1 - 1.9 bps)
     expect(computeQuotes({ ...short, entryPrice: 84_900, stage: 'reduce' }).bid!.price).toBe(84_883.8);
     expect(computeQuotes({ ...long, entryPrice: 85_100 }).bid).not.toBeNull(); // the adding side is unchanged
+  });
+});
+
+describe('Tread-style quoting modes (2026-10-11)', () => {
+  it('maps mid, grid and blend onto the reference blend and the profit exit, and participation onto the size cap', () => {
+    expect(quotingFor({})).toEqual({ cfg: { blend: 0.5, participation: 0.05 }, profitExit: true }); // policies saved before: grid, normal
+    expect(quotingFor({ refMode: 'mid' })).toEqual({ cfg: { blend: 0, participation: 0.05 }, profitExit: false });
+    expect(quotingFor({ refMode: 'blend', blendWeight: 1, participation: 'passive' })).toEqual({ cfg: { blend: 1, participation: 0.01 }, profitExit: false });
+    expect(quotingFor({ refMode: 'blend', blendWeight: 7 }).cfg.blend).toBe(1); // clamped
+    expect(PARTICIPATION.aggressive).toBe(0.1);
+  });
+  it('quotes off Perpl alone in mid mode, and sizes each quote by the participation preset', () => {
+    const wide = { ...base, bestBid: 84_990, bestAsk: 85_010, hlMid: 85_020 };
+    expect(computeQuotes({ ...wide, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ refMode: 'mid' }).cfg } }).ref).toBe(85_000);
+    expect(computeQuotes({ ...wide, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ refMode: 'blend', blendWeight: 1 }).cfg } }).ref).toBe(85_020);
+    const passive = computeQuotes({ ...base, hourlyVolumeUsd: 2_000, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ participation: 'passive' }).cfg } });
+    expect(passive.sizeCapUsd).toBe(20); // 1% of $2,000 an hour
   });
 });

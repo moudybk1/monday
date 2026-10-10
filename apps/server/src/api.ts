@@ -80,11 +80,14 @@ const PolicyBody = z.object({
     maxDailyLossUsd: z.number().min(1).max(10_000),
     maxLeverage: z.number().min(1).max(50),
   }).optional(),
+  refMode: z.enum(['mid', 'grid', 'blend']).optional(),
+  blendWeight: z.number().min(0).max(1).optional(),
+  participation: z.enum(['aggressive', 'normal', 'passive']).optional(),
 });
 const usdLimit = z.number().positive().max(1_000_000).nullable().optional();
 /** How the forms name the fields a schema can reject, so a rejection points at the right box. */
 const FIELD_LABELS: Record<string, string> = {
-  'limits.quoteSizeUsd': 'Quote size', 'limits.maxInventoryUsd': 'Max inventory', 'limits.minHalfSpreadBps': 'Min half-spread', 'limits.maxDailyLossUsd': 'Daily loss limit', 'limits.maxLeverage': 'Max leverage',
+  'limits.quoteSizeUsd': 'Quote size', 'limits.maxInventoryUsd': 'Max inventory', 'limits.minHalfSpreadBps': 'Min half-spread', 'limits.maxDailyLossUsd': 'Stop loss', 'limits.maxLeverage': 'Max leverage',
   stopLossUsd: 'Session stop loss', takeProfitUsd: 'Take profit',
 };
 const StartBody = z.object({ stopLossUsd: usdLimit, takeProfitUsd: usdLimit });
@@ -356,7 +359,11 @@ export async function buildApi(deps: ApiDeps) {
     if (balanceNeededUsd(limits, markets.length) > balance) {
       throw new HttpError(400, 'insufficient_balance', `Balance ${usd(balance)} is too small for ${usd(limits.maxInventoryUsd)} of inventory in ${markets.length} market${markets.length > 1 ? 's' : ''} at ${limits.maxLeverage}x. Pick a preset (they shrink to fit your balance) or use Fit to my balance.`, 'preset');
     }
-    const policy: Policy = { mode: 'maker', markets, preset: body.preset, ...limits };
+    const refMode = body.refMode ?? 'grid';
+    const policy: Policy = {
+      mode: 'maker', markets, preset: body.preset, ...limits, refMode, participation: body.participation ?? 'normal',
+      ...(refMode === 'blend' ? { blendWeight: body.blendWeight ?? 0.5 } : {}),
+    };
     const policyHash = keccak256(toHex(canonicalJson(policyForHash(policy))));
     const prev = policyRow(s.uid);
     const version = (prev?.version ?? 0) + 1;

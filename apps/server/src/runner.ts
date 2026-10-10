@@ -10,7 +10,7 @@
 
 import {
   DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STAGE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, inventoryStage, lossBps, marginFloorUsd,
-  markoutBps, median, nextReflex, orderJobs, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
+  markoutBps, median, nextReflex, orderJobs, quotingFor, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
   type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type Priority,
   type QuoteOutput, type QuoteTarget, type ReflexState, type Side, type StrategyConfig, type TapePrint,
@@ -472,7 +472,7 @@ export class Runner {
     });
   }
   private cfg(sym: MarketSym): StrategyConfig {
-    return { ...DEFAULT_CONFIG, k: this.deps.k(sym) };
+    return { ...DEFAULT_CONFIG, k: this.deps.k(sym), ...quotingFor(this.policy).cfg };
   }
   private spec(sym: MarketSym): MarketSpec {
     return this.deps.driver.feed.specs()[sym]!;
@@ -581,7 +581,7 @@ export class Runner {
       const out = computeQuotes({
         mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S, book: rt.book,
         hlMid: this.hlReference(rt), hourlyVolumeUsd: this.hourlyVolume(sym, now), policy: this.policy, gov, reflex: rt.reflex, spec, cfg: this.cfg(sym),
-        stage: rt.stage, positionBase: pos.size, entryPrice: pos.entryPrice, trendBps: this.trendBps(rt, now, snap.mark),
+        stage: rt.stage, positionBase: pos.size, entryPrice: quotingFor(this.policy).profitExit ? pos.entryPrice : undefined, trendBps: this.trendBps(rt, now, snap.mark),
       });
       rt.model = out;
 
