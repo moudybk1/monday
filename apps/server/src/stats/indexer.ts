@@ -6,11 +6,16 @@
 //
 // Envio HyperSync (ENVIO_API_TOKEN) backfills from genesis in minutes. Without a token the indexer follows the chain
 // over RPC from a few hours back, because Monad's public RPC serves eth_getLogs 100 blocks at a time.
+//
+// Every batch is stored together with the block range it scanned (px_ranges), so the history knows its own holes: a
+// restart, a switch between RPC and HyperSync, or an RPC jump to the head leaves a hole that HyperSync fills later,
+// and the stats say "partial" for any span not scanned yet instead of showing a missing day as a quiet one.
 
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { decodeEventLog, toEventSelector, toHex, type Hex } from 'viem';
+import { holesOf, type BlockRange } from '@monday/core';
 import { config } from '../config';
 import { EXCHANGE_ABI } from './exchange-abi';
 import { client, meta, statsNet, type Meta } from './perpl';
@@ -20,6 +25,7 @@ export const sdb = new DatabaseSync(resolve(process.cwd(), `data/perpl-stats-${s
 sdb.exec(`
 pragma journal_mode = wal;
 pragma synchronous = normal;
+pragma busy_timeout = 10000;
 create table if not exists px_meta (key text primary key, value text);
 create table if not exists px_accounts (id integer primary key, address text not null, ts integer);
 create index if not exists px_accounts_addr on px_accounts (address);
@@ -34,6 +40,7 @@ create index if not exists px_trades_acct on px_trades (account, block);
 create table if not exists px_liqs (block integer, idx integer, ts integer, perp integer, account integer, long integer, size real, mark real, pnl real, primary key (block, idx));
 create index if not exists px_liqs_ts on px_liqs (ts);
 create table if not exists px_day (day integer, account integer, volume real, net real, fees real, trades integer, primary key (day, account));
+create table if not exists px_ranges (lo integer primary key, hi integer not null);
 `);
 
 export const KINDS = ['open', 'increase', 'decrease', 'close', 'invert', 'liquidation', 'fill'] as const;
@@ -50,16 +57,60 @@ const insTrade = sdb.prepare('insert or ignore into px_trades (block, idx, ts, p
 const insLiq = sdb.prepare('insert or ignore into px_liqs (block, idx, ts, perp, account, long, size, mark, pnl) values (?,?,?,?,?,?,?,?,?)');
 const upDay = sdb.prepare(`insert into px_day (day, account, volume, net, fees, trades) values (?, ?, ?, ?, ?, 1)
   on conflict (day, account) do update set volume = volume + excluded.volume, net = net + excluded.net, fees = fees + excluded.fees, trades = trades + 1`);
+const selRanges = sdb.prepare('select lo, hi from px_ranges order by lo');
+const selTouching = sdb.prepare('select lo, hi from px_ranges where lo <= ? and hi >= ?');
+const delRange = sdb.prepare('delete from px_ranges where lo = ?');
+const insRange = sdb.prepare('insert into px_ranges (lo, hi) values (?, ?)');
+
+/** Mark blocks [lo, hi) as scanned, merged with every range it touches. Runs inside the caller's transaction. */
+function cover(lo: number, hi: number) {
+  if (!(hi > lo)) return;
+  for (const r of selTouching.all(hi, lo) as unknown as BlockRange[]) {
+    lo = Math.min(lo, r.lo);
+    hi = Math.max(hi, r.hi);
+    delRange.run(r.lo);
+  }
+  insRange.run(lo, hi);
+}
+
+/** Block ranges below the live cursor that were never scanned, oldest first. */
+export const scanHoles = (): BlockRange[] => holesOf(selRanges.all() as unknown as BlockRange[], Number(getMeta('cursor') ?? 0));
 
 interface RawLog { block: number; idx: number; ts: number; data: Hex; topics: Hex[] }
 interface Pending { perp: number; account: number; kind: (typeof KINDS)[number]; long: boolean; pnl: number; funding: number }
 
-export const status = { source: 'off' as 'hypersync' | 'rpc' | 'off', block: 0, head: 0, error: null as string | null };
-let pending: Pending | null = null;
+/**
+ * Progress, also stored in px_meta: a server whose indexer runs in its own process (npm run indexer) reads it from there.
+ * `at`: last progress. `seen`: last report of any kind, errors included.
+ */
+const status = { source: 'off' as 'hypersync' | 'rpc' | 'off', block: 0, head: 0, error: null as string | null, at: 0, seen: 0 };
+let local = false;
+/** Progress is a report, never a reason to stop: a write that still finds the database busy is skipped, not thrown. */
+const saveStatus = (ok: boolean) => {
+  status.seen = Date.now();
+  if (ok) Object.assign(status, { at: status.seen, error: null });
+  try {
+    setMeta.run('status', JSON.stringify(status));
+  } catch (e) {
+    logError('status_not_saved', e instanceof Error ? e.message : String(e));
+  }
+};
 
-function ingest(logs: RawLog[], m: Meta) {
+/**
+ * The indexer as it last reported, from this process or another. Silent for 6 minutes means it is not running: that is
+ * longer than HyperSync's longest back-off (5 min), so a throttled indexer reads as behind, not off.
+ */
+export function indexerStatus(now = Date.now()): typeof status {
+  const s: typeof status = local ? status : { ...status, ...JSON.parse(getMeta('status') ?? '{}') };
+  return now - s.seen > 360_000 ? { ...s, source: 'off' } : s;
+}
+
+/** Store one batch and mark blocks [lo, hi) scanned in the same transaction: a block never counts as scanned without its rows. */
+function ingest(logs: RawLog[], m: Meta, lo: number, hi: number) {
   logs.sort((a, b) => a.block - b.block || a.idx - b.idx);
   const usd = (v: bigint) => Number(v) / m.usd;
+  // A position event and its fill share a transaction, hence a block, and a batch always holds whole blocks.
+  let pending: Pending | null = null;
   sdb.exec('begin');
   try {
     for (const l of logs) {
@@ -113,6 +164,7 @@ function ingest(logs: RawLog[], m: Meta) {
         }
       }
     }
+    cover(lo, hi);
     sdb.exec('commit');
   } catch (e) {
     sdb.exec('rollback');
@@ -122,50 +174,111 @@ function ingest(logs: RawLog[], m: Meta) {
 
 const num = (v: unknown) => (typeof v === 'string' ? Number(v) : (v as number));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let logged = { error: '', at: 0 };
+/** One line per distinct error, repeated at most every 10 minutes: a throttled indexer must not flood the terminal. */
+function logError(event: string, error: string, extra: Record<string, unknown> = {}) {
+  if (error === logged.error && Date.now() - logged.at < 600_000) return;
+  logged = { error, at: Date.now() };
+  console.error(JSON.stringify({ service: 'stats', event, error, ...extra }));
+}
 
+const SEED_GAP_BLOCKS = 20_000; // about two hours of Monad blocks without a single fill
+
+/**
+ * Once, for a database indexed before scanned ranges were recorded: everything up to the cursor counts as scanned, from
+ * block 0 if a HyperSync run started at genesis, except stretches of more than SEED_GAP_BLOCKS without a fill. Those go
+ * back to the backfill queue; scanning a truly quiet stretch again costs little and turns it into verified coverage.
+ * The scan reads every fill once (about 15 s for 19M fills) and only ever runs on an empty px_ranges.
+ */
+function seedRanges() {
+  const cursor = Number(getMeta('cursor') ?? 0);
+  if (!cursor || (sdb.prepare('select count(*) n from px_ranges').get() as { n: number }).n) return;
+  const first = (sdb.prepare('select min(block) b from px_trades').get() as { b: number | null }).b;
+  if (first == null) return;
+  const stretches = sdb.prepare('select prev, block from (select block, lag(block) over (order by block) prev from px_trades) where block - prev > ?')
+    .all(SEED_GAP_BLOCKS) as { prev: number; block: number }[];
+  let lo = getMeta('genesis') === '1' ? 0 : first;
+  sdb.exec('begin');
+  try {
+    for (const s of stretches) {
+      cover(lo, s.prev + 1);
+      lo = s.block;
+    }
+    cover(lo, cursor);
+    sdb.exec('commit');
+  } catch (e) {
+    sdb.exec('rollback');
+    throw e;
+  }
+  console.log(JSON.stringify({ service: 'stats', event: 'ranges_seeded', holes: scanHoles().length }));
+}
+
+type Batch = { logs: RawLog[]; next: number; height: number };
+
+/** One HyperSync request for the Exchange's logs in [from, to). It may stop early: `next` is where to continue. */
+async function hsQuery(token: string, from: number, to?: number): Promise<Batch> {
+  const res = await fetch(`${statsNet.hypersync}/query`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      from_block: from,
+      ...(to != null && { to_block: to }),
+      logs: [{ address: [statsNet.exchange], topics: [TOPICS] }],
+      field_selection: { block: ['number', 'timestamp'], log: ['block_number', 'log_index', 'data', 'topic0', 'topic1', 'topic2', 'topic3'] },
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`HyperSync ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j = (await res.json()) as { data: unknown; next_block: number; archive_height: number };
+  const batches = (Array.isArray(j.data) ? j.data : [j.data]) as { blocks?: { number: unknown; timestamp: unknown }[]; logs?: Record<string, unknown>[] }[];
+  const ts = new Map<number, number>();
+  const logs: RawLog[] = [];
+  for (const b of batches) for (const blk of b.blocks ?? []) ts.set(num(blk.number), num(blk.timestamp) * 1000);
+  for (const b of batches) {
+    for (const l of b.logs ?? []) {
+      const block = num(l.block_number);
+      const t = ts.get(block);
+      if (!t) throw new Error(`HyperSync returned block ${block} without its timestamp`); // never store a fill at 1970
+      logs.push({ block, idx: num(l.log_index), ts: t, data: l.data as Hex, topics: [l.topic0, l.topic1, l.topic2, l.topic3].filter(Boolean) as Hex[] });
+    }
+  }
+  return { logs, next: j.next_block, height: j.archive_height };
+}
+
+const BACKFILL_BLOCKS = 500_000; // per backfill request: about two days of Monad blocks
+
+/**
+ * Follow the head first. Whenever it is caught up, fill the newest hole in the scanned history instead of idling, so the
+ * recent windows (7D, 30D) are complete first and the oldest days last. Starting on an empty database, the "head" pass
+ * is itself the scan from genesis.
+ */
 async function hypersync(token: string) {
   status.source = 'hypersync';
-  // The first HyperSync run starts from block 0 even if RPC indexed recent hours before; rows already stored are skipped.
-  if (getMeta('genesis') !== '1') {
-    setMeta.run('cursor', '0');
-    setMeta.run('genesis', '1');
-  }
   let from = Number(getMeta('cursor') ?? 0);
   let wait = 5_000;
   for (;;) {
     try {
-      const res = await fetch(`${statsNet.hypersync}/query`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          from_block: from,
-          logs: [{ address: [statsNet.exchange], topics: [TOPICS] }],
-          field_selection: { block: ['number', 'timestamp'], log: ['block_number', 'log_index', 'data', 'topic0', 'topic1', 'topic2', 'topic3'] },
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (!res.ok) throw new Error(`HyperSync ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      const j = (await res.json()) as { data: unknown; next_block: number; archive_height: number };
-      const batches = (Array.isArray(j.data) ? j.data : [j.data]) as { blocks?: { number: unknown; timestamp: unknown }[]; logs?: Record<string, unknown>[] }[];
-      const ts = new Map<number, number>();
-      const logs: RawLog[] = [];
-      for (const b of batches) for (const blk of b.blocks ?? []) ts.set(num(blk.number), num(blk.timestamp) * 1000);
-      for (const b of batches) {
-        for (const l of b.logs ?? []) {
-          const block = num(l.block_number);
-          logs.push({ block, idx: num(l.log_index), ts: ts.get(block) ?? 0, data: l.data as Hex, topics: [l.topic0, l.topic1, l.topic2, l.topic3].filter(Boolean) as Hex[] });
-        }
-      }
-      if (logs.length) ingest(logs, await meta());
-      from = j.next_block;
+      const tip = await hsQuery(token, from);
+      const m = await meta();
+      ingest(tip.logs, m, from, tip.next);
+      from = tip.next;
       setMeta.run('cursor', String(from));
-      Object.assign(status, { block: from, head: j.archive_height, error: null });
+      Object.assign(status, { block: from, head: tip.height });
+      if (from >= tip.height) {
+        const hole = scanHoles().at(-1);
+        if (hole) {
+          const lo = Math.max(hole.lo, hole.hi - BACKFILL_BLOCKS);
+          const b = await hsQuery(token, lo, hole.hi);
+          ingest(b.logs, m, lo, Math.min(b.next, hole.hi));
+        } else await sleep(1_000); // caught up and complete: wait for new blocks
+      }
+      saveStatus(true);
       wait = 5_000;
-      if (from >= j.archive_height) await sleep(1_000); // caught up: wait for new blocks
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      if (error !== status.error) console.error(JSON.stringify({ service: 'stats', event: 'hypersync_failed', error, retryInS: wait / 1000 })); // once per streak
+      logError('hypersync_failed', error, { retryInS: wait / 1000 });
       status.error = error;
+      saveStatus(false);
       await sleep(wait);
       wait = Math.min(wait * 2, 300_000); // a 429 is Envio's quota: retrying every 5 s only keeps it exhausted
     }
@@ -180,9 +293,11 @@ async function rpc() {
   for (;;) {
     try {
       const head = Number(await client.getBlockNumber());
-      if (!from || head - from > 5 * RPC_START_BLOCKS) from = head - RPC_START_BLOCKS; // too far behind to catch up over RPC
+      // Too far behind to catch up over RPC: jump near the head. What it skips stays a hole for HyperSync to fill.
+      if (!from || head - from > 5 * RPC_START_BLOCKS) from = head - RPC_START_BLOCKS;
       status.head = head;
       if (from > head) {
+        saveStatus(true); // caught up: still a heartbeat
         await sleep(1_000);
         continue;
       }
@@ -191,20 +306,32 @@ async function rpc() {
         method: 'eth_getLogs',
         params: [{ address: statsNet.exchange, fromBlock: toHex(from), toBlock: toHex(to), topics: [TOPICS] }],
       })) as { blockNumber: Hex; logIndex: Hex; blockTimestamp?: Hex; data: Hex; topics: Hex[] }[];
-      if (raw.length) ingest(raw.map((l) => ({ block: Number(l.blockNumber), idx: Number(l.logIndex), ts: Number(l.blockTimestamp ?? 0) * 1000, data: l.data, topics: l.topics })), await meta());
+      const logs = raw.map((l) => {
+        if (!l.blockTimestamp) throw new Error('eth_getLogs returned a log without blockTimestamp'); // never store a fill at 1970
+        return { block: Number(l.blockNumber), idx: Number(l.logIndex), ts: Number(l.blockTimestamp) * 1000, data: l.data, topics: l.topics };
+      });
+      ingest(logs, await meta(), from, to + 1);
       from = to + 1;
       setMeta.run('cursor', String(from));
-      Object.assign(status, { block: from, error: null });
+      status.block = from;
+      saveStatus(true);
     } catch (e) {
       status.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+      logError('rpc_failed', status.error);
+      saveStatus(false);
       await sleep(3_000);
     }
   }
 }
 
 export function startIndexer() {
+  local = true;
+  seedRanges();
   void (config.stats.envioToken ? hypersync(config.stats.envioToken) : rpc());
 }
 
-/** History is complete once a HyperSync run that started from block 0 has caught up. */
-export const historyComplete = () => status.source === 'hypersync' && getMeta('genesis') === '1' && status.head > 0 && status.head - status.block < 50;
+/** Every block from genesis to the head is scanned, and the indexer is running. */
+export function historyComplete(): boolean {
+  const s = indexerStatus();
+  return s.source !== 'off' && s.head > 0 && s.head - s.block < 50 && scanHoles().length === 0;
+}

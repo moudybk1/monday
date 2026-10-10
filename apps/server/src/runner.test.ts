@@ -63,6 +63,53 @@ it('a kill while Perpl is unreachable cancels and flattens once it is back', asy
   expect([v.orders, v.size]).toEqual([0, 0]);
 });
 
+it('resume is refused while a kill still owes its flatten, and allowed once the position is closed', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const v = {
+    up: true, size: 0.01,
+    connect: async () => v.account(), close() {}, on() {}, connected: () => v.up, quote: () => null, setQuote: async () => {},
+    account: () => ({ accountId: 1, balanceUsd: 1_000, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+    cancelAll: async () => { if (!v.up) throw new VenueError('disconnected', 'trading socket is down'); },
+    flatten: async () => { if (!v.up) throw new VenueError('disconnected', 'trading socket is down'); v.size = 0; },
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const r = new Runner(upsertUser('0xres'), '0xres', 1, POLICY, { driver, collector: {} as never, k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xres', accountId: 1, token: 't', secret: 's' }) });
+  await r.start();
+  v.up = false;
+  await r.kill('manual');
+  v.up = true;
+  await expect(r.start()).rejects.toThrow(/still closing/);
+  expect([r.status, r.owes, v.size]).toEqual(['killed', 'flatten', 0.01]); // the duty survives the attempt
+
+  vi.setSystemTime(Date.now() + 11_000);
+  r.tick();
+  await settle();
+  expect([r.owes, v.size]).toEqual([null, 0]);
+  await r.start();
+  expect(r.status).toBe('quoting');
+});
+
+it('a stopped agent leaves its position alone, even past the daily loss limit', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const v = {
+    size: 0.01, balance: 1_000,
+    connect: async () => v.account(), close() {}, on() {}, connected: () => true, quote: () => null, setQuote: async () => {},
+    account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+    cancelAll: async () => {}, flatten: async () => { v.size = 0; },
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const r = new Runner(upsertUser('0xstp'), '0xstp', 1, POLICY, { driver, collector: {} as never, k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xstp', accountId: 1, token: 't', secret: 's' }) });
+  await r.start();
+  r.tick(); // sets the day's starting equity
+  await r.pause();
+  expect([r.status, v.size]).toEqual(['paused', 0.01]);
+
+  v.balance = 1_000 - POLICY.maxDailyLossUsd - 10;
+  r.tick();
+  await settle();
+  expect([r.status, v.size]).toEqual(['paused', 0.01]); // stop means stop: the position is the user's now
+});
+
 it('a kill that could not reach Perpl is still finished after a restart', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   const v = {
@@ -83,13 +130,13 @@ it('a kill that could not reach Perpl is still finished after a restart', async 
   const after = new Runner(uid, '0xdef', 1, POLICY, deps);
   expect(after.state()).toMatchObject({ status: 'killed', killReason: 'manual' });
   await after.resumeCleanup();
-  expect(after.state().closing).toBe(true);
+  expect(after.state().closing).toBe('flatten');
   v.up = true;
   vi.setSystemTime(Date.now() + 11_000);
   after.tick();
   await settle();
   expect(v.size).toBe(0);
-  expect(after.state().closing).toBe(false);
+  expect(after.state().closing).toBeNull();
   expect((db.prepare('select owed from agents where user_id = ?').get(uid) as { owed: string | null }).owed).toBeNull();
 });
 
@@ -207,5 +254,86 @@ it('cash that moves while Monday is stopped is not PnL: a deposit during a resta
   ticks(after, 2);
   expect(after.state().status).toBe('quoting'); // not a $50 loss against a $50 limit
   expect(after.state().pnl.lossLimitUsedPct).toBe(0);
+  after.dispose();
+});
+
+/** A scripted Perpl account for the lifecycle tests: one market, a position, and every cleanup call recorded. */
+function scriptedVenue(wallet: string) {
+  const v = {
+    size: 0.01, balance: 1_000, down: false, gate: null as Promise<void> | null, errors: [] as ((e: unknown) => void)[], cancels: [] as boolean[], flattens: 0,
+    connect: async () => {
+      if (v.down) throw new VenueError('disconnected', 'Perpl is unreachable');
+      await v.gate;
+      return v.account();
+    },
+    close() {}, connected: () => true, quote: () => null, setQuote: async () => {},
+    on: (event: string, cb: (e: unknown) => void) => void (event === 'error' && v.errors.push(cb)),
+    account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+    cancelAll: async (onlyOwn?: boolean) => void v.cancels.push(onlyOwn ?? false),
+    flatten: async () => { v.flattens++; v.size = 0; },
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const deps = { driver, collector: {} as never, k: () => 0, notify: () => {}, creds: () => ({ wallet, accountId: 1, token: 't', secret: 's' }) };
+  return { v, deps, uid: upsertUser(wallet) };
+}
+
+it('a Kill pressed while Start is still connecting wins: the agent stays killed and the flatten stays owed', async () => {
+  const { v, deps, uid } = scriptedVenue('0xe90');
+  let release!: () => void;
+  v.gate = new Promise((ok) => (release = ok));
+  const r = new Runner(uid, '0xe90', 1, POLICY, deps);
+  const starting = r.start();
+  await r.kill('manual'); // Perpl not connected yet: the flatten cannot land, so it is owed
+  release();
+  await starting;
+  expect([r.status, r.owes, v.size]).toEqual(['killed', 'flatten', 0.01]);
+});
+
+it('Stop cancels only Monday\'s own orders, a Kill sweeps them all, and nothing that fails after Stop closes the position', async () => {
+  const { v, deps, uid } = scriptedVenue('0x570');
+  const r = new Runner(uid, '0x570', 1, POLICY, deps);
+  await r.start();
+  await r.pause();
+  expect(v.cancels).toEqual([true]); // the user's own stop loss and take profit orders stay
+
+  // Requests rejected after Stop, then the key revoked: still stopped, still holding the position, nothing owed.
+  for (let i = 0; i < 3; i++) (r as unknown as { onOrderError(e: unknown): void }).onOrderError(new VenueError('rejected', 'order rejected'));
+  v.errors.forEach((cb) => cb(new VenueError('revoked', 'key revoked')));
+  await settle();
+  expect([r.status, r.owes, v.size, v.flattens]).toEqual(['paused', null, 0.01, 0]);
+  db.prepare("update perpl_credentials set status = 'active' where user_id = ?").run(uid);
+
+  await r.start();
+  await r.kill('manual');
+  expect(v.cancels).toEqual([true, false]);
+  expect(v.size).toBe(0);
+});
+
+it('an agent saved as quoting resumes by itself, retries while Perpl is down, and keeps its session\'s start', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const { v, deps, uid } = scriptedVenue('0x2e5');
+  const before = new Runner(uid, '0x2e5', 1, POLICY, deps);
+  await before.start({ stopLossUsd: 20, takeProfitUsd: null });
+  const startedAt = () => (db.prepare('select started_at s from agents where user_id = ?').get(uid) as { s: number }).s;
+  const sessionStart = startedAt();
+  before.dispose(); // the process stops without a clean shutdown
+
+  vi.setSystemTime(Date.now() + 60_000);
+  v.down = true;
+  const after = new Runner(uid, '0x2e5', 1, POLICY, deps);
+  after.tick();
+  await settle();
+  expect(after.status).toBe('idle'); // Perpl unreachable at boot
+
+  v.down = false;
+  after.tick(); // too soon: retries wait 10 s
+  await settle();
+  expect(after.status).toBe('idle');
+  vi.setSystemTime(Date.now() + 11_000);
+  after.tick();
+  await settle();
+  expect(after.status).toBe('quoting');
+  expect(after.state().session).toMatchObject({ stopLossUsd: 20 });
+  expect(startedAt()).toBe(sessionStart); // a resume must not move the session start: deposits since then stay deposits
   after.dispose();
 });

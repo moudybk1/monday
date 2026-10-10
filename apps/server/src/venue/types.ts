@@ -117,7 +117,11 @@ export interface Venue {
    * Costs one request. Resolves when the venue accepts, rejects with VenueError.
    */
   setQuote(sym: MarketSym, side: Side, target: QuoteTarget | null, leverage: number): Promise<void>;
-  cancelAll(): Promise<void>;
+  /**
+   * Cancel resting orders. `onlyOwn`: Monday's quotes only, so a Stop or a restart leaves the orders the user placed by
+   * hand (their own stop losses and take profits) alone. A kill sweeps everything before it closes the positions.
+   */
+  cancelAll(onlyOwn?: boolean): Promise<void>;
   /** Close every position with reduce-only market orders. */
   flatten(): Promise<void>;
   on<E extends keyof VenueEvents>(event: E, cb: VenueEvents[E]): void;

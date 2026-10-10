@@ -45,7 +45,8 @@ export const config = {
   prod,
   port: num('PORT', 3001),
   webOrigin: env('WEB_ORIGIN', 'http://localhost:3000'),
-  sessionSecret: env('SESSION_SECRET', prod ? '' : 'monday-dev-session-secret'),
+  // The built-in secret is public: fine for the simulator, never for a venue holding real or testnet keys.
+  sessionSecret: env('SESSION_SECRET', prod || venue !== 'sim' ? '' : 'monday-dev-session-secret'),
   masterKey: env('MONDAY_MASTER_KEY'),
   databasePath: env('DATABASE_PATH', venue === 'sim' && !nansenKey ? ':memory:' : resolve(process.cwd(), `data/monday-${venue === 'sim' ? 'sim' : venue === 'paper' ? `paper-${network}` : network}.sqlite`)),
 
@@ -97,13 +98,12 @@ export const config = {
   },
 };
 
-if (prod && !config.sessionSecret) throw new Error('SESSION_SECRET is required in production.');
 if (config.venue === 'perpl' && !config.masterKey) throw new Error('MONDAY_MASTER_KEY is required when VENUE=perpl (it encrypts stored Perpl keys).');
 // Trading real money must be a deliberate act, not a leftover line in a .env file.
 if (realFunds && env('ALLOW_REAL_FUNDS') !== 'yes') {
   throw new Error('NETWORK=mainnet with VENUE=perpl places real orders with real funds. Set ALLOW_REAL_FUNDS=yes to confirm, or use NETWORK=testnet.');
 }
-if (realFunds && !env('SESSION_SECRET')) throw new Error('SESSION_SECRET is required when trading real funds.');
+if (!config.sessionSecret) throw new Error('SESSION_SECRET is required outside the simulator: set it in .env (any long random string).');
 // Simulated orders only (never the live venue, which refuses to start without a key): a fixed development key, so the
 // demo keys stored in a paper database still open after a restart. In production a random key dies with the process.
 if (!config.masterKey) config.masterKey = prod ? randomBytes(32).toString('base64') : 'monday-dev-master-key-simulated-orders-only';

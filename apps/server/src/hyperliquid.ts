@@ -55,6 +55,8 @@ export function startHyperliquid(onTrade: (t: HlTrade) => void = () => {}) {
       } else if (m.channel === 'trades') {
         for (const t of m.data ?? []) {
           if (!(MARKETS as readonly string[]).includes(t.coin)) continue;
+          // One malformed print would turn the flow baseline into NaN and switch the reflex off until a restart.
+          if (!(Number(t.px) > 0 && Number(t.sz) > 0 && Number.isFinite(t.time))) continue;
           onTrade({ sym: t.coin, px: Number(t.px), sz: Number(t.sz), time: t.time, hash: String(t.hash), tid: Number(t.tid), buyer: String(t.users?.[0] ?? '').toLowerCase(), seller: String(t.users?.[1] ?? '').toLowerCase() });
         }
       }

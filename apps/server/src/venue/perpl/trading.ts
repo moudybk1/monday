@@ -193,10 +193,12 @@ export class PerplVenue implements Venue {
     return run;
   }
 
-  async cancelAll(): Promise<void> {
+  async cancelAll(onlyOwn = false): Promise<void> {
     this.requireReady();
     await Promise.allSettled(this.queue.values()); // let in-flight quotes land first so nothing posts behind the sweep
-    await allOrThrow([...this.orders.keys()].map((key) => this.cancel(key)));
+    // Monday's own: every order it placed or adopted, and whatever rests in a quote slot now (`mine` forgets its oldest).
+    const own = new Set([...this.mine, ...this.slots.values()]);
+    await allOrThrow([...this.orders.keys()].filter((key) => !onlyOwn || own.has(key)).map((key) => this.cancel(key)));
   }
 
   async flatten(): Promise<void> {

@@ -1,6 +1,8 @@
 // Perpl protocol and wallet analytics (the public Stats pages). Pure: the server indexes Perpl's
 // Exchange events and reads its views, these functions turn rows into numbers.
 
+const DAY = 86_400_000;
+
 export type PxTradeKind = 'open' | 'increase' | 'decrease' | 'close' | 'invert' | 'liquidation' | 'fill';
 
 /** One fill of one account, joined with the position event the Exchange emits just before it. */
@@ -34,8 +36,8 @@ export interface PxPosition {
   leverage: number; // notional over deposit
   upnl: number;
   liqPrice: number;
-  /** How far mark must move against the position before it liquidates, percent of mark. */
-  liqDistancePct: number;
+  /** How far mark must move against the position before it liquidates, percent of mark. Null: it cannot be liquidated. */
+  liqDistancePct: number | null;
 }
 
 export interface PxMarketRisk {
@@ -64,11 +66,21 @@ export interface PxMarketRow {
   hlVolume24hUsd: number | null; // Hyperliquid, for market share
 }
 
+/** How much of a span the indexer has scanned: all of it, some, or none. A scanned span with no events is full. */
+export type Coverage = 'full' | 'partial' | 'none';
+export type PxWindow = '24h' | '7d' | '30d' | 'all';
+
 export interface PxOverview {
   at: number;
   network: 'mainnet' | 'testnet';
-  indexer: { source: 'hypersync' | 'rpc' | 'off'; block: number; head: number; lagSec: number | null; since: number | null };
+  /**
+   * live: the indexer is running and caught up with the chain. lagSec: age of the newest indexed trade.
+   * backfillDays: days of history not fully scanned yet; the indexer fills them newest first.
+   */
+  indexer: { source: 'hypersync' | 'rpc' | 'off'; block: number; head: number; live: boolean; lagSec: number | null; since: number | null; backfillDays: number };
   headline: {
+    /** Whether the indexed numbers (fees, traders, flows, liquidations) cover the whole window. */
+    complete: Record<PxWindow, boolean>;
     volume24hUsd: number; volume7dUsd: number; volume30dUsd: number; volumeAllUsd: number;
     openInterestUsd: number; tvlUsd: number; accounts: number;
     fees24hUsd: number | null; fees7dUsd: number | null; fees30dUsd: number | null; feesAllUsd: number | null;
@@ -76,8 +88,8 @@ export interface PxOverview {
     netFlow24hUsd: number | null; liquidations24hUsd: number | null;
   };
   markets: PxMarketRow[];
-  /** Daily, oldest first. Volume from Perpl candles (all time); the rest from indexed events. */
-  daily: { t: number; volumeUsd: number; byMarket: Record<string, number>; feesUsd: number | null; traders: number | null; depositsUsd: number | null; withdrawalsUsd: number | null; liquidationsUsd: number | null }[];
+  /** Daily (UTC), oldest first. Volume from Perpl candles (all time); the rest from indexed events, null where the day was never scanned. */
+  daily: { t: number; volumeUsd: number; byMarket: Record<string, number>; coverage: Coverage; feesUsd: number | null; traders: number | null; depositsUsd: number | null; withdrawalsUsd: number | null; liquidationsUsd: number | null }[];
 }
 
 export interface PxLiquidation {
@@ -109,6 +121,7 @@ export interface WalletPerformance {
   pnlUsd: number; // price PnL
   netUsd: number; // price PnL + funding - fees
   winRate: number | null;
+  /** Gross wins over gross losses. Null without a losing close: then a winRate of 1 means no losses at all. */
   profitFactor: number | null;
   maxDrawdownUsd: number;
   longestWin: number;
@@ -122,6 +135,7 @@ export interface WalletPerformance {
 }
 
 export interface PxWallet {
+  network: 'mainnet' | 'testnet';
   address: string;
   account: number | null;
   balanceUsd: number;
@@ -132,8 +146,62 @@ export interface PxWallet {
   performance: WalletPerformance;
   trades: PxTrade[]; // newest first, capped
   flows: { ts: number; kind: 'deposit' | 'withdraw'; usd: number }[];
-  /** False while the indexer has not reached this wallet's history yet, or runs without HyperSync. */
+  /** The fills behind `performance`: the newest `used` of `total` indexed, starting at `since`. */
+  fills: { total: number; used: number; since: number | null };
+  /** True only when the exchange's history is fully indexed and `performance` covers every one of this wallet's fills. */
   historyComplete: boolean;
+}
+
+/** A block range [lo, hi) the indexer has scanned end to end. */
+export interface BlockRange {
+  lo: number;
+  hi: number;
+}
+
+/** Ranges below `below` that were never scanned, oldest first: everything back to block 0 counts. */
+export function holesOf(ranges: BlockRange[], below: number): BlockRange[] {
+  const out: BlockRange[] = [];
+  let at = 0;
+  for (const r of [...ranges].sort((a, b) => a.lo - b.lo)) {
+    if (at >= below) break;
+    if (r.lo > at) out.push({ lo: at, hi: Math.min(r.lo, below) });
+    at = Math.max(at, r.hi);
+  }
+  if (at < below) out.push({ lo: at, hi: below });
+  return out;
+}
+
+/**
+ * How much of the time span [from, to) the indexed history covers. `start` and `end` bound what was scanned (start null:
+ * nothing yet), `gaps` are unscanned spans inside them.
+ */
+export function spanCoverage(from: number, to: number, c: { start: number | null; end: number; gaps: { from: number; to: number }[] }): Coverage {
+  if (c.start == null || to <= c.start || from >= c.end) return 'none';
+  let missing = Math.max(0, c.start - from) + Math.max(0, to - c.end);
+  for (const g of c.gaps) missing += Math.max(0, Math.min(to, g.to, c.end) - Math.max(from, g.from, c.start));
+  return missing <= 0 ? 'full' : missing >= to - from ? 'none' : 'partial';
+}
+
+/** First UTC day (days since epoch) of an n-day window ending today. Today is one of the n days, so 7D is 7 buckets. */
+export const windowStartDay = (now: number, days: number): number => Math.floor(now / DAY) - (days - 1);
+
+/**
+ * The factor Perpl's candle volume overstates a market by. Candle `v` should be traded notional in wire units, but for
+ * some markets (ETH on mainnet: exactly 10x, checked against on-chain fills back to May 2026) it is off by a power of
+ * ten. Calibrated against the ticker's 24h volume, which matches the trades; anything not within 20% of a power of ten
+ * is left alone, since a real difference (a volume spike at the window edge) must not be "corrected".
+ */
+export function candleScale(candle24hUsd: number, ticker24hUsd: number): number {
+  if (!(ticker24hUsd >= 10_000) || !(candle24hUsd > 0)) return 1; // too thin to compare
+  const exp = Math.log10(candle24hUsd / ticker24hUsd);
+  return Math.abs(exp - Math.round(exp)) <= Math.log10(1.2) ? 10 ** Math.round(exp) : 1;
+}
+
+/** At most `max` points, evenly spaced, keeping the first and the last. */
+export function thin<T>(points: T[], max: number): T[] {
+  if (points.length <= max) return points;
+  const step = Math.ceil(points.length / max);
+  return points.filter((_, i) => i % step === 0 || i === points.length - 1);
 }
 
 /** Perpl's liquidation price (dex-sdk Position::liquidation_price): entry moved by the margin above maintenance, per unit. */
@@ -196,7 +264,7 @@ export function walletPerformance(trades: PxTrade[]): WalletPerformance {
     pnlUsd: ts.reduce((s, t) => s + t.pnl, 0),
     netUsd: cum,
     winRate: closes ? wins / closes : null,
-    profitFactor: grossLoss > 0 ? gross / grossLoss : gross > 0 ? Infinity : null,
+    profitFactor: grossLoss > 0 ? gross / grossLoss : null, // Infinity would not survive JSON
     maxDrawdownUsd: dd,
     longestWin,
     longestLoss,

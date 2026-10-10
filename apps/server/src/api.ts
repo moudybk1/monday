@@ -48,6 +48,8 @@ class HttpError extends Error {
 
 // ---- sessions: signed, httpOnly, SameSite=Strict cookie (PRD 17.4) ----
 const COOKIE = 'monday_session';
+/** The account a browser tab is showing, sent with every change it asks for. */
+export const ACCOUNT_HEADER = 'x-monday-account';
 const sign = (body: string) => createHmac('sha256', config.sessionSecret).update(body).digest('base64url');
 function encodeSession(s: Cookie): string {
   const body = Buffer.from(JSON.stringify(s)).toString('base64url');
@@ -81,10 +83,17 @@ const PolicyBody = z.object({
   }).optional(),
 });
 const usdLimit = z.number().positive().max(1_000_000).nullable().optional();
+/** How the forms name the fields a schema can reject, so a rejection points at the right box. */
+const FIELD_LABELS: Record<string, string> = {
+  'limits.quoteSizeUsd': 'Quote size', 'limits.maxInventoryUsd': 'Max inventory', 'limits.minHalfSpreadBps': 'Min half-spread', 'limits.maxDailyLossUsd': 'Daily loss limit', 'limits.maxLeverage': 'Max leverage',
+  stopLossUsd: 'Session stop loss', takeProfitUsd: 'Take profit',
+};
 const StartBody = z.object({ stopLossUsd: usdLimit, takeProfitUsd: usdLimit });
 const CredsBody = z.object({ apiKeyToken: z.string().trim().min(1).max(512), apiKeySecret: z.string().trim().min(1).max(512) });
 
 const RES_SEC = [60, 300, 900, 3600, 14_400, 86_400];
+const MAX_BARS = 1_000;
+const MAX_SOCKETS = 1_000; // live dashboards at once; beyond this a viewer waits and reconnects
 /** Merge candles into `spanMs` buckets aligned to UTC. A no-op on candles that already have that width. */
 function rollUp(cs: Candle[], spanMs: number): Candle[] {
   const out: Candle[] = [];
@@ -100,9 +109,12 @@ function rollUp(cs: Candle[], spanMs: number): Candle[] {
 export async function buildApi(deps: ApiDeps) {
   const app = Fastify({ logger: { level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'] } });
   await app.register(cookie);
-  await app.register(websocket);
+  // Clients only ever send a one-line hello; anything bigger is not ours.
+  await app.register(websocket, { options: { maxPayload: 4_096 } });
 
   const nonces = new Map<string, number>();
+  /** Signed-in live streams by user, so signing out can end them. */
+  const streams = new Map<number, Set<{ close(code?: number, reason?: string): void }>>();
   const tickets = new Map<string, { uid: number; exp: number }>();
   const hits = new Map<string, { n: number; at: number }>();
   setInterval(() => {
@@ -118,25 +130,47 @@ export async function buildApi(deps: ApiDeps) {
     return { ...s, uid: upsertUser(s.w) };
   };
   const setSession = (reply: FastifyReply, s: Omit<Cookie, 'exp'>) =>
-    reply.setCookie(COOKIE, encodeSession({ ...s, exp: Date.now() + 7 * 86_400_000 }), { httpOnly: true, sameSite: 'strict', secure: config.prod, path: '/', maxAge: 7 * 86_400 });
+    reply.setCookie(COOKIE, encodeSession({ ...s, exp: Date.now() + 7 * 86_400_000 }), { httpOnly: true, sameSite: 'strict', secure: config.webOrigin.startsWith('https:'), path: '/', maxAge: 7 * 86_400 });
 
-  // 60 requests per minute per session or address (PRD 15.3)
+  // 60 requests per minute per signed-in wallet, else per address (PRD 15.3). Public reads served from a shared cache are
+  // exempt: their cost does not grow with viewers, and behind the web app's proxy every anonymous viewer has the proxy's
+  // address, so counting them would let a handful of dashboard tabs lock everyone out, sign-in included.
+  const CACHED_READS = /^\/api\/(stats\/(overview|risk|liquidations|traders)|public\/preview|config|health|evidence|candles)(\?|$)/;
+  // Emergency controls are never rate limited: a dashboard's polling must not stand between a user and Stop or Kill.
+  // Both are authenticated and idempotent (a second Kill or Stop does nothing).
+  const EMERGENCY = /^\/api\/agent\/(kill|pause)(\?|$)/;
   app.addHook('onRequest', async (req) => {
     if (!req.url.startsWith('/api/')) return;
-    const key = req.cookies[COOKIE]?.slice(-24) ?? req.ip;
+    const session = decodeSession(req.cookies[COOKIE]);
+    // A tab still showing another account must not act on whoever is signed in now (another tab may have switched).
+    // The web app names the account it shows on every change; the session still decides what the request may do.
+    const shown = req.headers[ACCOUNT_HEADER];
+    if (req.method !== 'GET' && !req.url.startsWith('/api/auth/') && typeof shown === 'string' && session && shown.toLowerCase() !== session.w.toLowerCase()) {
+      throw new HttpError(409, 'account_changed', 'This tab shows a different account from the one now signed in. Reload the page to continue.');
+    }
+    if ((req.method === 'GET' && CACHED_READS.test(req.url)) || (req.method === 'POST' && EMERGENCY.test(req.url))) return;
+    const key = session?.w ?? req.ip;
     const now = Date.now();
     const h = hits.get(key);
     if (!h || now - h.at > 60_000) hits.set(key, { n: 1, at: now });
     else if (++h.n > 60) throw new HttpError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
   });
 
-  app.setErrorHandler((err, _req, reply) => {
+  app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, _req, reply) => {
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code, message: err.message, field: err.field });
     if (err instanceof z.ZodError) {
       const i = err.issues[0];
-      return reply.status(400).send({ error: 'invalid_request', message: i?.message ?? 'Invalid request.', field: i?.path.join('.') });
+      const field = i?.path.join('.');
+      const label = field && FIELD_LABELS[field];
+      const message = !i ? 'Invalid request.'
+        : label && i.code === 'too_small' ? `${label} must be ${i.inclusive === false ? 'more than' : 'at least'} ${i.minimum}.`
+        : label && i.code === 'too_big' ? `${label} can be at most ${i.maximum}.`
+        : label ? `${label}: ${i.message}` : i.message;
+      return reply.status(400).send({ error: 'invalid_request', message, field });
     }
     if (err instanceof VenueError) return reply.status(400).send({ error: err.code, message: err.message });
+    // Fastify's own client errors (malformed JSON, too large, wrong content type) are the client's, not ours.
+    if (err.statusCode && err.statusCode < 500) return reply.status(err.statusCode).send({ error: err.code ?? 'bad_request', message: err.message });
     app.log.error(err);
     return reply.status(500).send({ error: 'internal', message: 'Something went wrong on our side.' });
   });
@@ -171,23 +205,25 @@ export async function buildApi(deps: ApiDeps) {
   app.get('/api/health', async () => deps.health());
   app.get('/api/evidence', async () => evidence() ?? { pending: true });
   app.get('/api/public/preview', async () => deps.house()?.state() ?? null);
-  // Candles for the price chart, 1m to 1D. Cached for 30 s, so any number of viewers costs Perpl one request per window.
+  // Candles for the price chart, 1m to 1D. Cached for 30 s per market and resolution at the most bars anyone may ask for,
+  // so any number of viewers costs Perpl one request per window and the cache holds at most 18 entries.
   const candleCache = new Map<string, { at: number; data: Promise<Candle[]> }>();
   app.get('/api/candles', async (req) => {
     const q = z.object({
       market: z.enum(MARKETS),
       res: z.coerce.number().int().refine((r) => RES_SEC.includes(r), 'res must be 60, 300, 900, 3600, 14400 or 86400').default(60),
-      bars: z.coerce.number().int().min(30).max(1000).default(500),
+      bars: z.coerce.number().int().min(30).max(MAX_BARS).default(500),
     }).parse(req.query);
-    const key = `${q.market}:${q.res}:${q.bars}`;
+    const key = `${q.market}:${q.res}`;
     const now = Date.now();
-    const hit = candleCache.get(key);
-    if (hit && now - hit.at < 30_000) return hit.data;
-    // The simulator only keeps minutes, so roll them up; Perpl's own candles are already aligned and pass through.
-    const data = deps.driver.feed.candles(q.market, now - q.bars * q.res * 1000, now, q.res).then((cs) => rollUp(cs, q.res * 1000));
-    candleCache.set(key, { at: now, data });
-    data.catch(() => candleCache.delete(key));
-    return data;
+    let hit = candleCache.get(key);
+    if (!hit || now - hit.at >= 30_000) {
+      // The simulator only keeps minutes, so roll them up; Perpl's own candles are already aligned and pass through.
+      const data = deps.driver.feed.candles(q.market, now - MAX_BARS * q.res * 1000, now, q.res).then((cs) => rollUp(cs, q.res * 1000));
+      candleCache.set(key, (hit = { at: now, data }));
+      data.catch(() => candleCache.delete(key));
+    }
+    return hit.data.then((cs) => cs.slice(-q.bars));
   });
   app.get('/api/decisions/:id', async (req): Promise<DecisionRecord> => {
     const id = Number((req.params as { id: string }).id);
@@ -202,6 +238,7 @@ export async function buildApi(deps: ApiDeps) {
 
   // ---- auth: Sign-In with Ethereum ----
   app.post('/api/auth/nonce', async () => {
+    if (nonces.size >= 10_000) throw new HttpError(503, 'busy', 'Too many sign-ins in progress. Try again in a minute.');
     const nonce = generateSiweNonce();
     nonces.set(nonce, Date.now() + 10 * 60_000);
     return { nonce };
@@ -225,8 +262,11 @@ export async function buildApi(deps: ApiDeps) {
     setSession(reply, { w, demo: true });
     return { wallet: w };
   });
-  app.post('/api/auth/logout', async (_req, reply) => {
+  app.post('/api/auth/logout', async (req, reply) => {
     reply.clearCookie(COOKIE, { path: '/' });
+    // Signed out means no more private data: end this account's live streams. A device still signed in reconnects.
+    const s = decodeSession(req.cookies[COOKIE]);
+    if (s) for (const socket of streams.get(upsertUser(s.w)) ?? []) socket.close(4401, 'signed out');
     return { ok: true };
   });
 
@@ -341,7 +381,10 @@ export async function buildApi(deps: ApiDeps) {
     if ((await onchainPolicyHash(s.w as `0x${string}`)) !== p.pending_hash.toLowerCase()) {
       throw new HttpError(409, 'not_confirmed', 'Monad does not show this policy yet. Wait for the transaction to confirm, then try again.');
     }
-    db.prepare('update policies set json = pending_json, policy_hash = pending_hash, onchain_tx = ?, pending_json = null, pending_hash = null, updated_at = ? where user_id = ?').run(txHash, Date.now(), s.uid);
+    // Promote exactly the policy that was checked on chain: another save during the read above must not ride along.
+    const done = db.prepare('update policies set json = ?, policy_hash = ?, onchain_tx = ?, pending_json = null, pending_hash = null, updated_at = ? where user_id = ? and pending_hash = ?')
+      .run(p.pending_json, p.pending_hash, txHash, Date.now(), s.uid, p.pending_hash);
+    if (!done.changes) throw new HttpError(409, 'pending_changed', 'The pending policy changed while it was being confirmed. Sign the new one, then confirm again.');
     deps.runnerFor(s.uid)?.setPolicy(JSON.parse(p.pending_json) as Policy);
     return policyView(s.uid);
   });
@@ -375,9 +418,10 @@ export async function buildApi(deps: ApiDeps) {
     const to = Date.now();
     const from = to - days * 86_400_000;
     // Monday's own fills: a trade placed by hand on the same account is not Monday's result.
-    const rows = db.prepare('select * from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 order by ts').all(s.uid, from) as Record<string, never>[];
+    const rows = db.prepare("select *, json_extract(ctx, '$.reduces') as reduces from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 order by ts").all(s.uid, from) as Record<string, never>[];
     return analyticsOf(rows.map((r) => ({
       sym: r.sym, side: r.side, price: r.price, size: r.size, fee: r.fee, isMaker: !!r.is_maker, ts: r.ts, regime: r.regime, realized: r.realized, halfBps: r.half_bps,
+      closes: r.reduces == null ? null : Boolean(r.reduces),
       markouts: [r.markout_1s, r.markout_5s, r.markout_10s, r.markout_1m, r.markout_5m],
     })), from, to);
   });
@@ -400,9 +444,27 @@ export async function buildApi(deps: ApiDeps) {
     tickets.set(ticket, { uid: s.uid, exp: Date.now() + 30_000 });
     return { ticket };
   });
+  // One serialisation per state and channel, however many sockets watch it: the state is rebuilt every second, so
+  // stringifying it once per subscriber would let a crowd of viewers stall the event loop and the trading socket with it.
+  const frames = new WeakMap<DashboardState, Map<string, string>>();
+  const frame = (type: string, data: DashboardState) => {
+    let f = frames.get(data);
+    if (!f) frames.set(data, (f = new Map()));
+    let s = f.get(type);
+    if (s == null) f.set(type, (s = JSON.stringify({ type, data })));
+    return s;
+  };
+  let sockets = 0;
   app.get('/ws', { websocket: true }, (socket) => {
+    if (sockets >= MAX_SOCKETS) return void socket.close(1013, 'busy');
+    sockets++;
     let off: (() => void) | null = null;
-    const send = (type: string) => (data: DashboardState) => socket.readyState === 1 && socket.send(JSON.stringify({ type, data }));
+    let uid: number | null = null;
+    const unlist = () => {
+      if (uid != null) streams.get(uid)?.delete(socket);
+      uid = null;
+    };
+    const send = (type: string) => (data: DashboardState) => socket.readyState === 1 && socket.send(frame(type, data));
     socket.on('message', (raw: Buffer) => {
       let msg: { type?: string; ticket?: string };
       try {
@@ -412,6 +474,7 @@ export async function buildApi(deps: ApiDeps) {
       }
       off?.();
       off = null;
+      unlist();
       if (msg.type === 'public') {
         const h = deps.house();
         if (h) off = h.subscribe(send('public'));
@@ -420,6 +483,8 @@ export async function buildApi(deps: ApiDeps) {
         tickets.delete(msg.ticket);
         const r = t && t.exp > Date.now() ? deps.runnerFor(t.uid) : null;
         if (!r) return void socket.send(JSON.stringify({ type: 'error', error: 'unauthorized' }));
+        uid = t!.uid;
+        (streams.get(uid) ?? streams.set(uid, new Set()).get(uid)!).add(socket);
         off = r.subscribe((s) => {
           r.lastSeenAt = Date.now();
           send('state')(s);
@@ -427,7 +492,11 @@ export async function buildApi(deps: ApiDeps) {
         send('state')(r.state());
       }
     });
-    socket.on('close', () => off?.());
+    socket.on('close', () => {
+      sockets--;
+      off?.();
+      unlist();
+    });
   });
 
   return app;

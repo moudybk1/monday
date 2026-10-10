@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PRESETS, analyticsOf, liquidationPrice, walletPerformance, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
+  PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   riskGate, inventoryStage, orderJobs, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
   type QuoteInput, type SmartTrade,
 } from './index';
@@ -209,7 +209,11 @@ describe('Hyperliquid blend and volume cap', () => {
 describe('analytics', () => {
   const row = (o: Partial<Parameters<typeof analyticsOf>[0][number]>) => ({
     sym: 'BTC' as const, side: 'bid' as const, price: 100, size: 1, fee: 0.01, isMaker: true, ts: Date.UTC(2026, 9, 6, 14), regime: 'calm',
-    realized: null, halfBps: 4, markouts: [1, 1, 1, 2, 3], ...o,
+    realized: null, closes: null, halfBps: 4, markouts: [1, 1, 1, 2, 3], ...o,
+  });
+  it('a close at break-even counts in the win rate; rows from before the flag fall back to non-zero PnL', () => {
+    const a = analyticsOf([row({ realized: 0, closes: true }), row({ realized: 0.5, closes: true }), row({ realized: 0, closes: null }), row({ realized: 0.3, closes: null })], 0, 1);
+    expect(a.summary.winRate).toBeCloseTo(2 / 3); // the break-even close loses its fee
   });
   it('nets fees against realised PnL and buckets by market, regime, spread and hour', () => {
     const a = analyticsOf([row({}), row({ side: 'ask', realized: 0.5, halfBps: 12, regime: 'storm', markouts: [null, null, null, -4, null] }), row({ sym: 'ETH', realized: -0.2, isMaker: false })], 0, 1);
@@ -487,5 +491,59 @@ describe('Perpl stats', () => {
     expect(p.maxDrawdownUsd).toBe(22); // peak +19 after the first close, trough -3 after the second loss
     expect(p.avgHoldMin).toBeCloseTo((1 + 2 + 2) / 3);
     expect(p.byMarket.map((m) => m.sym)).toEqual(['ETH', 'BTC']);
+    // No losing close: no finite profit factor, and it must survive JSON as null rather than Infinity.
+    const clean = walletPerformance([t(0, 'open', 0, 0), t(60_000, 'close', 5, 0)]);
+    expect([clean.profitFactor, clean.winRate]).toEqual([null, 1]);
+  });
+
+  it('finds the block ranges never scanned, back to block 0', () => {
+    const ranges = [{ lo: 500, hi: 900 }, { lo: 0, hi: 100 }, { lo: 100, hi: 200 }];
+    expect(holesOf(ranges, 900)).toEqual([{ lo: 200, hi: 500 }]);
+    expect(holesOf(ranges, 300)).toEqual([{ lo: 200, hi: 300 }]);
+    expect(holesOf([{ lo: 50, hi: 80 }], 80)).toEqual([{ lo: 0, hi: 50 }]); // history before the first scan is missing
+    expect(holesOf([], 10)).toEqual([{ lo: 0, hi: 10 }]);
+  });
+
+  it('a gap in the middle stays partial even when the indexer is at the head; a scanned day without events is full', () => {
+    const D = 86_400_000;
+    const c = { start: 0, end: 10 * D, gaps: [{ from: 4 * D, to: 6 * D + D / 2 }] };
+    expect(spanCoverage(0, D, c)).toBe('full'); // first day: events or not, it was scanned
+    expect(spanCoverage(9 * D, 10 * D, c)).toBe('full'); // last day
+    expect(spanCoverage(4 * D, 5 * D, c)).toBe('none');
+    expect(spanCoverage(6 * D, 7 * D, c)).toBe('partial');
+    expect(spanCoverage(0, 10 * D, c)).toBe('partial'); // the whole history is not complete
+    expect(spanCoverage(10 * D, 11 * D, c)).toBe('none'); // past what was scanned
+    expect(spanCoverage(0, D, { start: null, end: 0, gaps: [] })).toBe('none');
+  });
+
+  it('counts every period in whole UTC days, today included, before, at and after midnight', () => {
+    const D = 86_400_000, oct10 = Date.UTC(2026, 9, 10) / D;
+    expect(windowStartDay(Date.UTC(2026, 9, 9, 23, 59), 7)).toBe(oct10 - 7); // 3..9 Oct
+    expect(windowStartDay(Date.UTC(2026, 9, 10, 0, 0), 7)).toBe(oct10 - 6); // 4..10 Oct
+    expect(windowStartDay(Date.UTC(2026, 9, 10, 5, 0), 7)).toBe(oct10 - 6);
+    expect(windowStartDay(Date.UTC(2026, 9, 10, 5, 0), 1)).toBe(oct10);
+  });
+
+  it('calibrates a candle series off by a power of ten, and leaves real differences alone', () => {
+    expect(candleScale(7_764_931, 771_291)).toBe(10); // ETH on mainnet, 2026-10-10
+    expect(candleScale(6_429_455, 6_306_937)).toBe(1); // BTC
+    expect(candleScale(3_000_000, 1_000_000)).toBe(1); // 3x is not a unit error
+    expect(candleScale(50_000, 5_000)).toBe(1); // too thin to compare
+  });
+
+  it('thins a long series to at most n points, keeping both ends', () => {
+    const p = Array.from({ length: 1000 }, (_, i) => i);
+    const out = thin(p, 100);
+    expect(out.length).toBeLessThanOrEqual(101);
+    expect([out[0], out.at(-1)]).toEqual([0, 999]);
+    expect(thin([1, 2], 5)).toEqual([1, 2]);
+  });
+});
+
+describe('sign-in return path', () => {
+  it('returns to a page on this site and nowhere else', () => {
+    expect(safeReturnPath('/analytics/monday')).toBe('/analytics/monday');
+    expect(safeReturnPath('/app?x=1')).toBe('/app?x=1');
+    for (const bad of ['//evil.com', '/\\evil.com', 'https://evil.com', '/javascript:alert(1)', 'analytics', '/a b', '', null]) expect(safeReturnPath(bad)).toBeNull();
   });
 });

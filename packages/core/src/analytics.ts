@@ -14,7 +14,9 @@ export interface FillRow {
   ts: number;
   regime: string | null;
   realized: number | null; // before fees
-  halfBps: number | null; // the half-spread Monday was quoting when it filled
+  /** The fill reduced the position. Null on rows from before this was recorded: then a non-zero realized PnL stands in. */
+  closes: boolean | null;
+  halfBps: number | null; // distance from fair when it filled, in bps (older rows: the model's half-spread)
   markouts: (number | null)[]; // in MARKOUT_HORIZONS order
 }
 
@@ -42,6 +44,7 @@ export interface Analytics {
 }
 
 const SPREADS: [string, number][] = [['<5', 5], ['5-10', 10], ['10-20', 20], ['20+', Infinity]];
+const isClose = (r: FillRow) => r.closes ?? Boolean(r.realized);
 
 function bucket(key: string, rows: FillRow[]): Bucket {
   let vol = 0, net = 0, m1 = 0, m1n = 0, closes = 0, wins = 0;
@@ -53,7 +56,7 @@ function bucket(key: string, rows: FillRow[]): Bucket {
       m1 += r.markouts[3];
       m1n++;
     }
-    if (r.realized) {
+    if (isClose(r)) {
       closes++;
       if (pnl > 0) wins++;
     }
@@ -93,7 +96,7 @@ export function analyticsOf(rows: FillRow[], from: number, to: number): Analytic
 
   return {
     from, to,
-    summary: { ...all, makerPct: rows.length ? makers.length / rows.length : 0, feesUsd: fees, feeBps: all.volumeUsd ? (fees / all.volumeUsd) * 1e4 : 0, realizedUsd: realized, closes: rows.filter((r) => r.realized).length },
+    summary: { ...all, makerPct: rows.length ? makers.length / rows.length : 0, feesUsd: fees, feeBps: all.volumeUsd ? (fees / all.volumeUsd) * 1e4 : 0, realizedUsd: realized, closes: rows.filter(isClose).length },
     markouts: MARKOUT_HORIZONS.map((horizon, i) => {
       const xs = makers.map((r) => r.markouts[i]).filter((x): x is number => x != null);
       return { horizon, bps: xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null, n: xs.length };

@@ -2,7 +2,7 @@
 // and the Exchange contract's views. Each source is cached for as long as its data stays useful.
 
 import { createPublicClient, http, parseAbi, type Address } from 'viem';
-import { liquidationPrice, type PxPosition } from '@monday/core';
+import { candleScale, liquidationPrice, type PxPosition } from '@monday/core';
 import { config, NETWORKS } from '../config';
 import { EXCHANGE_ABI } from './exchange-abi';
 
@@ -18,16 +18,24 @@ export const statsNet = {
 };
 export const client = createPublicClient({ transport: http(statsNet.rpcUrl, { batch: true, retryCount: 2 }) });
 
-/** Cache a promise for `ttlMs`; a failure is not cached. */
-function cached<T>(ttlMs: number, load: () => Promise<T>): () => Promise<T> {
-  let at = 0;
-  let p: Promise<T> | null = null;
+/**
+ * Fresh for `ttlMs`, then stale-while-revalidate: callers get the last value at once while a single refresh runs in the
+ * background, so no request waits on Perpl or the chain once a value has loaded. Only the first call waits. A failed
+ * refresh keeps the last good value and is tried again on the next call.
+ */
+export function cached<T>(ttlMs: number, load: () => Promise<T>): () => Promise<T> {
+  let last: { value: T; at: number } | null = null;
+  let inflight: Promise<T> | null = null;
+  const refresh = () => (inflight ??= load()
+    .then((value) => {
+      last = { value, at: Date.now() };
+      return value;
+    })
+    .finally(() => (inflight = null)));
   return () => {
-    if (p && Date.now() - at < ttlMs) return p;
-    at = Date.now();
-    p = load();
-    p.catch(() => (p = null));
-    return p;
+    if (!last) return refresh();
+    if (Date.now() - last.at >= ttlMs) refresh().catch(() => {});
+    return Promise.resolve(last.value);
   };
 }
 
@@ -92,16 +100,29 @@ export const ticker = cached(5_000, async (): Promise<Map<number, Tick>> => {
   return out;
 });
 
-/** Daily traded volume per market since Perpl launched, from its own candles. */
+type Candles = { d?: { t: number; v?: string }[] };
+const scales = new Map<number, number>();
+
+/**
+ * Daily traded volume per market since Perpl launched, from its own candles. `v` is wire price x wire size, so it
+ * scales by px * sz, then by each market's calibration against the ticker (see candleScale: ETH's candles are 10x).
+ */
 export const dailyVolume = cached(10 * 60_000, async (): Promise<Map<number, { t: number; usd: number }[]>> => {
-  const m = await meta();
+  const [m, t] = await Promise.all([meta(), ticker()]);
   const now = Date.now();
   const from = Date.UTC(2025, 0, 1); // before mainnet launch; 1,024 daily candles per call covers it
   const out = new Map<number, { t: number; usd: number }[]>();
   await Promise.all([...m.markets.values()].map(async (mk) => {
-    const r = await getJson<{ d?: { t: number; v?: string }[] }>(`/v1/market-data/${mk.id}/candles/86400/${from}-${now}`);
-    // `v` is the sum of wire price x wire size, so it scales by px * sz.
-    out.set(mk.id, (r.d ?? []).map((c) => ({ t: c.t, usd: Number(c.v ?? 0) / (mk.px * mk.sz) })));
+    const unit = mk.px * mk.sz;
+    const [days, hours] = await Promise.all([
+      getJson<Candles>(`/v1/market-data/${mk.id}/candles/86400/${from}-${now}`),
+      getJson<Candles>(`/v1/market-data/${mk.id}/candles/3600/${now - 86_400_000}-${now}`),
+    ]);
+    const hourly = (hours.d ?? []).reduce((s, c) => s + Number(c.v ?? 0), 0) / unit;
+    const scale = candleScale(hourly, t.get(mk.id)?.volume24hUsd ?? 0);
+    if (scale !== (scales.get(mk.id) ?? 1)) console.warn(JSON.stringify({ service: 'stats', event: 'candle_scale', market: mk.sym, scale }));
+    scales.set(mk.id, scale);
+    out.set(mk.id, (days.d ?? []).map((c) => ({ t: c.t, usd: Number(c.v ?? 0) / unit / scale })));
   }));
   return out;
 });
@@ -143,7 +164,7 @@ export function toPosition(mk: MarketMeta, usd: number, p: RawPosition, mark: nu
   return {
     sym: mk.sym, account: Number(p.accountId), long, size, entry, mark, usd: size * mark, deposit,
     leverage: deposit > 0 ? (size * mark) / deposit : 0, upnl, liqPrice: liq,
-    liqDistancePct: liq > 0 && mark > 0 ? (long ? (mark - liq) / mark : (liq - mark) / mark) * 100 : Infinity,
+    liqDistancePct: liq > 0 && mark > 0 ? (long ? (mark - liq) / mark : (liq - mark) / mark) * 100 : null,
   };
 }
 

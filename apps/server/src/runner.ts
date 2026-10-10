@@ -214,6 +214,11 @@ export class Runner {
   private owed: 'cancel' | 'flatten' | null = null;
   private owedRetryAt = 0;
   private cleaning = false;
+  /** Bumped by every Stop, Kill and dispose, so a Start still connecting to Perpl when one arrives cannot undo it. */
+  private epoch = 0;
+  private disposed = false;
+  /** Saved as quoting when the process stopped: tick keeps trying to resume from this time until it works or the user acts. */
+  private resumeAt = 0;
   /** Cancel or flatten still owed to Perpl. */
   get owes() {
     return this.owed;
@@ -255,6 +260,7 @@ export class Runner {
       this.status = a.status;
       this.killReason = a.kill_reason;
     }
+    if (a?.status === 'quoting') this.resumeAt = Date.now();
     this.owed = a?.owed ?? null;
     const sum = (kind: string, from: number) => (db.prepare('select coalesce(sum(amount), 0) s from journal where user_id = ? and kind = ? and at >= ?').get(userId, kind, from) as { s: number }).s;
     this.flows = {
@@ -272,6 +278,8 @@ export class Runner {
       const v = this.deps.driver.open(this.deps.creds());
       try {
         await v.connect(); // throws VenueError: the API surfaces the exact reason
+        // Disposed while connecting (key replaced or removed): a socket kept now would live on with nobody ticking it.
+        if (this.disposed) throw new VenueError('disconnected', 'Monday was shut down while connecting to Perpl.');
       } catch (e) {
         v.close();
         throw e;
@@ -287,10 +295,17 @@ export class Runner {
   /** `limits` opens a new session; without it (boot resume) the persisted session carries on. */
   async start(limits?: SessionLimits) {
     if (this.status === 'quoting') return;
+    // A kill whose flatten has not landed is not over: quoting again would drop that duty while the position stays open.
+    if (this.owed === 'flatten') throw new VenueError('rejected', 'The kill is still closing positions. Wait for Perpl to confirm, or close them on Perpl, then start again.');
+    const epoch = this.epoch;
     await this.open();
+    // A Stop or Kill pressed while Perpl was connecting wins; so does a second Start that got there first.
+    // (The status is read again: TypeScript's narrowing from the first line does not survive the await.)
+    if (epoch !== this.epoch || (this.status as AgentStatus) === 'quoting') return;
+    this.resumeAt = 0;
     this.killReason = null;
     this.failures = 0;
-    this.owed = null; // quoting again: the runner manages the book itself
+    this.owed = null; // quoting again: the runner manages its own orders (a cancel owed by a pause is moot)
     this.status = 'quoting';
     this.startedAt = Date.now();
     if (limits || !this.session) {
@@ -318,16 +333,20 @@ export class Runner {
   }
 
   async pause() {
+    this.epoch++; // also cancels a Start still connecting
+    this.resumeAt = 0;
     if (this.status !== 'quoting') return;
     this.status = 'paused';
     this.endSession('pause');
     this.persist();
     const err = await this.cleanup('cancel');
-    if (err) this.alert('warn', `Paused, but the orders could not be cancelled yet (${err}). Monday retries while Perpl is reachable.`);
-    else this.alert('info', 'Paused. All orders cancelled, positions kept.');
+    if (err) this.alert('warn', `Stopped, but Monday's orders could not be cancelled yet (${err}). Monday retries while Perpl is reachable.`);
+    else this.alert('info', "Stopped. Monday's orders are cancelled. Open positions and orders you placed yourself are kept, and Monday no longer watches them: close them on Perpl or use Kill and flatten.");
   }
 
   async kill(reason: KillReason) {
+    this.epoch++;
+    this.resumeAt = 0;
     if (this.status === 'killed') return;
     this.status = 'killed';
     this.killReason = reason;
@@ -351,13 +370,14 @@ export class Runner {
 
   /** Session take profit: cancel, close the position and stop. Not a kill, nothing went wrong. */
   private async takeProfit(pnlUsd: number) {
+    this.epoch++;
     this.status = 'paused';
     this.endSession('take_profit');
     this.persist();
     const err = await this.cleanup('flatten');
-    if (err) this.alert('critical', `Take profit reached but the position could not be closed yet: ${err}. Monday retries while Perpl is reachable; you can also close it on Perpl.`);
-    this.alert('info', `Take profit reached: ${cents(pnlUsd)} this session. Orders cancelled and positions closed.`);
-    this.deps.notify(`Monday take profit (${cents(pnlUsd)}) for ${this.wallet.slice(0, 8)}`);
+    if (err) this.alert('critical', `Take profit reached (${cents(pnlUsd)} this session) but the position could not be closed yet: ${err}. Monday retries while Perpl is reachable; you can also close it on Perpl.`);
+    else this.alert('info', `Take profit reached: ${cents(pnlUsd)} this session. Orders cancelled and positions closed.`);
+    this.deps.notify(`Monday take profit (${cents(pnlUsd)}) for ${this.wallet.slice(0, 8)}${err ? ', position still closing' : ''}`);
     event(this.userId, 'take_profit', { pnlUsd });
   }
 
@@ -385,7 +405,7 @@ export class Runner {
     this.cleaning = true;
     try {
       if (!this.venue) throw new VenueError('disconnected', 'not connected to Perpl yet');
-      await this.venue.cancelAll();
+      await this.venue.cancelAll(this.owed !== 'flatten'); // a Stop cancels Monday's orders only, a kill everything
       if (this.owed === 'flatten') await this.venue.flatten();
       this.owed = null;
       return null;
@@ -402,7 +422,7 @@ export class Runner {
   async shutdown() {
     this.status = 'idle'; // in memory only: a tick during the cancels must not post a new quote
     if (this.venue) this.snapshot(Date.now(), this.equityNow());
-    const err = await this.venue?.cancelAll().then(() => null, (e) => (e instanceof Error ? e.message : String(e)));
+    const err = await this.venue?.cancelAll(true).then(() => null, (e) => (e instanceof Error ? e.message : String(e)));
     if (err) {
       console.error(JSON.stringify({ service: 'runner', user: this.userId, event: 'shutdown_cancel_failed', error: err }));
       this.deps.notify(`Monday stopped but could not cancel the orders of ${this.wallet.slice(0, 8)} (${err}). Check Perpl.`);
@@ -410,7 +430,15 @@ export class Runner {
     this.dispose();
   }
 
+  private dropVenue() {
+    const v = this.venue;
+    this.venue = null;
+    v?.close();
+  }
+
   dispose() {
+    this.epoch++;
+    this.disposed = true;
     this.venue?.close();
     this.venue = null;
     this.status = 'idle';
@@ -424,8 +452,10 @@ export class Runner {
 
   private persist() {
     const s = this.session;
+    // started_at is the session's start, which a restart reads back: resuming must not move it, or the deposits made
+    // earlier in the session would stop counting as deposits and show up as session profit.
     db.prepare('insert into agents (user_id, status, kill_reason, started_at, session_sl, session_tp, session_equity, owed) values (?,?,?,?,?,?,?,?) on conflict(user_id) do update set status = excluded.status, kill_reason = excluded.kill_reason, started_at = excluded.started_at, session_sl = excluded.session_sl, session_tp = excluded.session_tp, session_equity = excluded.session_equity, owed = excluded.owed')
-      .run(this.userId, this.status, this.killReason, this.startedAt, s?.stopLossUsd ?? null, s?.takeProfitUsd ?? null, s?.startEquity ?? null, this.owed);
+      .run(this.userId, this.status, this.killReason, s?.startedAt ?? this.startedAt, s?.stopLossUsd ?? null, s?.takeProfitUsd ?? null, s?.startEquity ?? null, this.owed);
   }
 
   // ---- per-market runtime ----
@@ -480,6 +510,12 @@ export class Runner {
     if (v?.connected() && !this.wasConnected) this.reconcile();
     this.wasConnected = v?.connected() ?? false;
     if (v) this.trackCash(now);
+    if (this.resumeAt && now >= this.resumeAt && this.status === 'idle') {
+      this.resumeAt = now + 10_000; // Perpl unreachable at boot: try again until it answers
+      void this.start().catch((e) => event(this.userId, 'error', { resume: e instanceof Error ? e.message : String(e) }));
+    }
+    // Account limits before any market is quoted: a breach must stop this tick's orders, not follow them.
+    if (v) this.riskAndBooks(now);
 
     const wants: Want[] = [];
     const quoted: [MarketRt, MarketSnapshot, number][] = [];
@@ -498,7 +534,7 @@ export class Runner {
         if (rt.series.length > 240) rt.series.shift();
       }
       if (this.status !== 'quoting' || !v) {
-        rt.why = this.status === 'killed' ? 'Monday is stopped by its kill switch.' : this.status === 'paused' ? 'Monday is paused.' : 'Monday is not started.';
+        rt.why = this.status === 'killed' ? 'Monday is stopped by its kill switch.' : this.status === 'paused' ? 'Monday is stopped.' : 'Monday is not started.';
         continue;
       }
       this.record(rt, snap, now);
@@ -586,7 +622,6 @@ export class Runner {
           : this.alert('info', `Perpl is reachable again: all orders cancelled${what === 'flatten' ? ' and positions closed' : ''}.`));
       }
     }
-    if (this.venue) this.riskAndBooks(now);
     if (this.listeners.size) {
       const s = this.state();
       for (const cb of this.listeners) cb(s);
@@ -944,7 +979,8 @@ export class Runner {
     const code = e instanceof VenueError ? e.code : 'rejected';
     if (code === 'crosses_book') return; // next tick requotes behind the fresh best price
     if (code === 'revoked' || code === 'bad_signature' || code === 'read_only_key' || code === 'rate_limited' || code === 'fatal' || code === 'disconnected') return this.onVenueError(e as VenueError);
-    if (++this.failures >= 3) void this.kill('order_failures');
+    // Only a quoting agent is killed for failing orders: a request rejected after Stop must not close the positions Stop keeps.
+    if (this.status === 'quoting' && ++this.failures >= 3) void this.kill('order_failures');
   }
 
   private onVenueError(e: unknown) {
@@ -953,7 +989,8 @@ export class Runner {
     if (code === 'revoked' || code === 'bad_signature' || code === 'read_only_key') {
       db.prepare("update perpl_credentials set status = 'revoked' where user_id = ?").run(this.userId);
       this.alert('critical', 'Key revoked, agent stopped. Add a new key to continue.');
-      void this.kill('key_error');
+      if (this.status === 'quoting') void this.kill('key_error');
+      else this.dropVenue(); // stopped: nothing to close, and a new key must not inherit a flatten
     } else if (code === 'rate_limited') {
       // PRD 11.6: close code 1008. Back off and halve the request budget for 5 minutes.
       this.budget = Math.max(10, Math.floor(config.budgetPerMin / 2));
@@ -964,11 +1001,9 @@ export class Runner {
       if (!this.disconnectedAt) this.disconnectedAt = Date.now();
     } else {
       this.alert('critical', `Perpl closed the trading session: ${e instanceof Error ? e.message : e}`);
-      // The venue stopped itself for good. Drop it so tick opens a fresh session and the owed flatten can land.
-      const v = this.venue;
-      this.venue = null;
-      v?.close();
-      void this.kill('order_failures');
+      // The venue stopped itself for good. Drop it so tick opens a fresh session and any owed cleanup can land.
+      this.dropVenue();
+      if (this.status === 'quoting') void this.kill('order_failures');
     }
   }
 
@@ -990,10 +1025,15 @@ export class Runner {
       signal: sig && { S: sig.S, z5: sig.w5.z, stale: sig.stale, at: sig.at, ageMs: Number.isFinite(this.deps.collector.ageMs) ? this.deps.collector.ageMs : null },
       params: rt && { regime: rt.params.regime, spread_mult: rt.params.spread_mult, size_mult: rt.params.size_mult, source: rt.paramsSource },
       reflex: rt?.reflex ?? null, stage: rt?.stage ?? null, halfBps: rt?.model?.halfBps ?? null,
+      // A fill against the position is a close, whatever its PnL (win rate must count the break-even ones too).
+      reduces: (this.expectedPos[f.sym] ?? 0) !== 0 && Math.sign(this.expectedPos[f.sym]!) !== (f.side === 'bid' ? 1 : -1),
     };
     const regime = rt?.params.regime ?? 'calm';
+    // The distance the fill actually had from fair, not the model's half-spread: joining the touch brings a quote inside it.
+    const ref = rt?.model?.ref ?? snap?.mid ?? null;
+    const distBps = ref ? Math.abs(f.price / ref - 1) * 1e4 : null;
     const inserted = atomically(() => {
-      const r = insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, rt?.model?.halfBps ?? null, f.external ? 1 : 0, quoteEventId, JSON.stringify(ctx));
+      const r = insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, distBps, f.external ? 1 : 0, quoteEventId, JSON.stringify(ctx));
       if (r.changes === 0) return false;
       this.venue?.persist?.();
       return true;
@@ -1130,6 +1170,7 @@ export class Runner {
       this.disconnectedAt = now; // re-arm
     }
 
+    // Stop means stop: once stopped Monday checks nothing, and an open position is the user's (the UI says so).
     if (this.status === 'quoting') {
       const used = this.lossUsedPct();
       if (used >= 100) return void this.kill('loss_limit');
@@ -1350,7 +1391,7 @@ export class Runner {
     // Full snapshot every second per subscriber. Send diffs if bandwidth ever matters.
     return {
       at: now, sim: this.deps.driver.kind === 'sim', paper: this.deps.driver.kind === 'paper', status: this.status, killReason: this.killReason,
-      closing: this.status !== 'quoting' && (this.owed !== null || this.cleaning), startedAt: this.startedAt, policy: this.policy,
+      closing: this.status !== 'quoting' ? this.owed : null, startedAt: this.startedAt, policy: this.policy, // owed is set for the whole of a cleanup
       account: { id: this.accountId, balanceUsd: acct?.balanceUsd ?? 0, equityUsd: this.equityNow() },
       pnl: {
         todayUsd: this.pnlToday(), realizedUsd: this.realized, unrealizedUsd: this.unrealized(), feesUsd: this.fees, lossLimitUsedPct: this.lossUsedPct(),

@@ -266,8 +266,8 @@ export interface DashboardState {
   paper: boolean;
   status: AgentStatus;
   killReason: KillReason | null;
-  /** Stopped, but orders or positions are not confirmed closed yet. Monday keeps retrying. */
-  closing: boolean;
+  /** Cleanup still owed to Perpl after a stop ('cancel') or a kill or take profit ('flatten'). Null while quoting. */
+  closing: 'cancel' | 'flatten' | null;
   startedAt: number | null;
   policy: Policy;
   account: { id: number; balanceUsd: number; equityUsd: number };

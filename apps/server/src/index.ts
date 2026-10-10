@@ -6,7 +6,7 @@ import { buildApi } from './api';
 import { chainEnabled, queueDepth, resumeChainLog, verifyRpc } from './chain';
 import { Collector } from './collector';
 import { config } from './config';
-import { db, event, simStore, unseal, upsertUser } from './db';
+import { db, simStore, unseal, upsertUser } from './db';
 import { computeEvidence, evidence, nansenK } from './evidence';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { hlAgeMs, startHyperliquid } from './hyperliquid';
@@ -64,7 +64,7 @@ await collector.start();
 if (!world) startHyperliquid((t) => collector.onHyperliquidTrade(t)); // mids for the blend, and the smart-money tape
 // Public Perpl stats: it reads Perpl mainnet whatever Monday trades. Not beside real orders: its synchronous SQLite batches
 // can stall the event loop past Perpl's ping timeout (1008), which drops the trading socket.
-// ponytail: off while trading real funds; run the indexer as its own process when the live server needs fresh analytics.
+// With real funds the indexer runs as its own process (npm run indexer, also started by npm run dev and npm start).
 if (!config.realFunds) startIndexer();
 // A stalled event loop misses Perpl's pings and drops the trading socket. Say so when it happens.
 const loopLag = monitorEventLoopDelay({ resolution: 50 });
@@ -87,11 +87,30 @@ if (simulatedOrders) {
   house = new Runner(0, HOUSE_WALLET, 0, policy, { driver, collector, k: nansenK, notify, creds: () => { throw new Error('preview runner has no credentials'); } });
 }
 
-// Resume agents that were quoting when the process last stopped (reconcile, then quote).
-for (const a of db.prepare("select user_id from agents where status = 'quoting'").all() as { user_id: number }[]) {
-  const r = runnerFor(a.user_id);
-  if (r) void r.start().catch((e) => event(a.user_id, 'error', { resume: String(e) }));
+// Never leave quotes resting on a book nobody is watching: on a stop or a crash, cancel first, then exit. Installed
+// before any agent resumes, so a signal during boot cancels too. Run real funds with `npm start`, not a watcher:
+// `tsx watch` force-kills 5 s after its SIGTERM, which can cut a cancel short.
+let ticker: ReturnType<typeof setInterval> | undefined;
+let stopping = false;
+function stop(code: number) {
+  if (stopping) return;
+  stopping = true;
+  clearInterval(ticker);
+  setTimeout(() => process.exit(code), 10_000).unref(); // a cancel waits for in-flight requests, which end within Perpl's order TTL
+  void Promise.allSettled([...runners.values(), ...(house ? [house] : [])].map((r) => r.shutdown())).then(() => process.exit(code));
 }
+// SIGHUP: the terminal running the server was closed (or the app hosting it quit). Cancel first then too.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => stop(0));
+process.on('uncaughtException', (e) => {
+  console.error(JSON.stringify({ service: 'monday', event: 'crash', error: e.stack ?? String(e) }));
+  stop(1);
+});
+// A stray rejection (an RPC read, a fetch) is logged, not a reason to drop every runner's book.
+process.on('unhandledRejection', (e) => console.error(JSON.stringify({ service: 'monday', event: 'unhandled_rejection', error: e instanceof Error ? e.stack : String(e) })));
+
+// Agents that were quoting when the process last stopped: creating the runner is enough. Its tick resumes it (reconcile,
+// then quote) and keeps retrying every 10 s while Perpl is unreachable, until it works or the user stops it.
+for (const a of db.prepare("select user_id from agents where status = 'quoting'").all() as { user_id: number }[]) runnerFor(a.user_id);
 // A kill or pause whose cancel or flatten never reached Perpl is still owed: finish it, whatever the restart interrupted.
 for (const a of db.prepare("select user_id from agents where owed is not null and status != 'quoting'").all() as { user_id: number }[]) {
   void runnerFor(a.user_id)?.resumeCleanup();
@@ -108,7 +127,7 @@ prune();
 setInterval(prune, 6 * 3_600_000).unref();
 
 // One runner's bug must not stop the others. A quoting runner whose tick throws is killed: fail closed.
-const ticker = setInterval(() => {
+ticker = setInterval(() => {
   for (const r of [house, ...runners.values()]) {
     try {
       r?.tick();
@@ -140,20 +159,3 @@ const app = await buildApi({
 await app.listen({ port: config.port, host: '0.0.0.0' });
 console.log(JSON.stringify({ service: 'monday', event: 'listening', port: config.port, network: config.network, venue: driver.kind, realFunds: config.realFunds, caps: config.caps, smartMoney: collector.kind, llm: llmEnabled, chainLog: chainEnabled }));
 
-// Never leave quotes resting on a book nobody is watching: on a stop or a crash, cancel first, then exit.
-let stopping = false;
-function stop(code: number) {
-  if (stopping) return;
-  stopping = true;
-  clearInterval(ticker);
-  setTimeout(() => process.exit(code), 10_000).unref(); // a cancel waits for in-flight requests, which end within Perpl's order TTL
-  void Promise.allSettled([...runners.values(), ...(house ? [house] : [])].map((r) => r.shutdown())).then(() => process.exit(code));
-}
-// SIGHUP: the terminal running the server was closed (or the app hosting it quit). Cancel first then too.
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => stop(0));
-process.on('uncaughtException', (e) => {
-  console.error(JSON.stringify({ service: 'monday', event: 'crash', error: e.stack ?? String(e) }));
-  stop(1);
-});
-// A stray rejection (an RPC read, a fetch) is logged, not a reason to drop every runner's book.
-process.on('unhandledRejection', (e) => console.error(JSON.stringify({ service: 'monday', event: 'unhandled_rejection', error: e instanceof Error ? e.stack : String(e) })));

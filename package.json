@@ -4,11 +4,12 @@
   "license": "MIT",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "npm run dev -w @monday/server & npm run dev -w @monday/web & wait",
+    "dev": "npm run dev -w @monday/server & npm run indexer -w @monday/server & npm run dev -w @monday/web & wait",
     "dev:server": "npm run dev -w @monday/server",
     "dev:web": "npm run dev -w @monday/web",
+    "indexer": "npm run indexer -w @monday/server",
     "build": "npm run build -w @monday/web",
-    "start": "npm run start -w @monday/server & npm run start -w @monday/web & wait",
+    "start": "npm run start -w @monday/server & npm run indexer -w @monday/server & npm run start -w @monday/web & wait",
     "test": "vitest run",
     "typecheck": "tsc -p packages/core && tsc -p apps/server && tsc -p apps/web"
   },

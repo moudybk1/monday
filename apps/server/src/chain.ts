@@ -3,7 +3,7 @@
 // the agent's logging wallet, so nonces stay ordered. Logging never blocks the
 // order path: a decision is acted on first and anchored when Monad allows.
 
-import { createPublicClient, createWalletClient, defineChain, http, parseAbi, parseEventLogs, type Hex, type TransactionReceipt } from 'viem';
+import { TransactionNotFoundError, TransactionReceiptNotFoundError, createPublicClient, createWalletClient, defineChain, http, parseAbi, parseEventLogs, type Hex, type TransactionReceipt } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { REGISTRY_ABI, type AnchorStatus } from '@monday/core';
 import { config } from './config';
@@ -38,21 +38,26 @@ const authorized = new Map<string, { ok: boolean; at: number }>();
 const anchors = new Map<number, { status: AnchorStatus; tx: string | null; onchainId: number | null }>();
 export const anchorOf = (decisionId: number) => anchors.get(decisionId) ?? null;
 
-/** Has this user authorised our logging wallet in the registry? Cached for a minute. */
+/**
+ * Has this user authorised our logging wallet in the registry? Cached for a minute. An RPC failure throws instead of
+ * answering "no": the job then retries, rather than being skipped for good over a bad RPC minute.
+ */
 export async function isAuthorized(user: Hex): Promise<boolean> {
   if (!chainEnabled) return false;
   const hit = authorized.get(user);
   if (hit && Date.now() - hit.at < 60_000) return hit.ok;
-  let ok = false;
-  try {
-    const agent = await pub.readContract({ address: c.registry as Hex, abi: registryAbi, functionName: 'agentOf', args: [user] });
-    ok = agent.toLowerCase() === account!.address.toLowerCase();
-  } catch {
-    ok = false;
-  }
+  const agent = await pub.readContract({ address: c.registry as Hex, abi: registryAbi, functionName: 'agentOf', args: [user] });
+  const ok = agent.toLowerCase() === account!.address.toLowerCase();
   authorized.set(user, { ok, at: Date.now() });
   return ok;
 }
+
+/** A lookup that answers "no such transaction" as null, and lets any other failure (an RPC outage) throw. */
+const unlessMissing = <T>(p: Promise<T>): Promise<T | null> =>
+  p.catch((e) => {
+    if (e instanceof TransactionReceiptNotFoundError || e instanceof TransactionNotFoundError) return null;
+    throw e;
+  });
 
 /** Queue a decision for Monad. Stored first, so a restart or a bad RPC hour cannot lose it. */
 export function enqueue(job: Job, decisionId: number | null) {
@@ -97,8 +102,8 @@ async function run(row: JobRow) {
       // Sent before, perhaps by a process that has since restarted. Look for it before sending again, so a retry
       // never logs the same decision twice. Only a transaction the node no longer knows is sent again.
       const hash = row.tx_hash as Hex;
-      const receipt = await pub.getTransactionReceipt({ hash }).catch(() => null)
-        ?? (await pub.getTransaction({ hash }).catch(() => null) ? await pub.waitForTransactionReceipt({ hash, timeout: 60_000 }) : null);
+      const receipt = await unlessMissing(pub.getTransactionReceipt({ hash }))
+        ?? (await unlessMissing(pub.getTransaction({ hash })) ? await pub.waitForTransactionReceipt({ hash, timeout: 60_000 }) : null);
       if (receipt) return settle(row, receipt, mark);
     }
     // A user who has not authorised the agent would only make the transaction revert.

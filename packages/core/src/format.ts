@@ -35,3 +35,11 @@ export function policyForHash(p: Policy) {
     maxLeverage: p.maxLeverage,
   };
 }
+
+/**
+ * An internal path to come back to after signing in (`?next=`), or null. Only a same-site path qualifies: it starts
+ * with one slash, never `//` or a backslash (which browsers read as another host), and holds no whitespace or scheme.
+ */
+export function safeReturnPath(raw: string | null | undefined): string | null {
+  return raw && /^\/(?![/\\])[^\s\\]*$/.test(raw) && !/^\/[^?#]*:/.test(raw) ? raw : null;
+}
