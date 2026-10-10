@@ -571,7 +571,7 @@ export class Runner {
       const out = computeQuotes({
         mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S, book: rt.book,
         hlMid: this.hlReference(rt), hourlyVolumeUsd: this.hourlyVolume(sym, now), policy: this.policy, gov, reflex: rt.reflex, spec, cfg: this.cfg(sym),
-        stage: rt.stage, positionBase: pos.size, trendBps: this.trendBps(rt, now, snap.mark),
+        stage: rt.stage, positionBase: pos.size, entryPrice: pos.entryPrice, trendBps: this.trendBps(rt, now, snap.mark),
       });
       rt.model = out;
 

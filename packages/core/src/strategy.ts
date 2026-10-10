@@ -5,7 +5,7 @@ import type { InventoryStage } from './execution';
 import type { BookLevel, GovernorParams, MarketSpec, MarketSym, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
-export const STRATEGY_VERSION = '2026-10-09.2';
+export const STRATEGY_VERSION = '2026-10-10.1';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
@@ -35,6 +35,7 @@ export interface StrategyConfig {
   trendMinBps: number; // a move of the mark over the last five minutes smaller than this is noise
   kTrend: number; // centre shift per bps of trend beyond that
   trendMaxBps: number; // and at most this (also at most half the half-spread, so the near side keeps clear of the fee)
+  exitMinProfitBps: number; // below the urgent stage, an exit rests at least this far past the entry, after both fees
 }
 
 // PRD 10.6
@@ -87,6 +88,12 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   trendMinBps: 4,
   kTrend: 0.5,
   trendMaxBps: 8,
+  // Close in profit or wait. Live on mainnet (2026-10-08 to 10) 76 of 91 closes lost, about -6 bps each: the exit was
+  // priced off the market, not the entry. On those fills, an exit resting at entry + both fees + 1 bp was reached within
+  // the hour by every position the Hyperliquid guard (7b) would still have opened (25 of 25, median 4 minutes). Without
+  // that guard it is worse than nothing: a quarter never got there and lost -28 bps on the way out. Keep the two together.
+  // The urgent stage (an hour old, a quarter of the daily loss, far past the cap) and a kill still get out at the market.
+  exitMinProfitBps: 1,
 };
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -128,6 +135,8 @@ export interface QuoteInput {
   positionBase?: number;
   /** Signed move of the mark over the last five minutes, in bps. Omitted: no trend term. */
   trendBps?: number;
+  /** Average entry price of the position. Omitted: exits are priced off the market alone. */
+  entryPrice?: number;
 }
 
 export interface QuoteOutput {
@@ -198,12 +207,24 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   // reference than the fee: a fill there loses even if price stands still. The side that shrinks the position always
   // may; the side that grows it only while the position is under half its cap, so the inventory skew still works,
   // and never the side that would add against a trend: it waits at the model's distance until the move settles.
+  // Nor on the wrong side of Hyperliquid's mid: Perpl follows it, so a touch quote past it is the one taken just before
+  // Perpl catches up. On mainnet (2026-10-08 to 10) those fills ran -5 bps at five minutes; the rest +0.5.
   if (i.gov.spread_mult <= cfg.touchMaxMult) {
     const may = (s: Side) => !reflexOn(s) && !(s === 'bid' ? against < 0 : against > 0) && ((s === 'bid' ? q < 0 : q > 0) || Math.abs(q) < 0.5);
     const floor = (i.spec.makerFeeBps + cfg.touchFloorBps) / 1e4;
     const room = i.bestBid != null && i.bestAsk != null && i.bestAsk - i.bestBid > 2 * tick + EPS;
-    if (may('bid') && i.bestBid != null) bidPx = Math.max(bidPx, floorTo(Math.min(room ? i.bestBid + tick : i.bestBid, ref * (1 - floor)), tick));
-    if (may('ask') && i.bestAsk != null) askPx = Math.min(askPx, ceilTo(Math.max(room ? i.bestAsk - tick : i.bestAsk, ref * (1 + floor)), tick));
+    const bidRef = hl == null ? ref : Math.min(ref, hl);
+    const askRef = hl == null ? ref : Math.max(ref, hl);
+    if (may('bid') && i.bestBid != null) bidPx = Math.max(bidPx, floorTo(Math.min(room ? i.bestBid + tick : i.bestBid, bidRef * (1 - floor)), tick));
+    if (may('ask') && i.bestAsk != null) askPx = Math.min(askPx, ceilTo(Math.max(room ? i.bestAsk - tick : i.bestAsk, askRef * (1 + floor)), tick));
+  }
+
+  // 7c. Exit in profit: below the urgent stage, the side that shrinks the position rests no better for the taker than
+  // the entry plus both fees and exitMinProfitBps, so a round trip closes in profit or waits (see exitMinProfitBps).
+  if (stage !== 'urgent' && i.entryPrice && i.entryPrice > 0 && i.positionBase) {
+    const need = (2 * i.spec.makerFeeBps + cfg.exitMinProfitBps) / 1e4;
+    if (i.positionBase > 0) askPx = Math.max(askPx, ceilTo(i.entryPrice * (1 + need), tick));
+    else bidPx = Math.min(bidPx, floorTo(i.entryPrice * (1 - need), tick));
   }
 
   // 8. PostOnly safety: never cross the book, sit one tick behind the opposite best.

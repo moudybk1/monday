@@ -547,3 +547,27 @@ describe('sign-in return path', () => {
     for (const bad of ['//evil.com', '/\\evil.com', 'https://evil.com', '/javascript:alert(1)', 'analytics', '/a b', '', null]) expect(safeReturnPath(bad)).toBeNull();
   });
 });
+
+describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', () => {
+  const wide = { ...base, bestBid: 84_990, bestAsk: 85_010 };
+  it('keeps a touch quote off the side Hyperliquid has already moved past', () => {
+    const up = computeQuotes({ ...wide, hlMid: 85_010 }); // Hyperliquid 1.2 bps above Perpl: the ask would be lifted
+    expect(up.ask!.price).toBe(85_013.9); // Hyperliquid's mid plus the maker fee, not one tick inside Perpl's ask
+    expect(up.touch.ask).toBe(false);
+    expect(up.bid!.price).toBe(84_990.1); // the side Hyperliquid moved away from still joins
+    const down = computeQuotes({ ...wide, hlMid: 84_990 });
+    expect(down.bid!.price).toBe(84_986.1);
+    expect(down.ask!.price).toBe(85_009.9);
+    expect(computeQuotes(wide).ask!.price).toBe(85_009.9); // no Hyperliquid mid: unchanged
+  });
+  it('rests the exit at the entry plus both fees and a basis point until the urgent stage', () => {
+    const long = { ...wide, positionUsd: 300, positionBase: 300 / 85_000 };
+    expect(computeQuotes({ ...long, entryPrice: 85_100 }).ask!.price).toBe(85_116.2); // 85,100 x (1 + 1.9 bps)
+    expect(computeQuotes({ ...long, entryPrice: 84_900 }).ask!.price).toBe(85_009.9); // already in profit: the market price stands
+    expect(computeQuotes({ ...long, entryPrice: 85_100, stage: 'urgent' }).ask!.price).toBe(85_009.9); // urgent gets out at the market
+    const short = { ...wide, positionUsd: -300, positionBase: -300 / 85_000 };
+    expect(computeQuotes({ ...short, entryPrice: 84_900 }).bid!.price).toBe(84_883.8); // 84,900 x (1 - 1.9 bps)
+    expect(computeQuotes({ ...short, entryPrice: 84_900, stage: 'reduce' }).bid!.price).toBe(84_883.8);
+    expect(computeQuotes({ ...long, entryPrice: 85_100 }).bid).not.toBeNull(); // the adding side is unchanged
+  });
+});
