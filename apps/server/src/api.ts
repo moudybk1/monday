@@ -78,7 +78,7 @@ const PolicyBody = z.object({
     maxInventoryUsd: z.number().min(1).max(50_000),
     minHalfSpreadBps: z.number().min(1).max(100),
     maxDailyLossUsd: z.number().min(1).max(10_000),
-    maxLeverage: z.number().min(1).max(50),
+    maxLeverage: z.number().int({ error: 'must be a whole number, like 3x' }).min(1).max(50),
   }).optional(),
   refMode: z.enum(['mid', 'grid', 'blend']).optional(),
   blendWeight: z.number().min(0).max(1).optional(),

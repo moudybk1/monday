@@ -90,6 +90,7 @@ export function draftProblems(d: PolicyDraft, caps: Caps | null, specs: Specs): 
   if (!(l.minHalfSpreadBps >= 1 && l.minHalfSpreadBps <= 100)) p.minHalfSpreadBps = 'Between 1 and 100 bps.';
   const lev = leverageCap(d.markets, specs);
   if (!(l.maxLeverage >= 1)) p.maxLeverage = 'At least 1x.';
+  else if (!Number.isInteger(l.maxLeverage)) p.maxLeverage = 'Whole numbers only, like 3x.';
   else if (l.maxLeverage > lev.max) p.maxLeverage = `${lev.sym} allows at most ${lev.max}x.`;
   if (d.margin != null && !(Number(d.margin) > l.maxDailyLossUsd)) p.margin = 'Must be more than the stop loss.';
   return Object.fromEntries(Object.entries(p).filter(([, v]) => v)) as Problems;
@@ -182,7 +183,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
               ))}
             </Choices>
             <Row id="leverage" label="Leverage" value={Number.isFinite(l.maxLeverage) ? `${l.maxLeverage}x` : '-'} note={`Up to ${lev.max}x for ${n > 1 ? 'these markets' : lev.sym}. Higher leverage needs less margin per dollar of position.`} error={bad.maxLeverage}>
-              <Slider id="leverage" min={1} max={lev.max} step={0.5} value={l.maxLeverage} unit="x" ticks={levTicks(lev.max)} onChange={(v) => resize({ maxLeverage: v })} />
+              <Slider id="leverage" min={1} max={lev.max} step={1} value={l.maxLeverage} unit="x" ticks={levTicks(lev.max)} onChange={(v) => resize({ maxLeverage: v })} />
             </Row>
 
             <Row id="margin" label="Margin" note="Sizes the limits. It does not reserve or move funds." error={bad.margin}>

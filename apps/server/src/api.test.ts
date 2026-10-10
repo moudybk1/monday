@@ -59,3 +59,15 @@ it('signing out ends that account\'s live stream', async () => {
   expect(await closed).toBe(4401);
   await app.close();
 });
+
+it('refuses a leverage that is not a whole number, and says which field', async () => {
+  const { app, signIn } = await harness();
+  const { cookie } = await signIn();
+  const res = await app.inject({
+    method: 'PUT', url: '/api/policy', headers: { cookie },
+    payload: { preset: 'custom', markets: ['BTC'], limits: { quoteSizeUsd: 10, maxInventoryUsd: 100, minHalfSpreadBps: 4, maxDailyLossUsd: 10, maxLeverage: 2.5 } },
+  });
+  expect(res.statusCode).toBe(400);
+  expect(res.json()).toMatchObject({ error: 'invalid_request', field: 'limits.maxLeverage', message: 'Max leverage: must be a whole number, like 3x' });
+  await app.close();
+});
