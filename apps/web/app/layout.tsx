@@ -8,7 +8,7 @@ const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', 
 
 export const metadata: Metadata = {
   title: { default: 'Monday', template: '%s - Monday' },
-  description: 'An AI agent that market-makes on Perpl from your own account and pulls its quotes when smart money moves.',
+  description: 'An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.',
 };
 
 // A terminal is dark unless the user chose otherwise. Set before first paint so the page never flashes.

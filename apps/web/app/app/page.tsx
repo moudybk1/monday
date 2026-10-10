@@ -229,15 +229,15 @@ export default function Terminal() {
           </div>
           <div className="flex min-h-0 flex-col xl:col-start-3 xl:row-start-2">
             <Panel
-              title={<>Smart money <span className="font-normal text-fg-3">on Hyperliquid</span></>}
+              title={<>Smart Traders <span className="font-normal text-fg-3">on Hyperliquid</span></>}
               className="h-[360px] flex-none md:h-[520px] xl:h-auto xl:min-h-0 xl:flex-1"
               bodyClassName="flex flex-col !overflow-hidden"
               aside={cfg?.sim ? (
                 <>
-                  <Button size="xs" variant="ghost" title="Simulate a smart-money buying burst" onClick={() => act('/sim/burst', { market: sym, direction: 'buy' })}>Buy burst</Button>
-                  <Button size="xs" variant="ghost" title="Simulate a smart-money selling burst" onClick={() => act('/sim/burst', { market: sym, direction: 'sell' })}>Sell burst</Button>
+                  <Button size="xs" variant="ghost" title="Simulate a Smart Trader buying burst" onClick={() => act('/sim/burst', { market: sym, direction: 'buy' })}>Buy burst</Button>
+                  <Button size="xs" variant="ghost" title="Simulate a Smart Trader selling burst" onClick={() => act('/sim/burst', { market: sym, direction: 'sell' })}>Sell burst</Button>
                 </>
-              ) : <span>{m.signal ? 'Nansen' : 'no source'}</span>}
+              ) : (m.signal ? undefined : <span>no feed</span>)}
             >
               <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
               <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={now} /></div>
@@ -347,8 +347,8 @@ function Stats({ m, quoting }: { m: MarketState; quoting: boolean }) {
     { k: 'Spread', v: spreadBps == null ? '-' : `${spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps`, hint: "The gap between the best bid and the best ask. Monday's edge has to fit inside it: a one-tick book cannot be won, a few bps can." },
     { k: 'Vol 1m', v: m.sigma1mBps ? `${m.sigma1mBps.toFixed(1)} bps` : '-', hint: 'How much the price typically moves in a minute. 1 bp is 0.01%.' },
     { k: 'Hyperliquid', v: m.hlMid != null ? fmtPrice(m.hlMid, m.spec) : 'off', hint: "Hyperliquid's mid, where these perps are priced. Monday centres halfway between Perpl and Hyperliquid." },
-    { k: 'Signal', v: m.signal ? m.signal.S.toFixed(2) : 'none', hint: 'How unusual smart-money flow is right now. Beyond 2.5 either way, Monday treats it as a burst.', tone: m.signal && Math.abs(m.signal.S) >= 2.5 ? 'accent' : undefined },
-    { k: 'Regime', v: quoting && m.inPolicy ? m.params.regime : 'off', hint: "Monday's mode. Calm: at the best price. Active: cautious. Storm: very defensive. Stale: smart-money data is late.", tone: quoting && m.params.regime === 'storm' ? 'accent' : undefined },
+    { k: 'Signal', v: m.signal ? m.signal.S.toFixed(2) : 'none', hint: 'How unusual Smart Trader flow is right now. Beyond 2.5 either way, Monday treats it as a burst.', tone: m.signal && Math.abs(m.signal.S) >= 2.5 ? 'accent' : undefined },
+    { k: 'Regime', v: quoting && m.inPolicy ? m.params.regime : 'off', hint: "Monday's mode. Calm: at the best price. Active: cautious. Storm: very defensive. Stale: Smart Trader data is late.", tone: quoting && m.params.regime === 'storm' ? 'accent' : undefined },
   ];
   return (
     <dl className="scroll hidden items-center overflow-x-auto md:flex">
@@ -369,8 +369,8 @@ function StatusBar({ state, sim, paper, connected }: { state: DashboardState; si
   const items: [string, string, boolean?][] = [
     ['Venue', sim ? 'simulated' : paper ? 'Perpl data, paper orders' : h.venueConnected ? 'Perpl' : 'Perpl down', !sim && !paper && !h.venueConnected],
     ['Data', `${(h.marketDataAgeMs / 1000).toFixed(1)}s`, h.marketDataAgeMs > 5_000],
-    // Two separate sources with separate health: Nansen's poll, and Hyperliquid's live tape and mids.
-    ['Nansen', h.signalAgeMs < 0 ? 'none' : `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs > 15 * 60_000],
+    // Two separate sources with separate health: the Smart Trader poll, and Hyperliquid's live tape and mids.
+    ['Smart Traders', h.signalAgeMs < 0 ? 'none' : `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs > 15 * 60_000],
     ['Hyperliquid', h.hlAgeMs < 0 ? 'off' : `${(h.hlAgeMs / 1000).toFixed(1)}s`, h.hlAgeMs > 5_000],
     ['Order latency', h.latencyMs.venue == null ? 'n/a' : `${Math.round(h.latencyMs.venue)}ms`, (h.latencyMs.venue ?? 0) > 3_000],
     ['Budget', `${h.budgetRemaining}/${h.budgetPerMin}`, h.budgetRemaining < 8],

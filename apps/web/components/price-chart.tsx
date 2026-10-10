@@ -266,7 +266,7 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
     };
     const items: HTMLElement[] = [];
     if (f && (f.buys || f.sells)) {
-      items.push(part('Smart money', 'var(--fg-3)'));
+      items.push(part('Smart Traders', 'var(--fg-3)'));
       if (f.buys) items.push(part(`buy ${usdCompact(f.buyUsd)} (${f.buys})`, 'var(--bid-fg)'));
       if (f.sells) items.push(part(`sell ${usdCompact(f.sellUsd)} (${f.sells})`, 'var(--ask-fg)'));
     }
@@ -601,7 +601,7 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
           {/* The key to what is drawn: Monday in amber, smart money in the side colours. */}
           <span className="hidden items-center gap-3 font-normal text-fg-3 sm:flex">
             <span className="flex items-center gap-1"><TriangleIcon size={9} weight="fill" className="text-accent" />Monday fills</span>
-            <span className="flex items-center gap-1"><CircleIcon size={8} weight="fill" className="text-bid" /><CircleIcon size={8} weight="fill" className="-ml-0.5 text-ask" />Smart money</span>
+            <span className="flex items-center gap-1"><CircleIcon size={8} weight="fill" className="text-bid" /><CircleIcon size={8} weight="fill" className="-ml-0.5 text-ask" />Smart Traders</span>
           </span>
         </span>
       }

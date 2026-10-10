@@ -74,7 +74,7 @@ export function LiveMarket() {
             })}
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-1.5 px-2.5 py-2">
-            {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: smart money {m.reflex.side === 'ask' ? 'buying' : 'selling'}</Tag>
+            {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: Smart Traders {m.reflex.side === 'ask' ? 'buying' : 'selling'}</Tag>
               : quoting ? <Tag tone="accent">Monday is quoting</Tag> : <Tag>book only</Tag>}
             {quoting && <Tag>{m.params.regime} regime</Tag>}
             {/* The one live indicator on the page: real state, not decoration. */}
@@ -89,7 +89,7 @@ export function LiveMarket() {
             <OrderBook m={m} rows={10} now={state.at} />
           </Panel>
           <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[320px] lg:h-auto" />
-          <Panel title="Smart money on Hyperliquid" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
+          <Panel title="Smart Traders on Hyperliquid" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
             <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
             <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={20} /></div>
           </Panel>
@@ -100,7 +100,7 @@ export function LiveMarket() {
         {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
           : state.sim ? "Monday's house account quoting on a simulated book, streaming from its server. Pick a market. "
           : state.paper ? "Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
-          : `Perpl's live order book${m.signal ? ' and Nansen smart-money flow' : ''}, streaming from Monday's server. Not an illustration. `}
+          : `Perpl's live order book${m.signal ? ' and Smart Trader flow' : ''}, streaming from Monday's server. Not an illustration. `}
         {!state.sim && !state.paper && "Monday's own quotes appear in your terminal once you start it."}
       </figcaption>
     </figure>
@@ -139,13 +139,13 @@ function scene(step: number): MarketState {
 
 const STEPS = [
   { verb: 'Quote', ms: 3000, text: 'Monday rests one bid and one ask around fair price. It aims to earn the spread when both fill; fees and price moves can still make a round trip lose.' },
-  { verb: 'Detect', ms: 4000, text: 'Traders Nansen labels as smart money buy $640k of BTC on Hyperliquid in five minutes. The flow score passes 2.5.' },
+  { verb: 'Detect', ms: 4000, text: 'Smart Traders buy $640k of BTC on Hyperliquid in five minutes. The flow score passes 2.5.' },
   { verb: 'Step aside', ms: 4000, text: 'On the next one-second tick the reflex pulls the ask, so a better-informed buyer cannot lift it. The bid stays.' },
   { verb: 'Explain', ms: 4000, text: 'The governor sets a storm regime and writes its reason in plain words, with a hash of the data behind it.' },
 ];
 
 const CARDS: Pick<Decision, 'id' | 'source' | 'reason'>[] = [
-  { id: 1, source: 'reflex', reason: 'Smart money bought $640k BTC on Hyperliquid in 5 min (z = 2.9). Ask pulled for 5 minutes.' },
+  { id: 1, source: 'reflex', reason: 'Smart Traders bought $640k BTC on Hyperliquid in 5 min (z = 2.9). Ask pulled for 5 minutes.' },
   { id: 2, source: 'governor', reason: 'Storm regime. Widening quotes 2.5x and cutting size to 40% until flow cools.' },
 ];
 
@@ -189,7 +189,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
   return (
     <div ref={ref} className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
       <div>
-        <ol aria-label="What happens during a smart-money burst" className="border-t border-line-2">
+        <ol aria-label="What happens during a Smart Trader burst" className="border-t border-line-2">
           {STEPS.map((s, i) => {
             const on = i === step;
             return (
@@ -221,7 +221,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           <OrderBook m={m} rows={6} now={T0} />
         </Panel>
         <div className="flex min-h-0 flex-col gap-1">
-          <Panel title="Smart money on Hyperliquid" className="flex-none" bodyClassName="!overflow-visible">
+          <Panel title="Smart Traders on Hyperliquid" className="flex-none" bodyClassName="!overflow-visible">
             <FlowBars m={m} />
           </Panel>
           <Panel title="Decisions" className="min-h-[10rem] flex-1">
@@ -264,7 +264,7 @@ export function EvidenceTeaser() {
   }
   const sym = ev === 'pending' ? undefined : MARKETS.find((m) => ev.studies[m]); // BTC first when it has one
   const s = sym && ev !== 'pending' ? ev.studies[sym] : undefined;
-  if (ev === 'pending' || !sym || !s) return <p className="panel px-4 py-10 text-fg-3">The event study is still collecting data. It needs two days of prices and smart-money trades before it reports anything.</p>;
+  if (ev === 'pending' || !sym || !s) return <p className="panel px-4 py-10 text-fg-3">The event study is still collecting data. It needs two days of prices and Smart Trader trades before it reports anything.</p>;
   const head = s.grid.find((g) => g.window === 15 && g.horizon === 15 && [g.rho, g.lo, g.hi].every(Number.isFinite) && g.n > 0);
   if (!head) return <p className="panel px-4 py-10 text-fg-3">The study has no 15-minute result yet. The full tables are on the evidence page.</p>;
   const stats = [
@@ -274,10 +274,10 @@ export function EvidenceTeaser() {
   ];
   // What the interval says, in one sentence. A correlation is never a profit claim.
   const reading = head.lo > 0
-    ? `In this sample, ${sym} tended to move the way smart money traded over the next 15 minutes. That is a correlation, not a profit.`
+    ? `In this sample, ${sym} tended to move the way Smart Traders traded over the next 15 minutes. That is a correlation, not a profit.`
     : head.hi < 0
-      ? `In this sample, ${sym} tended to move against smart-money flow over the next 15 minutes.`
-      : `This sample does not show a clear link between smart-money flow and where ${sym} went next.`;
+      ? `In this sample, ${sym} tended to move against Smart Trader flow over the next 15 minutes.`
+      : `This sample does not show a clear link between Smart Trader flow and where ${sym} went next.`;
   const computed = Number.isFinite(ev.at) ? new Date(ev.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : null;
   // Simulated data says so before the numbers, not under them.
   const synthetic = ev.synthetic && <p className="mb-2 text-[12px] text-warn">Simulated data. The simulator makes flow move price, so this shows the method working, not a proven edge.</p>;
@@ -295,9 +295,9 @@ export function EvidenceTeaser() {
             </div>
           ))}
         </dl>
-        <Panel title={`Mean ${sym} return over the next 15 minutes, by strength of smart-money flow`} aside={<span>bps</span>} bodyClassName="p-2 !overflow-hidden">
+        <Panel title={`Mean ${sym} return over the next 15 minutes, by strength of Smart Trader flow`} aside={<span>bps</span>} bodyClassName="p-2 !overflow-hidden">
           <SignedBars
-            height={230} format={(v) => v.toFixed(1)} label={`Mean forward 15-minute ${sym} return in basis points for each decile of the 15-minute smart-money z-score`}
+            height={230} format={(v) => v.toFixed(1)} label={`Mean forward 15-minute ${sym} return in basis points for each decile of the 15-minute Smart Trader z-score`}
             lowLabel="strongest selling" highLabel="strongest buying"
             data={s.deciles.filter((d) => Number.isFinite(d.meanRetBps) && Number.isFinite(d.meanZ)).map((d) => ({ key: `Decile ${d.decile}`, v: d.meanRetBps, tip: `Decile ${d.decile}: mean z ${d.meanZ.toFixed(1)}, next 15 min ${d.meanRetBps >= 0 ? '+' : ''}${d.meanRetBps.toFixed(2)} bps, ${d.n} samples` }))}
           />
