@@ -112,7 +112,7 @@ export default function Terminal() {
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
   const TABS: [Tab, string, number | null][] = [
-    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['fills', 'Fills', state.fills.length],
+    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['fills', 'History', state.fills.length],
     ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote model', null],
   ];
 

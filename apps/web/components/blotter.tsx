@@ -95,7 +95,7 @@ export function Positions({ state }: { state: DashboardState }) {
 }
 
 export function Fills({ state }: { state: DashboardState }) {
-  if (state.fills.length === 0) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No fills yet. A fill appears when a taker trades against one of Monday&apos;s resting orders.</p>;
+  if (state.fills.length === 0) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No trades yet. A trade appears here when a taker trades against one of Monday&apos;s resting orders.</p>;
   const mk = (v: number | null) => (v == null ? <span className="text-fg-3">wait</span> : <span className={v >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{fmtBps(v)}</span>);
   return (
     <table className="w-full min-w-[640px] text-[11.5px]">
