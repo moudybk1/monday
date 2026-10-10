@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import type { PxWallet } from '@monday/core';
-import { LineChart, type Tone } from '@/components/charts';
+import { LineChart, Share, type Tone } from '@/components/charts';
 import { money, profitText, sameWallet, shortAddress, signedMoney, tone, useStatsNetwork, useWatchlist, walletKey } from '@/components/stats-ui';
 import { INPUT, Notice, Panel, Skeleton, cx } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -100,7 +100,7 @@ function Compare() {
         <Notice>Add up to four wallets to compare them: type an address or account number in the Add to comparison box above, use the Watch button on any wallet, or pick an account from the leaderboard.</Notice>
       ) : (
         <>
-          <Panel title="Side by side">
+          <Panel title="Side by side" className="rise">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-[12px]">
                 <thead>
@@ -115,18 +115,29 @@ function Compare() {
                   {rows.map(([name, fmt, val]) => (
                     <tr key={name} className="h-[28px] border-t border-line first:border-t-0">
                       <th scope="row" className="pl-2.5 text-left font-sans font-normal text-fg-2">{name}</th>
-                      {loaded.map(({ q, w, err, loading }) => (
-                        <td key={q} className={cx('px-2.5 text-right', w && val ? tone(val(w)) : '')}>
-                          {loading ? <Skeleton className="ml-auto h-3 w-16" /> : err ? <span className="font-sans text-ask-fg">not found</span> : w ? fmt(w) : ''}
-                        </td>
-                      ))}
+                      {loaded.map(({ q, w, err, loading }) => {
+                        // A bar behind each signed figure shows its size against the other columns.
+                        const vals = val ? loaded.map((x) => (x.w ? val(x.w) ?? 0 : 0)) : [];
+                        const max = Math.max(1e-9, ...vals.map(Math.abs));
+                        const v = w && val ? val(w) ?? 0 : null;
+                        return (
+                          <td key={q} className={cx('px-2.5 text-right', v != null ? tone(v) : '')}>
+                            {loading ? <Skeleton className="ml-auto h-3 w-16" /> : err ? <span className="font-sans text-ask-fg">not found</span> : w ? (
+                              <span className="inline-flex items-center justify-end gap-2">
+                                {v != null && <Share value={Math.abs(v) / max} tone={v >= 0 ? 'bid' : 'ask'} className="w-14" />}
+                                {fmt(w)}
+                              </span>
+                            ) : ''}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </Panel>
-          <Panel title="Realised PnL" aside={<span>cumulative, after fees and funding</span>} bodyClassName="p-2.5" className="h-[320px]">
+          <Panel title="Realised PnL" aside={<span>cumulative, after fees and funding</span>} bodyClassName="p-2.5" className="rise h-[360px]">
             <LineChart
               label="Cumulative realised PnL per wallet" format={(v) => money(v, true)} empty="No indexed fills yet"
               timeFormat={(t) => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' })}

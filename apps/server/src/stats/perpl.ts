@@ -2,7 +2,7 @@
 // and the Exchange contract's views. Each source is cached for as long as its data stays useful.
 
 import { createPublicClient, http, parseAbi, type Address } from 'viem';
-import { candleScale, liquidationPrice, type PxPosition } from '@monday/core';
+import { candleScale, liquidationPrice, type PxFunding, type PxPosition } from '@monday/core';
 import { config, NETWORKS } from '../config';
 import { EXCHANGE_ABI } from './exchange-abi';
 
@@ -133,6 +133,31 @@ export const funding = cached(60_000, async (): Promise<Map<number, number>> => 
   for (const [id, evs] of Object.entries(r.d ?? {})) if (m.markets.has(Number(id)) && evs.length) out.set(Number(id), evs[evs.length - 1].rate / 1e6);
   return out;
 });
+
+type FundingEvent = { at: { t: number }; rate: number };
+const fundingHistories = new Map<number, () => Promise<PxFunding>>();
+/**
+ * Every market's funding over the last `days` days, from Perpl's per-market history (at most 1,024 intervals a call, so a
+ * market with short intervals reaches back less far). Rates are per interval; the page annualises them.
+ */
+export function fundingHistory(days: number): Promise<PxFunding> {
+  let f = fundingHistories.get(days);
+  if (!f) {
+    f = cached(10 * 60_000, async (): Promise<PxFunding> => {
+      const m = await meta();
+      const now = Date.now();
+      const markets: PxFunding['markets'] = {};
+      await Promise.all([...m.markets.values()].map(async (mk) => {
+        const from = now - Math.min(days * 86_400_000, 1_000 * mk.fundingIntervalMin * 60_000);
+        const r = await getJson<{ d?: FundingEvent[] }>(`/v1/market-data/${mk.id}/funding/${from}-${now}`).catch(() => ({ d: [] as FundingEvent[] }));
+        markets[mk.sym] = { intervalMin: mk.fundingIntervalMin, points: (r.d ?? []).map((e) => ({ t: e.at.t, rate: e.rate / 1e6 })) };
+      }));
+      return { days, markets };
+    });
+    fundingHistories.set(days, f);
+  }
+  return f();
+}
 
 const ERC20 = parseAbi(['function balanceOf(address) view returns (uint256)']);
 /** Collateral the Exchange holds: free balances, position deposits and insurance together. */

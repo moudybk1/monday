@@ -2,6 +2,7 @@
 
 import { MagnifyingGlassIcon } from '@phosphor-icons/react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -59,6 +60,7 @@ function Header() {
 function SubNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const reduce = useReducedMotion();
   const [q, setQ] = useState('');
   const go = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,8 +71,9 @@ function SubNav() {
     <div className="panel mt-1 flex-row flex-wrap items-stretch justify-between">
       <div role="tablist" aria-label="Analytics" className="flex h-9">
         {TABS.map((t) => (
-          <Link key={t.href} href={t.href} role="tab" aria-selected={t.on(pathname)} className={cx('flex items-center px-3 text-[12.5px]', t.on(pathname) ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
+          <Link key={t.href} href={t.href} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex items-center px-3 text-[12.5px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
             {t.label}
+            {t.on(pathname) && <motion.span layoutId="analytics-tab" aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
           </Link>
         ))}
       </div>

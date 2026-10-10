@@ -5,11 +5,12 @@ import type { FastifyInstance } from 'fastify';
 import { getAddress, isAddress, type Address } from 'viem';
 import { z } from 'zod';
 import {
-  spanCoverage, thin, walletPerformance, windowStartDay,
-  type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxTrade, type PxTrader, type PxWallet,
+  retentionCohorts, spanCoverage, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
+  type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
+import { history, positionSignals } from './history';
 import { historyComplete, indexerStatus, KINDS, scanHoles, sdb } from './indexer';
-import { accountOf, accounts, addressOf, allPositions, cached, client, dailyVolume, funding, hyperliquidVolume, meta, positionsOf, statsNet, ticker, tvl } from './perpl';
+import { accountOf, accounts, addressOf, allPositions, cached, client, dailyVolume, funding, fundingHistory, hyperliquidVolume, meta, positionsOf, statsNet, ticker, tvl } from './perpl';
 import { EXCHANGE_ABI } from './exchange-abi';
 
 const DAY = 86_400_000;
@@ -58,6 +59,14 @@ function coverage(now: number, live: boolean, latestTs: number | null) {
   return { start: latestTs == null ? null : start, end: live ? now : latestTs ?? 0, gaps };
 }
 
+/** The indexer's progress right now: live when within about two minutes of the chain, and the time span it covers. */
+function progress(now: number) {
+  const latest = one<{ ts: number } | undefined>('select ts from px_trades order by block desc limit 1');
+  const ix = indexerStatus(now);
+  const live = ix.source !== 'off' && now - ix.at < 120_000 && ix.head > 0 && ix.head - ix.block < 300;
+  return { latest, ix, live, cov: coverage(now, live, latest?.ts ?? null) };
+}
+
 const overview = cached(10_000, async (): Promise<PxOverview> => {
   const now = Date.now();
   const [m, t, dv, f, tvlUsd, accts, hl, positions] = await Promise.all([
@@ -69,34 +78,39 @@ const overview = cached(10_000, async (): Promise<PxOverview> => {
   for (const [id, series] of dv) {
     const sym = m.markets.get(id)!.sym;
     for (const c of series) {
-      const d = days.get(c.t) ?? { t: c.t, volumeUsd: 0, byMarket: {} as Record<string, number>, feesUsd: null, traders: null, depositsUsd: null, withdrawalsUsd: null, liquidationsUsd: null };
+      const d = days.get(c.t) ?? {
+        t: c.t, volumeUsd: 0, byMarket: {} as Record<string, number>, feesUsd: null, traders: null, trades: null, newAccounts: null,
+        depositsUsd: null, withdrawalsUsd: null, liquidationsUsd: null, liqLongUsd: null, liqShortUsd: null,
+      };
       d.volumeUsd += c.usd;
       d.byMarket[sym] = (d.byMarket[sym] ?? 0) + c.usd;
       days.set(c.t, d);
     }
   }
   // Indexed history on top, from the day the indexer starts.
-  for (const r of all<{ day: number; fees: number; traders: number }>('select day, sum(fees) fees, sum(account != 0) traders from px_day group by day')) {
+  for (const r of all<{ day: number; fees: number; traders: number; trades: number }>('select day, sum(fees) fees, sum(account != 0) traders, sum(trades) trades from px_day group by day')) {
     const d = days.get(r.day * DAY);
-    if (d) Object.assign(d, { feesUsd: r.fees, traders: r.traders });
+    if (d) Object.assign(d, { feesUsd: r.fees, traders: r.traders, trades: r.trades });
+  }
+  for (const r of all<{ day: number; n: number }>('select ts / 86400000 day, count(*) n from px_accounts where ts is not null group by day')) {
+    const d = days.get(r.day * DAY);
+    if (d) d.newAccounts = r.n;
   }
   for (const r of all<{ day: number; dep: number; wd: number }>('select ts / 86400000 day, sum(case when deposit = 1 then usd else 0 end) dep, sum(case when deposit = 0 then usd else 0 end) wd from px_flows group by day')) {
     const d = days.get(r.day * DAY);
     if (d) Object.assign(d, { depositsUsd: r.dep, withdrawalsUsd: r.wd });
   }
-  for (const r of all<{ day: number; usd: number }>('select ts / 86400000 day, sum(size * mark) usd from px_liqs group by day')) {
+  for (const r of all<{ day: number; usd: number; longUsd: number }>('select ts / 86400000 day, sum(size * mark) usd, sum(case when long = 1 then size * mark else 0 end) longUsd from px_liqs group by day')) {
     const d = days.get(r.day * DAY);
-    if (d) d.liquidationsUsd = r.usd;
+    if (d) Object.assign(d, { liquidationsUsd: r.usd, liqLongUsd: r.longUsd, liqShortUsd: r.usd - r.longUsd });
   }
-  const latest = one<{ ts: number } | undefined>('select ts from px_trades order by block desc limit 1');
-  const ix = indexerStatus(now);
-  const live = ix.source !== 'off' && now - ix.at < 120_000 && ix.head > 0 && ix.head - ix.block < 300;
-  const cov = coverage(now, live, latest?.ts ?? null);
+  const { latest, ix, live, cov } = progress(now);
   // Indexed numbers only where the day was scanned: a scanned day with no events is a real zero, an unscanned one is unknown.
   const daily = [...days.values()].sort((a, b) => a.t - b.t).map((d) => {
     const c = spanCoverage(d.t, Math.min(d.t + DAY, now), cov);
     return c === 'none' ? { ...d, coverage: c } : {
-      ...d, coverage: c, feesUsd: d.feesUsd ?? 0, traders: d.traders ?? 0, depositsUsd: d.depositsUsd ?? 0, withdrawalsUsd: d.withdrawalsUsd ?? 0, liquidationsUsd: d.liquidationsUsd ?? 0,
+      ...d, coverage: c, feesUsd: d.feesUsd ?? 0, traders: d.traders ?? 0, trades: d.trades ?? 0, newAccounts: d.newAccounts ?? 0,
+      depositsUsd: d.depositsUsd ?? 0, withdrawalsUsd: d.withdrawalsUsd ?? 0, liquidationsUsd: d.liquidationsUsd ?? 0, liqLongUsd: d.liqLongUsd ?? 0, liqShortUsd: d.liqShortUsd ?? 0,
     };
   });
   // Every period is whole UTC days with today included (7D = 7 daily buckets), except 24H, which is rolling everywhere.
@@ -111,6 +125,7 @@ const overview = cached(10_000, async (): Promise<PxOverview> => {
   const last24 = one<{ fees: number | null; traders: number }>('select sum(fee) fees, count(distinct account) traders from px_trades where block >= ? and account != 0', blockAt(now - DAY));
   const flow24 = one<{ net: number | null }>('select sum(case when deposit = 1 then usd else -usd end) net from px_flows where ts >= ?', now - DAY);
   const liq24 = one<{ usd: number | null }>('select sum(size * mark) usd from px_liqs where ts >= ?', now - DAY);
+  const new24 = one<{ n: number }>('select count(*) n from px_accounts where ts >= ?', now - DAY);
 
   const counts = new Map<string, { longs: number; shorts: number }>();
   for (const p of positions) {
@@ -134,7 +149,7 @@ const overview = cached(10_000, async (): Promise<PxOverview> => {
       openInterestUsd: [...t.values()].reduce((s, x) => s + x.oi * x.mark, 0), tvlUsd, accounts: accts,
       fees24hUsd: indexed ? last24.fees ?? 0 : null, fees7dUsd: indexed ? feesDays(7) : null, fees30dUsd: indexed ? feesDays(30) : null, feesAllUsd: indexed ? feesDays(100_000) : null,
       activeTraders24h: indexed ? last24.traders : null, activeTraders7d: indexed ? tradersDays(7) : null, activeTraders30d: indexed ? tradersDays(30) : null,
-      netFlow24hUsd: indexed ? flow24.net ?? 0 : null, liquidations24hUsd: indexed ? liq24.usd ?? 0 : null,
+      netFlow24hUsd: indexed ? flow24.net ?? 0 : null, liquidations24hUsd: indexed ? liq24.usd ?? 0 : null, newAccounts24h: indexed ? new24.n : null,
     },
     markets: [...m.markets.values()].map((mk) => {
       const x = t.get(mk.id);
@@ -211,6 +226,11 @@ async function wallet(q: string): Promise<PxWallet | null> {
   });
   const balance = Number(info.balanceCNS) / m.usd;
   const performance = walletPerformance(trades);
+  // Standing among every account active in the last 30 days, from the same rows as the leaderboard.
+  const peers = await aggregate(RANK_DAYS)();
+  const mine = peers.find((a) => a.account === r.account);
+  const pct = (f: (a: AggRow) => number) => (mine ? peers.filter((a) => f(a) > f(mine)).length / peers.length : null);
+  const rank = { days: RANK_DAYS, accounts: peers.length, volumePct: pct((a) => a.volume), pnlPct: pct((a) => a.net) };
   // Performance reads at most TRADE_CAP fills; say how many there are, so a busy wallet is never shown as complete.
   const total = rows.length < TRADE_CAP ? rows.length : one<{ n: number }>('select count(*) n from px_trades where account = ?', r.account).n;
   return {
@@ -220,6 +240,7 @@ async function wallet(q: string): Promise<PxWallet | null> {
     flows: all<{ ts: number; deposit: number; usd: number }>('select ts, deposit, usd from px_flows where account = ? order by ts desc limit 200', r.account).map((f) => ({ ts: f.ts, kind: f.deposit ? 'deposit' : 'withdraw', usd: f.usd })),
     fills: { total, used: rows.length, since: trades.at(-1)?.ts ?? null },
     historyComplete: historyComplete() && total <= rows.length,
+    rank,
   };
 }
 
@@ -245,6 +266,60 @@ const latestLiquidations = cached(5_000, async (): Promise<PxLiquidation[]> => {
   }));
 });
 
+type AggRow = { account: number; volume: number; net: number; trades: number };
+const RANK_DAYS = 30;
+const aggregates = new Map<number, () => Promise<AggRow[]>>();
+/** One row per account active in the window: the base of the leaderboard, the distribution and every wallet's rank. */
+function aggregate(days: number) {
+  let f = aggregates.get(days);
+  if (!f) {
+    f = cached(60_000, async () => all<AggRow>('select account, sum(volume) volume, sum(net) net, sum(trades) trades from px_day where day >= ? and account != 0 group by account', windowStartDay(Date.now(), days)));
+    aggregates.set(days, f);
+  }
+  return f;
+}
+
+const statsBoards = new Map<number, () => Promise<PxTraderStats>>();
+function traderStats(days: number) {
+  let f = statsBoards.get(days);
+  if (!f) {
+    f = cached(60_000, async (): Promise<PxTraderStats> => ({ days, ...traderDistribution((await aggregate(days)()).map((a) => ({ volumeUsd: a.volume, netUsd: a.net }))) }));
+    statsBoards.set(days, f);
+  }
+  return f();
+}
+
+const COHORT_OFFSETS = [1, 2, 4];
+/** Weekly cohorts over the whole indexed history; a cohort whose week is not fully indexed says so. */
+const cohorts = cached(10 * 60_000, async (): Promise<PxCohorts> => {
+  const now = Date.now();
+  const { cov } = progress(now);
+  const first = new Map(all<{ account: number; d: number }>('select account, min(day) d from px_day where account != 0 group by account').map((r) => [r.account, r.d]));
+  const active = new Map<number, Set<number>>();
+  for (const r of all<{ account: number; w: number }>('select distinct account, (day + 3) / 7 w from px_day where account != 0')) (active.get(r.account) ?? active.set(r.account, new Set()).get(r.account)!).add(r.w);
+  const week = 7 * DAY;
+  const weekCoverage = (start: number) => spanCoverage(start, Math.min(start + week, now), cov);
+  return {
+    offsets: COHORT_OFFSETS,
+    // A later week that was never indexed cannot show anyone back: blank, not zero.
+    cohorts: retentionCohorts(first, active, weekOf(Math.floor(now / DAY)), 12, COHORT_OFFSETS).map((c) => ({
+      ...c, coverage: weekCoverage(c.week), retained: c.retained.map((v, i) => (v != null && weekCoverage(c.week + COHORT_OFFSETS[i] * week) === 'none' ? null : v)),
+    })),
+  };
+});
+
+const SIGNAL_DAYS = 7;
+/** The feed: the week's largest deposits, withdrawals and liquidations, and large positions seen opening or closing. */
+const signals = cached(10_000, async (): Promise<PxSignal[]> => {
+  const m = await meta();
+  const since = Date.now() - SIGNAL_DAYS * DAY;
+  const flows = all<{ ts: number; account: number; deposit: number; usd: number }>('select ts, account, deposit, usd from px_flows where ts >= ? order by usd desc limit 30', since)
+    .map((f): PxSignal => ({ ts: f.ts, kind: f.deposit ? 'deposit' : 'withdraw', account: f.account, address: null, usd: f.usd }));
+  const liqs = all<{ ts: number; perp: number; account: number; long: number; size: number; mark: number; pnl: number }>('select ts, perp, account, long, size, mark, pnl from px_liqs where ts >= ? order by size * mark desc limit 20', since)
+    .map((l): PxSignal => ({ ts: l.ts, kind: 'liquidation', account: l.account, address: null, sym: m.markets.get(l.perp)?.sym ?? `#${l.perp}`, long: l.long === 1, usd: l.size * l.mark, pnl: l.pnl }));
+  return [...flows, ...liqs, ...positionSignals()].sort((a, b) => b.ts - a.ts).slice(0, 40).map((x) => ({ ...x, address: x.address ?? addressById(x.account) }));
+});
+
 /** Leaderboard windows, in whole UTC days with today included, the same days as the overview's 7D and 30D. */
 const TRADER_DAYS = [1, 7, 30, 90, 365];
 const boards = new Map<string, () => Promise<PxTrader[]>>();
@@ -262,6 +337,43 @@ function leaderboard(days: number, sort: 'net' | 'volume' | 'loss') {
   return board;
 }
 
+const ACTIVITY_DAYS = 7;
+/**
+ * When Perpl trades: taker fills by UTC weekday and hour over the last week. Every fill has a taker row and a maker row,
+ * so taker rows alone count each trade once. ponytail: one 7-day scan of px_trades (about a second) every 10 minutes,
+ * on this process's thread; an hourly rollup table if it ever shows in the API's latency.
+ */
+const activity = cached(10 * 60_000, async (): Promise<PxActivity> => {
+  const now = Date.now();
+  const since = now - ACTIVITY_DAYS * DAY;
+  const cells = all<{ dow: number; hour: number; trades: number; usd: number }>(
+    'select (ts / 86400000 + 4) % 7 dow, (ts / 3600000) % 24 hour, count(*) trades, sum(price * size) usd from px_trades where block >= ? and taker = 1 group by dow, hour',
+    blockAt(since),
+  );
+  return { days: ACTIVITY_DAYS, since, cells, trades: cells.reduce((s, c) => s + c.trades, 0), usd: cells.reduce((s, c) => s + c.usd, 0) };
+});
+
+const FLOW_DAYS = [1, 7, 30];
+const flowBoards = new Map<number, () => Promise<PxFlows>>();
+/** Who moved collateral: the accounts behind the window's largest deposits and withdrawals. */
+function flows(days: number) {
+  let f = flowBoards.get(days);
+  if (!f) {
+    f = cached(30_000, async (): Promise<PxFlows> => {
+      const since = Date.now() - days * DAY;
+      const side = (deposit: 0 | 1): PxFlowRow[] => all<{ account: number; usd: number; n: number; lastTs: number }>(
+        'select account, sum(usd) usd, count(*) n, max(ts) lastTs from px_flows where ts >= ? and deposit = ? group by account order by usd desc limit 10', since, deposit,
+      ).map((r) => ({ ...r, address: addressById(r.account) }));
+      const tot = one<{ dep: number | null; wd: number | null; depositors: number; withdrawers: number }>(
+        'select sum(case when deposit = 1 then usd end) dep, sum(case when deposit = 0 then usd end) wd, count(distinct case when deposit = 1 then account end) depositors, count(distinct case when deposit = 0 then account end) withdrawers from px_flows where ts >= ?', since,
+      );
+      return { days, depositsUsd: tot.dep ?? 0, withdrawalsUsd: tot.wd ?? 0, depositors: tot.depositors, withdrawers: tot.withdrawers, deposits: side(1), withdrawals: side(0) };
+    });
+    flowBoards.set(days, f);
+  }
+  return f();
+}
+
 export function registerStats(app: FastifyInstance) {
   // Load once at boot, so the first visitor gets numbers at once (every later refresh happens in the background).
   void overview().catch(() => {});
@@ -275,6 +387,25 @@ export function registerStats(app: FastifyInstance) {
   app.get('/api/stats/traders', async (req): Promise<PxTrader[]> => {
     const q = z.object({ days: z.coerce.number().int().refine((d) => TRADER_DAYS.includes(d), `days must be one of ${TRADER_DAYS.join(', ')}`).default(7), sort: z.enum(['net', 'volume', 'loss']).default('net') }).parse(req.query);
     return leaderboard(q.days, q.sort)();
+  });
+  app.get('/api/stats/history', async (req) => {
+    const { days } = z.object({ days: z.coerce.number().int().refine((d) => [1, 7, 30].includes(d), 'days must be 1, 7 or 30').default(7) }).parse(req.query);
+    return history(days);
+  });
+  app.get('/api/stats/funding', async (req) => {
+    const { days } = z.object({ days: z.coerce.number().int().refine((d) => [7, 30].includes(d), 'days must be 7 or 30').default(7) }).parse(req.query);
+    return fundingHistory(days);
+  });
+  app.get('/api/stats/activity', () => activity());
+  app.get('/api/stats/traders/stats', async (req): Promise<PxTraderStats> => {
+    const { days } = z.object({ days: z.coerce.number().int().refine((d) => TRADER_DAYS.includes(d), `days must be one of ${TRADER_DAYS.join(', ')}`).default(30) }).parse(req.query);
+    return traderStats(days);
+  });
+  app.get('/api/stats/cohorts', () => cohorts());
+  app.get('/api/stats/signals', () => signals());
+  app.get('/api/stats/flows', async (req) => {
+    const { days } = z.object({ days: z.coerce.number().int().refine((d) => FLOW_DAYS.includes(d), `days must be one of ${FLOW_DAYS.join(', ')}`).default(1) }).parse(req.query);
+    return flows(days);
   });
   app.get('/api/stats/wallet/:q', async (req, reply) => {
     const q = String((req.params as { q: string }).q).trim().toLowerCase();
