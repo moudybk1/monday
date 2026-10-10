@@ -260,7 +260,7 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, registryA
       <dl className="mt-8 grid grid-cols-2 border-t border-line-2 text-sm sm:grid-cols-3">
         {[
           ['Markets', p.markets.join(', ')], ['Quote per side', usd(p.quoteSizeUsd)], ['Position limit per market', usd(p.maxInventoryUsd)],
-          ['Base spread', `${p.minHalfSpreadBps} bps`], ['Daily loss limit', usd(p.maxDailyLossUsd)], ['Leverage', `${p.maxLeverage}x`],
+          ['Base spread', `${p.minHalfSpreadBps} bps`], ['Stop loss', usd(p.maxDailyLossUsd)], ['Leverage', `${p.maxLeverage}x`],
         ].map(([k, v]) => (
           <div key={k} className="border-b border-line py-3"><dt className="text-[12px] text-fg-3">{k}</dt><dd className="num mt-0.5 font-semibold">{v}</dd></div>
         ))}

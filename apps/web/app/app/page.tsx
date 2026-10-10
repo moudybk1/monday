@@ -27,7 +27,7 @@ import { useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet'
 
 const KILL_WHY: Record<KillReason, string> = {
   manual: 'You pressed the kill switch.',
-  loss_limit: 'The daily loss limit was reached.',
+  loss_limit: 'The stop loss was reached for the day.',
   stale_data: 'Perpl market data stopped for more than 30 seconds.',
   order_failures: 'Three orders failed in a row.',
   key_error: 'Perpl rejected the API key.',
@@ -155,7 +155,7 @@ export default function Terminal() {
         {state.status === 'paused' && state.closing === 'flatten' && <Notice tone="warn">Take profit reached, but Perpl has not confirmed the position is closed. Monday retries every 10 seconds; you can close it on Perpl too.</Notice>}
         {/* Stop means stop: nothing watches a position left open, so say so while one is. */}
         {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0) && (
-          <Notice tone="warn">Stopped with an open position. Monday is not watching it: no stop loss and no daily loss limit. Close it on Perpl, use Kill and flatten, or start Monday again.</Notice>
+          <Notice tone="warn">Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl, use Kill and flatten, or start Monday again.</Notice>
         )}
         {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes pulled. Monday resumes on its own when data returns.</Notice>}
         {/* The newest warning from the agent itself: loss-limit approach, rate limits, blocked orders, disconnects. */}

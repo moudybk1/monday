@@ -85,7 +85,7 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
           )}
         </div>
         <div className={cell}>
-          <dt className="label">Daily loss limit</dt>
+          <dt className="label">Stop loss (day)</dt>
           <dd className="num mt-1.5 flex items-center gap-2 text-[12px]">
             <span className={used >= 70 ? 'text-ask-fg' : 'text-fg'}>{Math.round(used)}%</span>
             <span className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-[1px] bg-raised-2" aria-hidden>

@@ -95,7 +95,9 @@ export default function PolicyPage() {
     try {
       await api(`/agent/${what}`, { method: 'POST', body: what === 'start' ? { takeProfitUsd: takeProfitUsd(draft) } : undefined });
       await qc.invalidateQueries({ queryKey: ['agent-state'] });
-      setNote({ ok: true, text: what === 'start' ? 'Monday is quoting with these settings.' : "Stopped. Monday's orders are cancelled; any position stays open for you." });
+      // Started: the terminal is where the quotes, fills and position show, as onboarding's Start does.
+      if (what === 'start') return router.push('/app');
+      setNote({ ok: true, text: "Stopped. Monday's orders are cancelled; any position stays open for you." });
     } catch (e) {
       setNote({ ok: false, text: e instanceof Error ? e.message.split('\n')[0] : 'Could not reach the bot.' });
     } finally {
