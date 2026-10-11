@@ -1,6 +1,8 @@
 # infra/Caddyfile for a host Caddy, against the ports in infra/docker-compose.host-caddy.yml. Copy to
 # /etc/caddy/conf.d/monday.caddy, then: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
 mondaytrade.xyz {
+	# JSON from the stats API compresses about ten to one; the 90-day screener is 1.5 MB raw.
+	encode zstd gzip
 	handle /api/stats/* {
 		reverse_proxy 127.0.0.1:3102
 	}
@@ -20,6 +22,7 @@ www.mondaytrade.xyz {
 }
 
 analytics.mondaytrade.xyz {
+	encode zstd gzip
 	@session path /app /app/* /analytics/monday /analytics/monday/*
 	route {
 		reverse_proxy /api/stats/* 127.0.0.1:3102

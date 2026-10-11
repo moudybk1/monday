@@ -6,8 +6,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PxActivity, PxCohorts, PxFlows, PxFunding, PxHistory, PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxSignal, PxTrader, PxTraderStats, PxWindow } from '@monday/core';
 import { CATS, EASE, HeatGrid, LineChart, Share, SignedBars, Sparkline, StackedBars, type Series, type Tone } from '@/components/charts';
-import { AccountLink, Delta, Kpi, Segments, Skew, Tabs, ago, liqText, liqTone, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
-import { Notice, Panel, Skeleton, cx } from '@/components/ui';
+import { AccountLink, Delta, Kpi, Num, Segments, Skew, Tabs, ago, liqText, liqTone, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
+import { Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 
 // Protocol view. Headline numbers with their trend first, then one chart that can show every metric, the markets,
@@ -92,7 +92,9 @@ export default function StatsPage() {
         <LiquidationMap risk={risk.data} sym={sym === ALL ? undefined : sym} onSym={setSym} />
       </div>
 
-      <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
+      <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Spotlight liqs={liqs.data} now={now} /></div>
+
+      <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} risk={risk.data} hist={hist7.data} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 4 } as React.CSSProperties}>
         <Activity />
@@ -241,6 +243,7 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
 
 function LiquidationMap({ risk, sym, onSym }: { risk?: Risk; sym?: string; onSym: (s: string) => void }) {
   const reduce = useReducedMotion();
+  const [move, setMove] = useState(-3); // what if the price moves this many percent
   const m = risk?.markets.find((x) => x.sym === sym) ?? risk?.markets[0];
   if (!risk || !m) return <Panel title="Liquidation map" className="min-h-[330px] xl:h-full"><Skeleton className="m-2 h-64" /></Panel>;
   const map = m.map.slice(0, 12); // 12% either side keeps the ladder beside the chart; the rest is far from mark
@@ -266,6 +269,7 @@ function LiquidationMap({ risk, sym, onSym }: { risk?: Risk; sym?: string; onSym
         <div className="bg-canvas px-2 py-1.5"><span className="label">Shorts at risk</span><p className="num mt-1 text-[13px] text-ask-fg">{money(m.atRiskShortUsd)}</p></div>
       </div>
       <p className="mt-1.5 text-[11px] text-fg-3">Open notional by liquidation price. Shorts liquidate above mark, longs below. At risk means within 5%.</p>
+      <WhatIf m={m} move={move} onMove={setMove} />
       <div className="num mt-2 grid gap-px text-[10.5px]">
         {rows.map((r, i) => (
           <div key={`${r.side}${r.pct}`} className="grid grid-cols-[4.5rem_1fr_3.5rem] items-center gap-2" title={`${r.side === 'long' ? 'Longs' : 'Shorts'} liquidating ${r.pct - 1} to ${r.pct}% ${r.side === 'long' ? 'below' : 'above'} mark: ${money(r.usd)}`}>
@@ -282,23 +286,65 @@ function LiquidationMap({ risk, sym, onSym }: { risk?: Risk; sym?: string; onSym
   );
 }
 
-function Markets({ o, pick, onPick }: { o: PxOverview; pick: string; onPick: (s: string) => void }) {
+/** Slide a price move and read what the Exchange would close: the map's buckets summed up to that distance. */
+function WhatIf({ m, move, onMove }: { m: Risk['markets'][number]; move: number; onMove: (v: number) => void }) {
+  const dist = Math.abs(move);
+  const usd = m.map.filter((b) => b.pct <= Math.ceil(dist)).reduce((s, b) => s + (move < 0 ? b.longUsd : b.shortUsd), 0);
+  const px = m.mark * (1 + move / 100);
+  return (
+    <div className="mt-2 rounded-sm border border-line bg-raised px-2 py-1.5 text-[11px]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-fg-2">If {m.sym} {move < 0 ? 'falls' : 'rises'} <span className="num text-fg">{dist.toFixed(1)}%</span> to <span className="num text-fg">{price(px)}</span></span>
+        <span className={cx('num text-[12.5px] font-medium', usd ? (move < 0 ? 'text-bid-fg' : 'text-ask-fg') : 'text-fg-3')}><Num value={usd} format={money} /> <span className="font-sans text-[11px] text-fg-3">of {move < 0 ? 'longs' : 'shorts'}</span></span>
+      </div>
+      <input type="range" min={-10} max={10} step={0.5} value={move} onChange={(e) => onMove(Number(e.target.value))} aria-label="Price move, percent" className="range mt-1 w-full" style={{ '--p': (move + 10) / 20 } as React.CSSProperties} />
+      <div className="flex justify-between text-[10px] text-fg-3"><span>-10%</span><span>mark</span><span>+10%</span></div>
+    </div>
+  );
+}
+
+/** What is going on in a market right now, as short flags. Each one is a threshold a reader can check in the row. */
+function setups(m: PxOverview['markets'][number], o: PxOverview, risk?: Risk): { text: string; tone: 'warn' | 'ask' | 'accent' | 'neutral'; title: string }[] {
+  const out: { text: string; tone: 'warn' | 'ask' | 'accent' | 'neutral'; title: string }[] = [];
+  const n = m.longs + m.shorts;
+  const skew = n ? m.longs / n : 0.5;
+  const a = apr(m.fundingRate, m.fundingIntervalMin);
+  if (n >= 10 && skew >= 0.7) out.push({ text: 'Crowded long', tone: 'warn', title: `${(skew * 100).toFixed(0)}% of ${n} open accounts are long` });
+  if (n >= 10 && skew <= 0.3) out.push({ text: 'Crowded short', tone: 'warn', title: `${((1 - skew) * 100).toFixed(0)}% of ${n} open accounts are short` });
+  if (Math.abs(a) >= 30) out.push({ text: `Funding ${pct(a, 0)}`, tone: a > 0 ? 'ask' : 'accent', title: `${a > 0 ? 'Longs pay shorts' : 'Shorts pay longs'} ${Math.abs(a).toFixed(0)}% a year at the current rate` });
+  const prev = o.daily.slice(-8, -1).map((d) => d.byMarket[m.sym] ?? 0);
+  const avg = prev.length ? prev.reduce((x, y) => x + y, 0) / prev.length : 0;
+  if (avg > 0 && m.volume24hUsd >= 2 * avg) out.push({ text: `Volume ${(m.volume24hUsd / avg).toFixed(1)}x`, tone: 'accent', title: `${money(m.volume24hUsd)} in 24h against ${money(avg)} a day over the previous week` });
+  const r = risk?.markets.find((x) => x.sym === m.sym);
+  if (r && m.openInterestUsd > 0 && (r.atRiskLongUsd + r.atRiskShortUsd) / (2 * m.openInterestUsd) >= 0.1) out.push({ text: 'Liq. risk', tone: 'ask', title: `${money(r.atRiskLongUsd + r.atRiskShortUsd)} within 5% of liquidation` });
+  return out;
+}
+
+function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; hist?: PxHistory; pick: string; onPick: (s: string) => void }) {
   const oiTotal = Math.max(1, o.markets.reduce((s, m) => s + m.openInterestUsd, 0));
   const last14 = o.daily.slice(-14);
+  // Open interest a day ago, from the samples, once a day of them exists.
+  const oiAgo = (sym: string) => {
+    const pts = hist?.markets[sym];
+    if (!pts || pts.length < 3 || o.at - pts[0].t < 20 * 3_600_000) return null;
+    return pts.reduce((b, p) => (Math.abs(p.t - (o.at - DAY)) < Math.abs(b.t - (o.at - DAY)) ? p : b)).oiUsd;
+  };
   return (
     <Panel title="Markets" aside={<span className="hidden lg:inline">click a market to focus the chart and the map. Long/short is open accounts; share is of Hyperliquid&apos;s 24h volume</span>}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1020px] text-[11.5px]">
+        <table className="w-full min-w-[1180px] text-[11.5px]">
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
               <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 days</th>
-              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right">Funding</th><th className="text-right">Long / short</th><th className="pr-2.5 text-right">vs Hyperliquid</th>
+              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right">Funding</th><th className="text-right">Long / short</th><th className="text-right">vs Hyperliquid</th><th className="pr-2.5 pl-3">Setups</th>
             </tr>
           </thead>
           <tbody className="num">
             {o.markets.map((m) => {
               const a = apr(m.fundingRate, m.fundingIntervalMin);
               const on = m.sym === pick;
+              const flags = setups(m, o, risk);
+              const ago = oiAgo(m.sym);
               return (
                 <tr
                   key={m.id} onClick={() => onPick(m.sym)} tabIndex={0} aria-selected={on}
@@ -310,11 +356,12 @@ function Markets({ o, pick, onPick }: { o: PxOverview; pick: string; onPick: (s:
                   <td className={cx('text-right', tone(m.change24hPct))}>{pct(m.change24hPct, 2)}</td>
                   <td className="text-right">{money(m.volume24hUsd)}</td>
                   <td className="pl-3"><div className="h-5 w-24"><Sparkline values={last14.map((d) => d.byMarket[m.sym] ?? 0)} fill={false} /></div></td>
-                  <td className="text-right">{money(m.openInterestUsd)}</td>
+                  <td className="text-right">{money(m.openInterestUsd)}{ago != null && <> <Delta now={m.openInterestUsd} prev={ago} up="none" /></>}</td>
                   <td className="pl-3"><span className="flex items-center gap-2"><Share value={m.openInterestUsd / oiTotal} className="w-16" /><span className="w-9 text-fg-3">{((m.openInterestUsd / oiTotal) * 100).toFixed(0)}%</span></span></td>
                   <td className="text-right" title={`${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 1)}</span><span className="text-fg-3"> /yr</span></td>
                   <td className="text-right"><Skew longs={m.longs} shorts={m.shorts} /></td>
-                  <td className="pr-2.5 text-right text-fg-2">{m.hlVolume24hUsd ? `${((m.volume24hUsd / m.hlVolume24hUsd) * 100).toFixed(m.volume24hUsd / m.hlVolume24hUsd < 0.01 ? 2 : 1)}%` : 'n/a'}</td>
+                  <td className="text-right text-fg-2">{m.hlVolume24hUsd ? `${((m.volume24hUsd / m.hlVolume24hUsd) * 100).toFixed(m.volume24hUsd / m.hlVolume24hUsd < 0.01 ? 2 : 1)}%` : 'n/a'}</td>
+                  <td className="pr-2.5 pl-3"><span className="flex flex-wrap gap-1">{flags.map((f) => <span key={f.text} title={f.title}><Tag tone={f.tone}>{f.text}</Tag></span>)}</span></td>
                 </tr>
               );
             })}
@@ -322,6 +369,33 @@ function Markets({ o, pick, onPick }: { o: PxOverview; pick: string; onPick: (s:
         </table>
       </div>
     </Panel>
+  );
+}
+
+/** Today's names: the biggest winner and loser, the most active account and the largest liquidation of the last day. */
+function Spotlight({ liqs, now }: { liqs?: PxLiquidation[]; now: number }) {
+  const board = (sort: 'net' | 'loss' | 'volume') => ({ queryKey: ['stats-traders', 1, sort], queryFn: () => api<PxTrader[]>(`/stats/traders?days=1&sort=${sort}`), refetchInterval: 60_000 });
+  const win = useQuery(board('net'));
+  const loss = useQuery(board('loss'));
+  const vol = useQuery(board('volume'));
+  const w = win.data?.[0], l = loss.data?.[0], v = vol.data?.[0];
+  const liq = liqs?.filter((x) => now - x.ts < DAY).sort((a, b) => b.usd - a.usd)[0];
+  const cards: { k: string; who?: { account: number; address: string | null }; n?: number; format: (v: number) => string; t?: number; sub: string }[] = [
+    { k: 'Biggest winner today', who: w, n: w && w.netUsd > 0 ? w.netUsd : undefined, format: signedMoney, t: 1, sub: w && w.netUsd > 0 ? `${money(w.volumeUsd)} traded, ${w.trades.toLocaleString('en-US')} fills` : 'nobody in the money yet' },
+    { k: 'Biggest loser today', who: l, n: l && l.netUsd < 0 ? l.netUsd : undefined, format: signedMoney, t: -1, sub: l && l.netUsd < 0 ? `${money(l.volumeUsd)} traded, ${l.trades.toLocaleString('en-US')} fills` : 'nobody in the red yet' },
+    { k: 'Most active today', who: v, n: v?.volumeUsd, format: money, sub: v ? `${v.trades.toLocaleString('en-US')} fills, ${signedMoney(v.netUsd)} net` : 'no fills yet' },
+    { k: 'Largest liquidation 24h', who: liq, n: liq?.usd, format: money, t: -1, sub: liq ? `${liq.sym} ${liq.long ? 'long' : 'short'}, ${signedMoney(liq.pnl)}` : 'none in 24 hours' },
+  ];
+  return (
+    <dl className="panel grid grid-cols-2 gap-px bg-line lg:grid-cols-4">
+      {cards.map((c) => (
+        <div key={c.k} className="min-w-0 bg-canvas px-3 py-2.5">
+          <dt className="label truncate">{c.k}</dt>
+          <dd className={cx('num mt-1.5 text-[17px] font-medium leading-none tracking-tight', c.n == null ? 'text-fg-3' : c.t === undefined ? 'text-fg' : tone(c.t))}>{c.n == null ? (win.isLoading ? '…' : 'n/a') : <Num value={c.n} format={c.format} />}</dd>
+          <dd className="mt-1.5 flex items-center gap-2 truncate text-[11px] text-fg-3">{c.who && c.n != null && <AccountLink account={c.who.account} address={c.who.address} className="text-fg-2" />}<span className="truncate">{c.sub}</span></dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

@@ -5,8 +5,8 @@ import type { FastifyInstance } from 'fastify';
 import { getAddress, isAddress, type Address } from 'viem';
 import { z } from 'zod';
 import {
-  retentionCohorts, spanCoverage, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
-  type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
+  retentionCohorts, spanCoverage, streakOf, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
+  type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
 import { history, positionSignals } from './history';
 import { historyComplete, indexerStatus, KINDS, scanHoles, sdb } from './indexer';
@@ -241,6 +241,8 @@ async function wallet(q: string): Promise<PxWallet | null> {
     fills: { total, used: rows.length, since: trades.at(-1)?.ts ?? null },
     historyComplete: historyComplete() && total <= rows.length,
     rank,
+    liquidations: all<{ ts: number; perp: number; long: number; size: number; mark: number; pnl: number }>('select ts, perp, long, size, mark, pnl from px_liqs where account = ? order by ts desc limit 50', r.account)
+      .map((l) => ({ ts: l.ts, sym: m.markets.get(l.perp)?.sym ?? `#${l.perp}`, long: l.long === 1, usd: l.size * l.mark, pnl: l.pnl })),
   };
 }
 
@@ -307,6 +309,49 @@ const cohorts = cached(10 * 60_000, async (): Promise<PxCohorts> => {
     })),
   };
 });
+
+const SCREEN_DAYS = [1, 7, 30, 90];
+const SPARK_DAYS = 14;
+const screens = new Map<number, () => Promise<PxScreen>>();
+/** Every account active in the window with its results, style and recent days: the page filters and sorts it itself. */
+function screen(days: number) {
+  let f = screens.get(days);
+  if (!f) {
+    f = cached(60_000, async (): Promise<PxScreen> => {
+      const now = Date.now();
+      const from = windowStartDay(now, days);
+      const today = Math.floor(now / DAY);
+      const sparkFrom = today - (SPARK_DAYS - 1);
+      type Row = { account: number; volume: number; net: number; fees: number; trades: number; closes: number; wins: number; gw: number; gl: number; maker: number; days: number; last: number };
+      const rows = all<Row>(
+        'select account, sum(volume) volume, sum(net) net, sum(fees) fees, sum(trades) trades, sum(closes) closes, sum(wins) wins, sum(gross_win) gw, sum(gross_loss) gl, sum(maker) maker, count(*) days, max(day) last from px_day where day >= ? and account != 0 group by account',
+        from,
+      );
+      const byDay = new Map<number, Map<number, number>>();
+      for (const r of all<{ account: number; day: number; net: number }>('select account, day, net from px_day where day >= ? and account != 0', Math.min(from, sparkFrom))) {
+        (byDay.get(r.account) ?? byDay.set(r.account, new Map()).get(r.account)!).set(r.day, r.net);
+      }
+      const liqs = new Map(all<{ account: number; n: number; usd: number }>('select account, count(*) n, sum(size * mark) usd from px_liqs where ts >= ? group by account', from * DAY).map((l) => [l.account, l]));
+      return {
+        days, at: now,
+        rows: rows.map((r) => {
+          const d = byDay.get(r.account) ?? new Map<number, number>();
+          const inWindow = [...d.entries()].filter(([day]) => day >= from).sort((a, b) => a[0] - b[0]).map(([, net]) => net);
+          const l = liqs.get(r.account);
+          const c = (v: number) => Math.round(v * 100) / 100; // cents are enough here, and a 90-day screen is thousands of rows
+          return {
+            account: r.account, address: addressById(r.account), volumeUsd: c(r.volume), netUsd: c(r.net), feesUsd: c(r.fees), trades: r.trades, closes: r.closes, wins: r.wins,
+            grossWinUsd: c(r.gw), grossLossUsd: c(r.gl), makerVolumeUsd: c(r.maker), activeDays: r.days, lastDay: r.last * DAY,
+            daily: Array.from({ length: SPARK_DAYS }, (_, i) => { const v = d.get(sparkFrom + i); return v == null ? null : c(v); }), streak: streakOf(inWindow),
+            liquidations: l?.n ?? 0, liquidatedUsd: c(l?.usd ?? 0),
+          };
+        }),
+      };
+    });
+    screens.set(days, f);
+  }
+  return f();
+}
 
 const SIGNAL_DAYS = 7;
 /** The feed: the week's largest deposits, withdrawals and liquidations, and large positions seen opening or closing. */
@@ -402,6 +447,10 @@ export function registerStats(app: FastifyInstance) {
     return traderStats(days);
   });
   app.get('/api/stats/cohorts', () => cohorts());
+  app.get('/api/stats/screen', async (req): Promise<PxScreen> => {
+    const { days } = z.object({ days: z.coerce.number().int().refine((d) => SCREEN_DAYS.includes(d), `days must be one of ${SCREEN_DAYS.join(', ')}`).default(7) }).parse(req.query);
+    return screen(days);
+  });
   app.get('/api/stats/signals', () => signals());
   app.get('/api/stats/flows', async (req) => {
     const { days } = z.object({ days: z.coerce.number().int().refine((d) => FLOW_DAYS.includes(d), `days must be one of ${FLOW_DAYS.join(', ')}`).default(1) }).parse(req.query);

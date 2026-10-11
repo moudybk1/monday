@@ -64,3 +64,29 @@ export function walletInsights(w: PxWallet): Insight[] {
   }
   return out.slice(0, 6);
 }
+
+export interface Badge { tone: 'accent' | 'bid' | 'ask' | 'neutral' | 'warn'; text: string; title: string }
+
+/** Short labels for the header: the wallet's style, scale and scars. At most five, most telling first. */
+export function walletBadges(w: PxWallet): Badge[] {
+  const p = w.performance;
+  const out: Badge[] = [];
+  const maker = p.volumeUsd ? p.makerVolumeUsd / p.volumeUsd : 0;
+  if (p.trades >= 20 && maker >= 0.7) out.push({ tone: 'accent', text: 'Market maker', title: `${pct(maker)} of volume made, not taken` });
+  else if (p.trades >= 20 && maker <= 0.2) out.push({ tone: 'neutral', text: 'Taker', title: `${pct(1 - maker)} of volume crossed the spread` });
+  if (w.rank.volumePct != null && w.rank.volumePct <= 0.02) out.push({ tone: 'accent', text: 'Whale', title: `Top ${Math.max(1, Math.ceil(w.rank.volumePct * 100))}% by volume over the last ${w.rank.days} days` });
+  if (p.closes >= 50 && p.profitFactor != null && p.profitFactor >= 1.5) out.push({ tone: 'bid', text: 'Consistent', title: `Profit factor ${p.profitFactor.toFixed(2)} over ${p.closes.toLocaleString('en-US')} closes` });
+  if (p.avgHoldMin != null && p.closes >= 10) {
+    if (p.avgHoldMin < 15) out.push({ tone: 'neutral', text: 'Scalper', title: `Holds a position ${p.avgHoldMin.toFixed(0)} minutes on average` });
+    else if (p.avgHoldMin > 24 * 60) out.push({ tone: 'neutral', text: 'Swing trader', title: `Holds a position ${(p.avgHoldMin / 1440).toFixed(1)} days on average` });
+  }
+  const { long, short } = p.sides;
+  if (long.closes + short.closes >= 10) {
+    if (!short.closes) out.push({ tone: 'neutral', text: 'Long only', title: 'Every close was on a long' });
+    else if (!long.closes) out.push({ tone: 'neutral', text: 'Short only', title: 'Every close was on a short' });
+  }
+  if (p.byMarket.length >= 5) out.push({ tone: 'neutral', text: `${p.byMarket.length} markets`, title: p.byMarket.map((m) => m.sym).join(', ') });
+  if (w.liquidations.length) out.push({ tone: 'ask', text: `Liquidated ${w.liquidations.length}x`, title: `${usd(w.liquidations.reduce((s, l) => s + l.usd, 0))} of positions closed by the Exchange` });
+  if (w.account != null && w.account <= 500) out.push({ tone: 'neutral', text: 'Early account', title: `Perpl account #${w.account}` });
+  return out.slice(0, 5);
+}
