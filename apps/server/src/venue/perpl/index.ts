@@ -2,7 +2,7 @@
 // VENUE=perpl. Protocol reference: https://github.com/PerplFoundation/api-docs
 
 import { BaseError, ContractFunctionRevertedError, createPublicClient, http, parseAbi } from 'viem';
-import type { VenueCredentials, VenueDriver } from '../types';
+import type { OwnOrders, VenueCredentials, VenueDriver } from '../types';
 import { PerplFeed } from './feed';
 import { loadContext, type PerplContext } from './rest';
 import { PerplVenue } from './trading';
@@ -65,6 +65,6 @@ export function createPerplDriver(cfg: PerplConfig): VenueDriver {
       return ctx.minDepositUsd;
     },
 
-    open: (creds: VenueCredentials) => new PerplVenue(cfg, context, creds),
+    open: (creds: VenueCredentials, own?: OwnOrders) => new PerplVenue(cfg, context, creds, own),
   };
 }

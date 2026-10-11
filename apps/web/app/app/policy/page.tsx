@@ -9,7 +9,7 @@ import { statusText } from '@/components/agent';
 import { PolicyForm, draftFrom, draftOk, takeProfitUsd, toBody, type PolicyDraft } from '@/components/policy-form';
 import { Button, Notice, Panel, Skeleton, Tag } from '@/components/ui';
 import { api } from '@/lib/api';
-import { shortHash } from '@/lib/format';
+import { fmtUsd, shortHash } from '@/lib/format';
 import { useAgentAuthorized, useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
 
 export default function PolicyPage() {
@@ -117,6 +117,7 @@ export default function PolicyPage() {
   };
 
   const ready = draftOk(draft, balance, caps, specs);
+  const running = bot?.status === 'quoting';
   const action = unsaved
     ? <Button size="lg" className="w-full" onClick={save} disabled={busy !== null || !ready}>{busy ?? (mustSign ? 'Save and sign' : 'Save settings')}</Button>
     : pending?.onchain && !registry.canSign
@@ -150,11 +151,18 @@ export default function PolicyPage() {
         </Notice>
       )}
 
-      <PolicyForm takeProfit value={draft} onChange={(d) => { setDraft(d); setNote(null); }} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={caps} balance={balance} specs={specs}>
+      {/* Take profit goes with Start and stays with that run: while it runs, show the run's target, not a draft that would not apply. */}
+      <PolicyForm takeProfit={!running} value={draft} onChange={(d) => { setDraft(d); setNote(null); }} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={caps} balance={balance} specs={specs}>
         <div className="flex items-center justify-between text-[12px]">
           <span className="text-fg-3">Settings</span>
           <Tag tone={unsaved || pending ? 'warn' : 'neutral'}>{unsaved ? 'Unsaved changes' : pending ? 'Waiting for signature' : 'In force'}</Tag>
         </div>
+        {running && (
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-fg-3">Take profit, this run</span>
+            <span className="num text-fg">{bot.session?.takeProfitUsd != null ? fmtUsd(bot.session.takeProfitUsd) : 'Uncapped'}</span>
+          </div>
+        )}
         {bot && (
           <div className="flex items-center justify-between text-[12px]">
             <span className="text-fg-3">Bot</span>
@@ -163,7 +171,7 @@ export default function PolicyPage() {
         )}
         {action}
         {note && <p role={note.ok ? 'status' : 'alert'} className={note.ok ? 'text-[12px] text-fg-2' : 'text-[12px] text-ask-fg'}>{note.text}</p>}
-        <p className="text-[12px] text-fg-3">{bot?.status === 'quoting' ? 'Saving applies to the running bot from its next tick. Stop cancels its orders and leaves positions; Kill and flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
+        <p className="text-[12px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
         {view.data.onchainTx && (
           <p className="text-[12px] text-fg-3">
             In force on Monad since {cfg ? <a className="num underline underline-offset-2" href={`${cfg.explorerUrl}/tx/${view.data.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.data.onchainTx)}</a> : <span className="num">{shortHash(view.data.onchainTx)}</span>}.

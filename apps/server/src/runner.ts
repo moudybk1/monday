@@ -281,7 +281,14 @@ export class Runner {
   private open(): Promise<void> {
     if (this.venue) return Promise.resolve();
     this.opening ??= (async () => {
-      const v = this.deps.driver.open(this.deps.creds());
+      const v = this.deps.driver.open(this.deps.creds(), {
+        // Monday's resting orders, so a restart picks its quotes back up and leaves the user's own orders alone.
+        load: () => {
+          const r = db.prepare('select own_orders from agents where user_id = ?').get(this.userId) as { own_orders: string | null } | undefined;
+          return r?.own_orders ? (JSON.parse(r.own_orders) as string[]) : [];
+        },
+        save: (keys) => db.prepare("insert into agents (user_id, status, own_orders) values (?, 'idle', ?) on conflict(user_id) do update set own_orders = excluded.own_orders").run(this.userId, JSON.stringify(keys)),
+      });
       try {
         await v.connect(); // throws VenueError: the API surfaces the exact reason
         // Disposed while connecting (key replaced or removed): a socket kept now would live on with nobody ticking it.
