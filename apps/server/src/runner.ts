@@ -9,7 +9,7 @@
 // behind it, and a restart does not lose positions, PnL or unfinished cleanup.
 
 import {
-  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STAGE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, inventoryStage, lossBps, marginFloorUsd,
+  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STAGE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, fillTrigger, inventoryStage, lossBps, marginFloorUsd,
   markoutBps, median, nextReflex, orderJobs, quotingFor, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
   type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type Priority,
@@ -93,6 +93,8 @@ interface MarketRt {
   posSign: number;
   /** The stop loss was hit for the position held now: it is closed at the best price, and a bounce does not undo that. */
   stopped: boolean;
+  /** Times of fills that grew the position, per side, within the burst window (fillTrigger). */
+  opens: Record<Side, number[]>;
   basis: { bps: number; dev: number; gap: number; n: number };
   gapAlarm: boolean;
   why: string;
@@ -467,7 +469,7 @@ export class Runner {
       params: { market: sym, enabled: true, spread_mult: 2, skew_bias_bps: 0, size_mult: 0.5, max_inventory_usd: this.policy.maxInventoryUsd, ttl_min: 15, regime: 'stale', reason: 'Waiting for the first governor decision.' },
       paramsSource: 'fallback', paramsUntil: 0, nextGovAt: 0, lastGovAt: 0, govBusy: false, govAsap: false, wasStorm: false, wasStale: false, reflex: null, lastBigTs: Date.now(),
       lastSent: { bid: 0, ask: 0 }, inflight: { bid: false, ask: false }, sending: { bid: null, ask: null }, since: { bid: 0, ask: 0 }, held: { bid: null, ask: null },
-      block: { bid: null, ask: null }, ackedAt: { bid: 0, ask: 0 }, resting: { bid: null, ask: null }, model: null, stage: 'normal', posSince: 0, posSign: 0, stopped: false,
+      block: { bid: null, ask: null }, ackedAt: { bid: 0, ask: 0 }, resting: { bid: null, ask: null }, model: null, stage: 'normal', posSince: 0, posSign: 0, stopped: false, opens: { bid: [], ask: [] },
       basis: { bps: 0, dev: 0, gap: 0, n: 0 }, gapAlarm: false, why: '', min: null, bothHist: [], lastDecisionId: null, series: [], bandAlertAt: 0,
     });
   }
@@ -581,7 +583,7 @@ export class Runner {
       const out = computeQuotes({
         mark: snap.mark, mid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: varToBps(rt.var1m), positionUsd: posUsd, S: sig.S, book: rt.book,
         hlMid: this.hlReference(rt), hourlyVolumeUsd: this.hourlyVolume(sym, now), policy: this.policy, gov, reflex: rt.reflex, spec, cfg: this.cfg(sym),
-        stage: rt.stage, positionBase: pos.size, entryPrice: quotingFor(this.policy).profitExit ? pos.entryPrice : undefined, trendBps: this.trendBps(rt, now, snap.mark),
+        stage: rt.stage, positionBase: pos.size, entryPrice: pos.entryPrice, trendBps: this.trendBps(rt, now, snap.mark),
       });
       rt.model = out;
 
@@ -874,30 +876,42 @@ export class Runner {
     if (big) rt.lastBigTs = Math.max(rt.lastBigTs, big.ts) + 1;
     const z = sig.stale ? 0 : sig.w5.z;
     const held = rt.reflex && rt.reflex.until > now ? rt.reflex : null;
-    const flow = reflexTrigger(z, big ? tradeSign(big) : 0, cfg, held && !held.book && !held.ref ? held : null);
-    // Smart-money flow wins; then a move in the reference price, then the book. Each holds for its own time.
-    const move = this.deps.driver.kind === 'sim' ? null : hlMoveBps(sym, cfg.refWindowMs);
+    const flow = reflexTrigger(z, big ? tradeSign(big) : 0, cfg, held && !held.book && !held.ref && !held.fill ? held : null);
+    // Smart-money flow wins; then Monday's own fills, then Hyperliquid, then the book. Each holds for its own time.
+    const onFill = fillTrigger(rt.opens, now, cfg);
+    // Hyperliquid leads Perpl two ways: a jump over the last seconds, and a level Perpl has not reached yet (its mid past
+    // the usual gap; live fills taken while it sat 1.5 bps past ran -7.7 bps at five minutes). The larger one is the move.
+    const jump = this.deps.driver.kind === 'sim' ? null : hlMoveBps(sym, cfg.refWindowMs);
+    const lead = rt.basis.n >= 120 ? rt.basis.bps - rt.basis.gap : 0; // positive: Hyperliquid above Perpl, net of the usual gap
+    const byLevel = jump != null && Math.abs(lead) > Math.abs(jump);
+    const move = jump == null ? null : byLevel ? lead : jump;
     const onRef = move == null ? null : refTrigger(move, cfg, held?.ref ? held : null);
     const onBook = bookTrigger(rt.book, cfg, held?.book ? held : null);
-    const trig = flow ?? (onRef && { ...onRef, ref: true }) ?? (onBook && { ...onBook, book: true });
+    const trig = flow ?? (onFill && { ...onFill, fill: true }) ?? (onRef && { ...onRef, ref: true }) ?? (onBook && { ...onBook, book: true });
     // With no trigger the hold that is running out decides how long its release lasts.
-    const kind = trig ? (flow ? 'flow' : onRef ? 'ref' : 'book') : rt.reflex?.ref ? 'ref' : rt.reflex?.book ? 'book' : 'flow';
-    const holdCfg = kind === 'flow' ? cfg : { ...cfg, reflexHoldMs: kind === 'ref' ? cfg.refHoldMs : cfg.bookHoldMs };
+    const kind = trig ? (flow ? 'flow' : onFill ? 'fill' : onRef ? 'ref' : 'book') : rt.reflex?.fill ? 'fill' : rt.reflex?.ref ? 'ref' : rt.reflex?.book ? 'book' : 'flow';
+    const holdCfg = kind === 'flow' ? cfg : { ...cfg, reflexHoldMs: kind === 'book' ? cfg.bookHoldMs : cfg.refHoldMs };
     const dir = trig?.side === 'ask' ? 1 : -1;
     const culprits = flow ? this.deps.collector.recentTrades(sym, now - 5 * 60_000).filter((t) => tradeSign(t) === dir).sort((a, b) => b.valueUsd - a.valueUsd).slice(0, 12) : [];
-    const { state, changed } = nextReflex(rt.reflex, trig, now, flow ? z : onRef ? move! : rt.book, culprits.map((t) => t.hash), holdCfg);
+    const { state, changed } = nextReflex(rt.reflex, trig, now, flow ? z : onFill ? 0 : onRef ? move! : rt.book, culprits.map((t) => t.hash), holdCfg);
     const before = rt.reflex;
     rt.reflex = state;
     if (!changed) return;
-    if (!state?.book && !state?.ref) rt.govAsap = true; // book flicker and a few seconds of reference move are not worth an early governor run
+    if (!state?.book && !state?.ref && !state?.fill) rt.govAsap = true; // book flicker, a few seconds of reference move or one fill are not worth an early governor run
     const holdMin = cfg.reflexHoldMs / 60_000;
     if (state?.released) {
-      const what = state.ref ? 'Perpl has had time to catch up with Hyperliquid' : state.book ? 'The book has evened out' : 'Flow has cooled';
+      const what = state.fill ? 'The taker has passed' : state.ref ? 'Perpl has had time to catch up with Hyperliquid' : state.book ? 'The book has evened out' : 'Flow has cooled';
       this.logDecision(sym, 'reflex', 'reflex', { widen: state.side, release: true }, `${what}. The ${state.side} is back, still widened for now.`, { z5m: z, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
+    } else if (state?.fill) {
+      const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
+      const n = rt.opens[state.side].filter((t) => now - t < cfg.burstWindowMs).length;
+      const reason = `Monday's ${sym} ${state.side} was ${n > 1 ? `taken ${n} times inside a minute: a taker is sweeping that side` : 'just taken, and that taker may still be working'}. ${what} for the next ${cfg.fillHoldMs / 1000} seconds.`;
+      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.fillHoldMs / 1000, trigger: 'fill' }, reason, { fills: n, opens: rt.opens[state.side], at: now }, null);
     } else if (state?.ref) {
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
-      const reason = `Hyperliquid's ${sym} mid moved ${move! >= 0 ? 'up' : 'down'} ${Math.abs(move!).toFixed(1)} bps in ${cfg.refWindowMs / 1000} seconds and Perpl's book has not caught up. ${what} for ${cfg.refHoldMs / 1000} seconds.`;
-      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.refHoldMs / 1000, trigger: 'reference' }, reason, { hlMoveBps: move, windowMs: cfg.refWindowMs, hlMid: hlMid(sym), perplMid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, at: now }, null);
+      const led = byLevel ? `Hyperliquid prices ${sym} ${Math.abs(move!).toFixed(1)} bps ${move! >= 0 ? 'above' : 'below'} Perpl, past their usual gap,` : `Hyperliquid's ${sym} mid moved ${move! >= 0 ? 'up' : 'down'} ${Math.abs(move!).toFixed(1)} bps in ${cfg.refWindowMs / 1000} seconds`;
+      const reason = `${led} and Perpl's book has not caught up. ${what} for ${cfg.refHoldMs / 1000} seconds.`;
+      this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.refHoldMs / 1000, trigger: byLevel ? 'reference gap' : 'reference' }, reason, { hlMoveBps: jump, hlLeadBps: lead, windowMs: cfg.refWindowMs, hlMid: hlMid(sym), perplMid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, at: now }, null);
     } else if (state?.book) {
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
       const heavy = state.side === 'ask' ? 'bids' : 'asks';
@@ -912,7 +926,7 @@ export class Runner {
       const signalAgeMs = now - (culprits[0]?.fetchedAt ?? now);
       this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_min: holdMin }, reason, { z5m: z, netUsd5m: sig.w5.netUsd, smartTraderTx: state.triggerHashes, signalAgeMs, at: now }, null);
     } else if (before) {
-      const what = before.ref ? 'Perpl has caught up with Hyperliquid' : before.book ? 'The book has evened out' : 'Flow has cooled';
+      const what = before.fill ? 'The taker has passed' : before.ref ? 'Perpl has caught up with Hyperliquid' : before.book ? 'The book has evened out' : 'Flow has cooled';
       this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `${what}. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
     }
   }
@@ -1058,6 +1072,8 @@ export class Runner {
       this.alert('info', `A ${f.sym} trade placed outside Monday filled. It counts toward your limits but not toward Monday's results.`);
       return;
     }
+    // A fill that grew the position arms the fill reflex on its side (fillTrigger); the list is kept to the burst window.
+    if (rt && !ctx.reduces) rt.opens[f.side] = [...rt.opens[f.side].filter((t) => now - t < this.cfg(f.sym).burstWindowMs), now];
     const fill: Fill = {
       id: f.id, sym: f.sym, side: f.side, price: f.price, size: f.size, feeUsd: f.feeUsd, isMaker: f.isMaker, ts: f.ts, regime,
       markout1sBps: null, markout5sBps: null, markout10sBps: null, markout1mBps: null, markout5mBps: null,
@@ -1295,7 +1311,7 @@ export class Runner {
       if (b?.startsWith('risk:')) return `${word[side]} is blocked because ${GATE_TEXT[b.slice(5) as GateReason]}.`;
       if (b === 'exit') return `Adding to the ${posUsd > 0 ? 'long' : 'short'} is stopped; Monday is working its ${usd(Math.abs(posUsd))} exit${rt.stage === 'urgent' ? ' at the best price' : ''}.`;
       if (b === 'not in policy') return `${rt.sym} is no longer in your policy; Monday only closes what it holds there.`;
-      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.ref ? `Hyperliquid just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `Smart Traders are ${side === 'ask' ? 'buying' : 'selling'}`}.`;
+      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.fill ? `Monday's ${side} was just taken and the taker may still be working` : rt.reflex.ref ? `Hyperliquid just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `Smart Traders are ${side === 'ask' ? 'buying' : 'selling'}`}.`;
       if (b === 'governor') return `The governor turned quoting off: ${rt.params.reason}`;
       if (b === 'size') return `The ${side} rounds to zero size (quote size, volume cap or inventory skew).`;
       if (rt.held[side] === 'budget') return `Waiting for request budget to move the ${side}.`;

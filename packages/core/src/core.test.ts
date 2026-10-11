@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
+  riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, fillTrigger, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
   type QuoteInput, type SmartTrade, quickAsk, retentionCohorts, streakOf, traderDistribution,
 } from './index';
 
@@ -643,9 +643,9 @@ describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', ()
 
 describe('Tread-style quoting modes (2026-10-11)', () => {
   it('maps mid, grid and blend onto the reference blend and the profit exit, and participation onto the size cap', () => {
-    expect(quotingFor({})).toEqual({ cfg: { blend: 0.5, participation: 0.05 }, profitExit: true }); // policies saved before: grid, normal
-    expect(quotingFor({ refMode: 'mid' })).toEqual({ cfg: { blend: 0, participation: 0.05 }, profitExit: false });
-    expect(quotingFor({ refMode: 'blend', blendWeight: 1, participation: 'passive' })).toEqual({ cfg: { blend: 1, participation: 0.01 }, profitExit: false });
+    expect(quotingFor({})).toEqual({ cfg: { blend: 0.5, participation: 0.05 } }); // policies saved before: grid, normal
+    expect(quotingFor({ refMode: 'mid' })).toEqual({ cfg: { blend: 0, participation: 0.05 } });
+    expect(quotingFor({ refMode: 'blend', blendWeight: 1, participation: 'passive' })).toEqual({ cfg: { blend: 1, participation: 0.01 } });
     expect(quotingFor({ refMode: 'blend', blendWeight: 7 }).cfg.blend).toBe(1); // clamped
     expect(PARTICIPATION.aggressive).toBe(0.1);
   });
@@ -655,5 +655,21 @@ describe('Tread-style quoting modes (2026-10-11)', () => {
     expect(computeQuotes({ ...wide, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ refMode: 'blend', blendWeight: 1 }).cfg } }).ref).toBe(85_020);
     const passive = computeQuotes({ ...base, hourlyVolumeUsd: 2_000, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ participation: 'passive' }).cfg } });
     expect(passive.sizeCapUsd).toBe(20); // 1% of $2,000 an hour
+  });
+});
+
+describe('fill reflex (2026-10-11)', () => {
+  const t0 = 1_000_000;
+  it('widens the side of one fresh opening fill, pulls it after two inside the window, and lets go after', () => {
+    expect(fillTrigger({ bid: [], ask: [] }, t0)).toBeNull();
+    expect(fillTrigger({ bid: [], ask: [t0 - 5_000] }, t0)).toEqual({ side: 'ask', action: 'widen' });
+    expect(fillTrigger({ bid: [], ask: [t0 - 45_000] }, t0)).toBeNull(); // older than fillHoldMs, alone
+    expect(fillTrigger({ bid: [], ask: [t0 - 45_000, t0 - 2_000] }, t0)).toEqual({ side: 'ask', action: 'pull' }); // two inside burstWindowMs
+    expect(fillTrigger({ bid: [], ask: [t0 - 70_000, t0 - 2_000] }, t0)).toEqual({ side: 'ask', action: 'widen' }); // the first fell out of the window
+    expect(fillTrigger({ bid: [t0 - 1_000], ask: [t0 - 30_000, t0 - 20_000] }, t0)).toEqual({ side: 'ask', action: 'pull' }); // a sweep outranks a lone fill
+  });
+  it('folds into the reflex state with its own kind', () => {
+    const r = nextReflex(null, { side: 'ask', action: 'widen', fill: true }, t0, 0, [], { ...DEFAULT_CONFIG, reflexHoldMs: DEFAULT_CONFIG.refHoldMs });
+    expect(r.state).toMatchObject({ side: 'ask', action: 'widen', fill: true, until: t0 + DEFAULT_CONFIG.refHoldMs });
   });
 });
