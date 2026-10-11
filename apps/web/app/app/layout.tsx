@@ -48,9 +48,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <AppHeader nav={onboarded}>
-        {/* Always say what kind of money is on the line. Real funds is never hidden, even on a phone. */}
-        {cfg.data?.realFunds ? <Tag tone="ask">Mainnet: real funds</Tag>
-          : cfg.data && <span><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
+        {/* Always say which network the orders go to. A live mainnet is never hidden, even on a phone. */}
+        {cfg.data?.realFunds ? (
+          <>
+            <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex"><span aria-hidden className="live-dot size-1.5 rounded-full bg-bid" />live</span>
+            <Tag tone="bid">{cfg.data.networkName}</Tag>
+          </>
+        ) : cfg.data &&<span><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
         {me.data && (
           <span className="flex h-7 items-center rounded-sm border border-line-2">
             <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[12px] text-fg-2 sm:inline', !me.data.demo && 'num')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
@@ -108,7 +112,7 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
 
   return (
     // Centred both ways in the space under the 45px header: one compact block, not two columns pushed to the edges.
-    <div className="mx-auto grid min-h-[calc(100dvh-2.75rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
+    <div className="mx-auto grid min-h-[calc(100dvh-3rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
       <div>
         <h1 className="display text-4xl md:text-5xl">Connect your wallet</h1>
         <p className="mt-4 max-w-[52ch] text-[15px] text-fg-2">

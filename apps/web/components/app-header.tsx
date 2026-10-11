@@ -15,16 +15,16 @@ const NAV = [
 const isOn = (href: string, path: string) => (href === '/analytics' ? path.startsWith('/analytics') : path === href);
 
 /**
- * The header the app and analytics share: the mark left, the sections centred, status and account right, 44px.
+ * The header the app and analytics share: the mark left, the sections centred, status and account right, 48px like the site header.
  * Below 1024px the sections take a second row of their own instead of running into the account.
  */
 export function AppHeader({ nav = true, children }: { nav?: boolean; children?: ReactNode }) {
   const path = usePathname();
   return (
-    <header className="sticky top-0 z-30 grid flex-none grid-cols-[auto_minmax(0,1fr)] border-b border-line bg-canvas px-3 lg:h-11 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-      <div className="flex h-11 items-center"><Wordmark size={18} /></div>
+    <header className="sticky top-0 z-30 grid flex-none grid-cols-[auto_minmax(0,1fr)] border-b border-line bg-canvas px-4 lg:h-12 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="flex h-12 items-center"><Wordmark /></div>
       {nav && (
-        <nav aria-label="App" className="col-span-2 row-start-2 -mx-3 flex h-9 items-stretch justify-center gap-1 border-t border-line lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:h-auto lg:border-0">
+        <nav aria-label="App" className="col-span-2 row-start-2 -mx-4 flex h-9 items-stretch justify-center gap-1 border-t border-line lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mx-0 lg:h-auto lg:border-0">
           {NAV.map((n) => {
             const on = isOn(n.href, path);
             return (
@@ -35,7 +35,7 @@ export function AppHeader({ nav = true, children }: { nav?: boolean; children?: 
           })}
         </nav>
       )}
-      <div className="flex h-11 items-center justify-end gap-2 lg:col-start-3">
+      <div className="flex h-12 items-center justify-end gap-2 lg:col-start-3">
         {children}
         <ThemeToggle />
       </div>

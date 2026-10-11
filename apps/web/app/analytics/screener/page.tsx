@@ -51,82 +51,81 @@ export default function ScreenerPage() {
 
 function Screener() {
   const params = useSearchParams();
-  const [days, setDays] = useState<Days>(7);
-  const [preset, setPreset] = useState('all');
-  const [minVolume, setMinVolume] = useState<number>(0);
-  const [minCloses, setMinCloses] = useState<number>(0);
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'netUsd', dir: 'desc' });
+  const router = useRouter();
+  // The URL is the screen: the ask bar, a shared link and a reload all show what the filters show. Absent means default.
+  const d = Number(params.get('days'));
+  const days = ([1, 7, 30, 90].includes(d) ? d : 7) as Days;
+  const picked = (params.get('preset') ?? '').split(',').map((id) => PRESETS.find((x) => x.id === id && id !== 'all')).filter((x): x is Preset => !!x);
+  const presets = picked.length ? picked : [PRESETS[0]];
+  const minVolume = Math.max(0, Number(params.get('minVolume')) || 0);
+  const minCloses = Math.max(0, Math.floor(Number(params.get('minCloses')) || 0));
+  const sk = params.get('sort') as SortKey | null;
+  const sort: { key: SortKey; dir: 'asc' | 'desc' } = sk && COLS.some((c) => c.key === sk) ? { key: sk, dir: params.get('dir') === 'asc' ? 'asc' : 'desc' } : { key: presets[0].sort, dir: presets[0].dir };
+  const set = (patch: Record<string, string | number | null>) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) if (v == null || v === 0 || v === '') next.delete(k); else next.set(k, String(v));
+    router.replace(`?${next}`, { scroll: false });
+  };
+  const filtered = picked.length > 0 || minVolume > 0 || minCloses > 0 || sk != null;
   const [shown, setShown] = useState(PAGE);
   const q = useQuery({ queryKey: ['stats-screen', days], queryFn: () => api<PxScreen>(`/stats/screen?days=${days}`), refetchInterval: 60_000 });
   useEffect(() => {
     document.title = 'Screener - Monday';
   }, []);
-  // The ask bar arrives with its answer in the URL; apply it whenever it changes.
-  useEffect(() => {
-    const d = Number(params.get('days'));
-    if ([1, 7, 30, 90].includes(d)) setDays(d as Days);
-    const pr = PRESETS.find((x) => x.id === params.get('preset'));
-    if (pr) { setPreset(pr.id); setSort({ key: pr.sort, dir: pr.dir }); }
-    const mv = Number(params.get('minVolume'));
-    if (mv > 0) setMinVolume([...VOLUMES].reverse().find(([v]) => v <= mv)?.[0] ?? 0);
-    const mc = Number(params.get('minCloses'));
-    if (mc > 0) setMinCloses([...CLOSES].reverse().find(([v]) => v <= mc)?.[0] ?? 0);
-    const sk = params.get('sort') as SortKey | null;
-    if (sk && COLS.some((c) => c.key === sk)) setSort({ key: sk, dir: params.get('dir') === 'asc' ? 'asc' : 'desc' });
-    setShown(PAGE);
-  }, [params]);
+  useEffect(() => setShown(PAGE), [params]);
 
   const rows = useMemo<Row[]>(() => (q.data?.rows ?? []).map((r) => ({
     ...r, winRate: r.closes ? r.wins / r.closes : null, profitFactor: r.grossLossUsd > 0 ? r.grossWinUsd / r.grossLossUsd : r.grossWinUsd > 0 ? Infinity : null,
     makerShare: r.volumeUsd ? r.makerVolumeUsd / r.volumeUsd : 0, avgTradeUsd: r.trades ? r.volumeUsd / r.trades : 0,
   })), [q.data]);
-  const p = PRESETS.find((x) => x.id === preset) ?? PRESETS[0];
-  const pick = (next: Preset) => {
-    setPreset(next.id);
-    setSort({ key: next.sort, dir: next.dir });
-    setShown(PAGE);
-  };
+  const pick = (next: Preset) => set({ preset: next.id === 'all' ? null : next.id, sort: null, dir: null });
   const visible = useMemo(() => {
-    const kept = rows.filter((r) => p.keep(r) && r.volumeUsd >= minVolume && r.closes >= minCloses);
+    const kept = rows.filter((r) => presets.every((x) => x.keep(r)) && r.volumeUsd >= minVolume && r.closes >= minCloses);
     const v = (r: Row) => {
       const x = r[sort.key];
       return x == null ? (sort.dir === 'desc' ? -Infinity : Infinity) : x;
     };
     return kept.sort((a, b) => (sort.dir === 'desc' ? v(b) - v(a) : v(a) - v(b)));
-  }, [rows, p, minVolume, minCloses, sort]);
+  }, [rows, params]); // presets, thresholds and sort all come from params
   const maxAbs = Math.max(1, ...visible.slice(0, shown).map((r) => Math.abs(r.netUsd)));
-  const toggle = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 'desc' ? 'asc' : 'desc') : key === 'netUsd' && preset === 'losers' ? 'asc' : 'desc' }));
+  const toggle = (key: SortKey) => set({ sort: key, dir: sort.key === key ? (sort.dir === 'desc' ? 'asc' : 'desc') : key === 'netUsd' && presets[0].id === 'losers' ? 'asc' : 'desc' });
+  // A threshold the presets do not list (from the ask bar or a link) still shows as itself, not rounded to one that does.
+  const volumes = VOLUMES.some(([v]) => v === minVolume) ? VOLUMES : [...VOLUMES, [minVolume, `$${minVolume.toLocaleString('en-US')}+`] as const];
+  const closes = CLOSES.some(([v]) => v === minCloses) ? CLOSES : [...CLOSES, [minCloses, `${minCloses}+ closes`] as const];
+  const title = presets.map((x) => x.label).join(' + ');
+  const hint = presets.map((x) => x.hint).join('; ');
 
   return (
     <div className="grid gap-1 pt-1">
       <div className="panel min-w-0 rise flex-row flex-wrap items-center justify-between gap-2 px-2.5 py-1.5">
         <p className="text-[12px] text-fg-2"><span className="font-semibold text-fg">Find a wallet.</span> Pick a kind of trader, narrow by size and sample, sort any column. Every row opens the wallet.</p>
-        <Segments label="Window" value={days} onChange={(d) => { setDays(d); setShown(PAGE); }} options={[[1, 'Today'], [7, '7D'], [30, '30D'], [90, '90D']] as const} />
+        <Segments label="Window" value={days} onChange={(v) => set({ days: v === 7 ? null : v })} options={[[1, 'Today'], [7, '7D'], [30, '30D'], [90, '90D']] as const} />
       </div>
 
       <div className="panel min-w-0 rise flex-row flex-wrap items-center gap-1.5 px-2.5 py-2" style={{ '--i': 1 } as React.CSSProperties} role="toolbar" aria-label="Presets and filters">
         {PRESETS.map((x) => (
-          <button key={x.id} type="button" onClick={() => pick(x)} aria-pressed={x.id === preset} title={x.hint} className={cx('h-7 rounded-sm border px-2.5 text-[12px] transition-colors duration-150', x.id === preset ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised hover:text-fg')}>
+          <button key={x.id} type="button" onClick={() => pick(x)} aria-pressed={presets.includes(x)} title={x.hint} className={cx('h-7 rounded-sm border px-2.5 text-[12px] transition-colors duration-150', presets.includes(x) ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised hover:text-fg')}>
             {x.label}
           </button>
         ))}
         <span className="mx-1 hidden h-5 w-px bg-line-2 sm:inline-block" aria-hidden />
-        <select value={minVolume} onChange={(e) => { setMinVolume(Number(e.target.value)); setShown(PAGE); }} aria-label="Minimum volume" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg">
-          {VOLUMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        <select value={minVolume} onChange={(e) => set({ minVolume: Number(e.target.value) })} aria-label="Minimum volume" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg">
+          {volumes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <select value={minCloses} onChange={(e) => { setMinCloses(Number(e.target.value)); setShown(PAGE); }} aria-label="Minimum closes" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg">
-          {CLOSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        <select value={minCloses} onChange={(e) => set({ minCloses: Number(e.target.value) })} aria-label="Minimum closes" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg">
+          {closes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+        {filtered && <button type="button" onClick={() => set({ preset: null, minVolume: null, minCloses: null, sort: null, dir: null })} className="h-7 rounded-sm px-2 text-[12px] text-fg-3 hover:bg-raised hover:text-fg">Clear</button>}
         <span className="num ml-auto text-[11.5px] text-fg-3">{q.data ? `${visible.length.toLocaleString('en-US')} of ${rows.length.toLocaleString('en-US')} accounts` : ''}</span>
       </div>
 
-      <Panel title={p.label} aside={<span className="hidden md:inline">{p.hint}</span>} className="min-w-0 rise" >
+      <Panel title={title} aside={<span className="hidden md:inline">{hint}</span>} className="min-w-0 rise" >
         {q.isLoading ? <Skeleton className="m-2 h-64" /> : q.isError ? <div className="p-2"><Notice tone="warn">Could not load the screener. {q.error instanceof Error ? q.error.message : ''}</Notice></div> : !visible.length ? (
           <p className="px-2.5 py-4 text-[12px] text-fg-3">No account matches. Widen the window or loosen the filters.</p>
         ) : (
           <>
             <div className="overflow-x-auto">
-              <Table rows={visible.slice(0, shown)} sort={sort} onSort={toggle} maxAbs={maxAbs} resetKey={`${preset}${days}${sort.key}${sort.dir}${minVolume}${minCloses}`} />
+              <Table rows={visible.slice(0, shown)} sort={sort} onSort={toggle} maxAbs={maxAbs} resetKey={params.toString()} />
             </div>
             {visible.length > shown && (
               <div className="border-t border-line p-2 text-center">

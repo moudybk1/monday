@@ -102,7 +102,7 @@ export default async function Landing() {
         </section>
 
         {/* How it works: one burst played step by step, then the three loops behind it. */}
-        <section id="how" className="mt-14 scroll-mt-14 border-t border-line bg-canvas md:mt-20">
+        <section id="how" className="mt-14 scroll-mt-12 border-t border-line bg-canvas md:mt-20">
           <div className={`${WRAP} py-20 md:py-28`}>
             <Reveal>
               <h2 className={`${H2} max-w-[22ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
@@ -130,7 +130,7 @@ export default async function Landing() {
         </section>
 
         {/* Custody: one statement, the picture of who holds what, four facts. */}
-        <section id="custody" className="scroll-mt-14 border-t border-line">
+        <section id="custody" className="scroll-mt-12 border-t border-line">
           <div className={`${WRAP} py-20 md:py-28`}>
             <Reveal>
               <h2 className="display max-w-[17ch] text-4xl md:text-6xl">
