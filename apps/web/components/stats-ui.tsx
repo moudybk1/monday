@@ -93,17 +93,18 @@ export function Delta({ now, prev, up = 'good', suffix, className }: { now: numb
 export function Kpi({ k, v, n, format, sub, t, hint, delta, spark }: {
   k: string; v?: ReactNode; n?: number | null; format?: (v: number) => string; sub?: ReactNode; t?: number | null; hint?: string; delta?: ReactNode; spark?: ReactNode;
 }) {
+  // Four fixed rows on the parent grid's subgrid, so label, value, delta and sub line up across a row of tiles.
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 bg-canvas px-3 py-2.5" title={hint}>
-      <div className="min-w-0">
-        <dt className="label truncate">{k}</dt>
-        <dd className={cx('num mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[19px] font-medium leading-none tracking-tight', t === undefined ? 'text-fg' : tone(t))}>
+    <div className="row-span-4 grid min-w-0 grid-rows-subgrid gap-y-1.5 bg-canvas px-3 py-2.5" title={hint}>
+      <dt className="label truncate">{k}</dt>
+      <dd className="flex min-w-0 items-center justify-between gap-2">
+        <span className={cx('num flex-none text-[19px] font-medium leading-none tracking-tight', t === undefined ? 'text-fg' : tone(t))}>
           {n != null && format ? <Num value={n} format={format} /> : v}
-          {delta}
-        </dd>
-        {sub != null && <dd className="mt-1.5 truncate text-[11px] text-fg-3">{sub}</dd>}
-      </div>
-      {spark && <div className="h-7 w-14 opacity-80 sm:w-16" aria-hidden>{spark}</div>}
+        </span>
+        {spark && <span className="h-6 w-16 min-w-0 opacity-80" aria-hidden>{spark}</span>}
+      </dd>
+      <dd className="flex min-w-0 truncate leading-none">{delta}</dd>
+      <dd className="truncate text-[11px] leading-none text-fg-3">{sub}</dd>
     </div>
   );
 }

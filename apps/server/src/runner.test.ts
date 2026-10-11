@@ -152,6 +152,7 @@ it('a paper account survives a restart, and its fill traces back to the request 
   w.print({ sym: 'BTC', price: bid.price - 1, size: 1, side: 'sell' }); // a taker sweeps through the bid
   const s1 = r.state();
   expect(s1.markets.BTC!.position.size).toBe(bid.size);
+  expect(s1.fills[0].realizedUsd).toBeNull(); // an opening fill closed nothing
 
   const row = db.prepare('select quote_event_id, ctx from fills where user_id = (select id from users where wallet = ?)').get(wallet) as { quote_event_id: number; ctx: string };
   const placed = db.prepare('select action, side, price, ok from quote_events where id = ?').get(row.quote_event_id);
@@ -166,6 +167,7 @@ it('a paper account survives a restart, and its fill traces back to the request 
   expect(s2.markets.BTC!.position).toEqual(s1.markets.BTC!.position);
   expect(s2.pnl.realizedUsd).toBe(s1.pnl.realizedUsd);
   expect(s2.pnl.feesUsd).toBe(s1.pnl.feesUsd);
+  expect(s2.fills[0].realizedUsd).toBeNull();
   again.dispose();
 });
 

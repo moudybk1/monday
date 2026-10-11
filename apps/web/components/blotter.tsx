@@ -98,10 +98,10 @@ export function Fills({ state }: { state: DashboardState }) {
   if (state.fills.length === 0) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No trades yet. A trade appears here when a taker trades against one of Monday&apos;s resting orders.</p>;
   const mk = (v: number | null) => (v == null ? <span className="text-fg-3">wait</span> : <span className={v >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{fmtBps(v)}</span>);
   return (
-    <table className="w-full min-w-[640px] text-[11.5px]">
+    <table className="w-full min-w-[720px] text-[11.5px]">
       <thead>
         <tr className={HEAD}>
-          <th className="pl-2.5">Time</th><th>Market</th><th>Side</th><th className="text-right">Price</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Fee</th><th className="pl-4">Regime</th>
+          <th className="pl-2.5">Time</th><th>Market</th><th>Side</th><th className="text-right">Price</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Fee</th><th className="text-right" title="Profit or loss this fill closed, before its fee. Blank when the fill opened or added to a position.">Realised PnL</th><th className="pl-4">Regime</th>
           <th className="text-right" title="Price move after the fill, in basis points. Positive means the market moved Monday's way.">10s</th><th className="text-right">1m</th><th className="pr-2.5 text-right">5m</th>
         </tr>
       </thead>
@@ -117,6 +117,7 @@ export function Fills({ state }: { state: DashboardState }) {
               <td className="text-right">{fmtSize(f.size, spec)}</td>
               <td className="text-right">{fmtUsd(f.price * f.size)}</td>
               <td className="text-right text-fg-2">{fmtUsd(f.feeUsd, 4)}</td>
+              <td className={cx('text-right', f.realizedUsd != null && tone(f.realizedUsd))}>{f.realizedUsd == null ? <span className="text-fg-3">-</span> : fmtSigned(f.realizedUsd)}</td>
               <td className="pl-4 font-sans text-fg-2">{f.regime}</td>
               <td className="text-right">{f.isMaker ? mk(f.markout10sBps) : ''}</td>
               <td className="text-right">{f.isMaker ? mk(f.markout1mBps) : ''}</td>
