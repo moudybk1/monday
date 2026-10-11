@@ -121,8 +121,8 @@ export interface PxTraderStats {
   flat: number;
   medianNetUsd: number | null;
   meanNetUsd: number | null;
-  /** Accounts by net PnL, biggest losses first. */
-  buckets: { label: string; lo: number; hi: number; n: number }[];
+  /** Accounts by net PnL, biggest losses first. The two open ends are null (JSON has no Infinity). */
+  buckets: { label: string; lo: number | null; hi: number | null; n: number }[];
   volumeUsd: number;
   top10Share: number;
   top50Share: number;
@@ -414,7 +414,7 @@ export function traderDistribution(rows: { volumeUsd: number; netUsd: number }[]
   const buckets = BUCKET_EDGES.slice(0, -1).map((lo, i) => {
     const hi = BUCKET_EDGES[i + 1];
     const label = lo === -Infinity ? `under ${edgeLabel(hi)}` : hi === Infinity ? `over ${edgeLabel(lo)}` : `${edgeLabel(lo)} to ${edgeLabel(hi)}`;
-    return { label, lo, hi, n: nets.filter((n) => n > lo && n <= hi).length };
+    return { label, lo: Number.isFinite(lo) ? lo : null, hi: Number.isFinite(hi) ? hi : null, n: nets.filter((n) => n > lo && n <= hi).length };
   });
   const vols = rows.map((r) => r.volumeUsd).sort((a, b) => b - a);
   const volumeUsd = vols.reduce((a, b) => a + b, 0);
@@ -467,14 +467,23 @@ export type AskIntent =
   | { kind: 'wallet'; q: string }
   | { kind: 'market'; sym: string }
   | { kind: 'metric'; metric: AskMetric; sym?: string; range?: 7 | 30 | 90 | 0 }
-  | { kind: 'screen'; days?: AskDays; preset?: AskPreset; minVolume?: number; minCloses?: number; sort?: AskSort; dir?: 'asc' | 'desc' }
+  /** `presets` combine: every one must hold (whales that were liquidated). The first sets the order unless `sort` does. */
+  | { kind: 'screen'; days?: AskDays; presets?: AskPreset[]; minVolume?: number; minCloses?: number; sort?: AskSort; dir?: 'asc' | 'desc' }
   | { kind: 'compare'; wallets: string[] }
   | { kind: 'top'; days: AskDays; sort: 'net' | 'volume' | 'loss'; n: number }
   | { kind: 'tab'; tab: 'perpl' | 'screener' | 'compare' | 'monday' }
   | { kind: 'unknown'; reason: string };
 
+/** What the ask bar gets back: the action, who read the question, and the part of it the action leaves out, if any. */
+export type AskAnswer = { intent: AskIntent; source: 'rules' | 'model' | 'none'; dropped?: string };
+
 const WALLET_RE = /^(0x[0-9a-f]{40}|#?\d{1,8})$/i;
 const usdOf = (s: string) => { const m = /\$?\s*(\d+(?:\.\d+)?)\s*(k|m)?\b/i.exec(s); return m ? Number(m[1]) * (m[2]?.toLowerCase() === 'm' ? 1e6 : m[2] ? 1e3 : 1) : null; };
+
+const PRESET_WORDS: [AskPreset, RegExp][] = [
+  ['whales', /\bwhale/], ['makers', /\b(market ?maker|makers?|mm)\b/], ['takers', /\btakers?\b/], ['liquidated', /\bliquidated\b/],
+  ['streaks', /\bstreak/], ['winners', /\b(winner|consistent|profitable)/], ['losers', /\b(loser|losing|worst)/],
+];
 
 const WONDERING = /\b(will|would|should|could|predict|forecast|why|how|price|tomorrow|next (week|month)|explain|what is|what's|mean)\b/;
 /** A question that wonders, predicts or asks for advice: never something to guess an action for. */
@@ -499,11 +508,13 @@ export function quickAsk(raw: string, markets: string[], loose = false): AskInte
   const top = /\btop (\d{1,2})\b/.exec(t);
   if (/\bcompare\b/.test(t) && top) return { kind: 'top', days: days ?? 7, sort: /\b(loser|losing|worst)/.test(t) ? 'loss' : /\b(volume|active|biggest traders)\b/.test(t) ? 'volume' : 'net', n: Math.min(4, Math.max(2, Number(top[1]))) };
 
-  const preset: AskPreset | undefined = /\bwhale/.test(t) ? 'whales' : /\b(market ?maker|makers?|mm)\b/.test(t) ? 'makers' : /\btakers?\b/.test(t) ? 'takers'
-    : /\bliquidated\b/.test(t) ? 'liquidated' : /\bstreak/.test(t) ? 'streaks' : /\b(winner|consistent|profitable)/.test(t) ? 'winners' : /\b(loser|losing|worst)/.test(t) ? 'losers' : undefined;
-  const screenish = preset || /\b(wallets?|traders?|accounts?|screen|who)\b/.test(t);
+  // Every kind the question names, in this order: the first one sets the sort.
+  const presets = PRESET_WORDS.filter(([, re]) => re.test(t)).map(([p]) => p);
+  const screenish = presets.length || /\b(wallets?|traders?|accounts?|screen|who)\b/.test(t);
   const minVolume = /\b(over|above|more than|min(?:imum)?|at least)\s+\$?\d/.test(t) && /\bvolume\b/.test(t) ? usdOf(t.slice(t.search(/\b(over|above|more than|min(?:imum)?|at least)\b/))) ?? undefined : undefined;
-  if (screenish && (preset || days || minVolume)) return { kind: 'screen', days, preset: preset ?? 'all', minVolume };
+  const closes = /\b(\d{1,5}) closes?\b/.exec(t);
+  const minCloses = closes ? Number(closes[1]) : undefined;
+  if (screenish && (presets.length || days || minVolume || minCloses)) return { kind: 'screen', days, presets: presets.length ? presets : undefined, minVolume, minCloses };
 
   const metric: AskMetric | undefined = /\bfunding\b/.test(t) ? 'funding' : /\b(open interest|oi)\b/.test(t) ? 'oi' : /\btvl\b/.test(t) ? 'tvl' : /\b(fees?|revenue)\b/.test(t) ? 'fees'
     : /\b(long ?short|skew|positioning)\b/.test(t) ? 'skew' : /\bliquidations?\b/.test(t) ? 'liqs' : /\b(flows?|deposits?|withdrawals?)\b/.test(t) ? 'flows' : /\b(new accounts?|signups?|growth)\b/.test(t) ? 'accounts'

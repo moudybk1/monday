@@ -467,10 +467,13 @@ export function registerStats(app: FastifyInstance) {
     if (!w) return reply.status(404).send({ error: 'not_found', message: 'No Perpl account for that address or account id.' });
     const text = explainWallet(w);
     if (!text) return { available: false, facts: walletFacts(w) };
+    const facts = walletFacts(w);
     try {
-      return { available: true, text: await text, facts: walletFacts(w), at: Date.now() };
+      return { available: true, text: await text, source: 'model', facts, at: Date.now() };
     } catch (e) {
-      return reply.status(503).send({ error: 'model_unavailable', message: `The model did not answer: ${e instanceof Error ? e.message : String(e)}` });
+      // A slow or failing model must not leave the reader with nothing: the same figures, as written, in its place.
+      console.warn(JSON.stringify({ service: 'stats', event: 'explain_failed', error: e instanceof Error ? e.message : String(e) }));
+      return { available: true, text: facts.slice(0, 3).join(' '), source: 'facts', facts, at: Date.now() };
     }
   });
   app.get('/api/stats/wallet/:q', async (req, reply) => {

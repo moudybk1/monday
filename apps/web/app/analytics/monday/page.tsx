@@ -36,8 +36,8 @@ export default function MyMondayPage() {
         <div className="panel flex-row flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1.5 text-[12px] text-fg-2" aria-label="Account">
           <span className="font-semibold text-fg">{me.data.accountId ? `Perpl account #${me.data.accountId}` : 'No Perpl account yet'}</span>
           <span className="num">{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
-          <Tag tone={cfg.data.realFunds ? 'ask' : cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>
-            {cfg.data.realFunds ? 'Mainnet: real funds' : cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}
+          <Tag tone={cfg.data.realFunds ? 'bid' : cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>
+            {cfg.data.realFunds ? cfg.data.networkName : cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}
           </Tag>
           <span className="text-fg-3">Last {days} days, by UTC day, from Monday&apos;s own records of its fills.</span>
         </div>

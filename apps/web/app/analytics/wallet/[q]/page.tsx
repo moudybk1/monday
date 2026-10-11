@@ -238,7 +238,7 @@ function Curve({ p }: { p: PxWallet['performance'] }) {
 const ICON: Record<Insight['tone'], { Icon: typeof InfoIcon; cls: string }> = {
   good: { Icon: TrendUpIcon, cls: 'text-bid-fg' }, bad: { Icon: TrendDownIcon, cls: 'text-ask-fg' }, warn: { Icon: WarningIcon, cls: 'text-warn' }, neutral: { Icon: InfoIcon, cls: 'text-fg-3' },
 };
-type Explanation = { available: boolean; text?: string; facts: string[] };
+type Explanation = { available: boolean; text?: string; source?: 'model' | 'facts'; facts: string[] };
 function Insights({ w }: { w: PxWallet }) {
   const reduce = useReducedMotion();
   const lines = walletInsights(w);
@@ -251,7 +251,7 @@ function Insights({ w }: { w: PxWallet }) {
         {ex.data?.text && (
           <motion.div key="explain" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-3 rounded-sm border border-accent/30 bg-accent/6 px-2.5 py-2 text-[12.5px] leading-snug text-fg">
             <p>{ex.data.text}</p>
-            <p className="mt-1.5 text-[10.5px] text-fg-3">Written by a model from the figures on this page only.</p>
+            <p className="mt-1.5 text-[10.5px] text-fg-3">{ex.data.source === 'facts' ? 'The model did not answer in time, so these are the page\'s own figures, unchanged.' : 'Written by a model from the figures on this page only.'}</p>
           </motion.div>
         )}
       </AnimatePresence>

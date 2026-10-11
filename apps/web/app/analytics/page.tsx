@@ -27,6 +27,8 @@ const ALL = 'All markets';
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
 const shortDay = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' });
 const shortTime = (t: number) => new Date(t).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+/** A loss bucket starts below zero; the bottom one is open-ended (lo null). The top one (hi null) is the biggest winners. */
+const lost = (b: { lo: number | null }) => b.lo == null || b.lo < 0;
 const apr = (rate: number, intervalMin: number) => rate * ((365 * 24 * 60) / Math.max(1, intervalMin)) * 100;
 const int = (n: number) => Math.round(n).toLocaleString('en-US');
 
@@ -517,7 +519,7 @@ function WhoWins({ win }: { win: PxWindow }) {
           {decided ? (
             <SignedBars
               height={150} label={`Accounts by net PnL, ${label}`} format={(v) => int(Math.abs(v))} lowLabel={s.buckets[0].label} highLabel={s.buckets.at(-1)!.label}
-              data={s.buckets.map((b) => ({ key: b.label, v: b.hi <= 0 ? -b.n : b.n, tip: `${int(b.n)} account${b.n === 1 ? '' : 's'} ${b.hi <= 0 ? 'lost' : 'made'} ${b.label.replace(/^-|-\$/g, (m) => (m === '-' ? '' : '$'))}` }))}
+              data={s.buckets.map((b) => ({ key: b.label, v: lost(b) ? -b.n : b.n, tip: `${int(b.n)} account${b.n === 1 ? '' : 's'} ${lost(b) ? 'lost' : 'made'} ${b.label.replace(/^-|-\$/g, (m) => (m === '-' ? '' : '$'))}` }))}
             />
           ) : <p className="flex h-[150px] items-center justify-center text-[12px] text-fg-3">No realised results in this window yet.</p>}
           <p className="text-[11px] text-fg-3">Losses to the left, gains to the right, one bar per band. {s.flat ? `${int(s.flat)} more traded without closing anything.` : ''}</p>

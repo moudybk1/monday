@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import type { AskIntent, PxOverview, PxTrader } from '@monday/core';
+import type { AskAnswer, AskIntent, PxOverview, PxTrader } from '@monday/core';
 import { AppHeader } from '@/components/app-header';
 import { Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -53,7 +53,7 @@ function Header() {
         <span aria-hidden className={cx('size-1.5 rounded-full', live ? 'live-dot bg-bid' : off ? 'bg-ask' : 'bg-warn')} />
         {!ix ? 'connecting' : off ? (ix.lagSec != null ? `history ${ago(ix.lagSec)} behind, indexer off` : 'indexer off') : !live ? 'catching up' : ix.backfillDays ? `live, ${ix.backfillDays} days backfilling` : 'live'}
       </span>
-      <span className="hidden sm:inline" title="The network the public Perpl pages read. Your own results on My Monday name their own account and funds."><Tag tone="neutral">Public: Perpl {ov.data?.network ?? 'mainnet'}</Tag></span>
+      <span className="hidden sm:inline" title="The network the public Perpl pages read. Your own results on My Monday name their own account and funds."><Tag tone="bid">Monad {ov.data?.network ?? 'mainnet'}</Tag></span>
     </AppHeader>
   );
 }
@@ -83,7 +83,7 @@ const label = (i: AskIntent) => {
     case 'wallet': return `Opening wallet ${i.q.startsWith('0x') ? `${i.q.slice(0, 6)}…${i.q.slice(-4)}` : `#${i.q}`}`;
     case 'market': return `Focusing ${i.sym}`;
     case 'metric': return `Showing ${i.metric === 'oi' ? 'open interest' : i.metric === 'liqs' ? 'liquidations' : i.metric === 'skew' ? 'long / short' : i.metric}${i.sym ? ` on ${i.sym}` : ''}`;
-    case 'screen': return `Screener: ${i.preset ?? 'everyone'}${i.days ? `, ${days(i.days)}` : ''}${i.minVolume ? `, over $${i.minVolume >= 1e6 ? `${i.minVolume / 1e6}M` : `${i.minVolume / 1e3}k`}` : ''}`;
+    case 'screen': return `Screener: ${i.presets?.join(' + ') ?? 'everyone'}${i.days ? `, ${days(i.days)}` : ''}${i.minVolume ? `, volume $${i.minVolume.toLocaleString('en-US')}+` : ''}${i.minCloses ? `, ${i.minCloses}+ closes` : ''}`;
     case 'compare': return `Comparing ${i.wallets.length} wallets`;
     case 'top': return `Comparing the top ${i.n} by ${i.sort === 'net' ? 'PnL' : i.sort === 'loss' ? 'loss' : 'volume'}, ${days(i.days)}`;
     case 'tab': return `Opening ${i.tab === 'perpl' ? 'Perpl' : i.tab === 'monday' ? 'My Monday' : i.tab}`;
@@ -103,7 +103,7 @@ function AskBar() {
   const [busy, setBusy] = useState(false);
   const [slow, setSlow] = useState(false); // the model is taking its time: say so instead of looking stuck
   const [open, setOpen] = useState(false);
-  const [note, setNote] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
+  const [note, setNote] = useState<{ text: string; tone: 'ok' | 'warn'; dropped?: string } | null>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ref.current?.focus(); ref.current?.select(); }
@@ -118,7 +118,7 @@ function AskBar() {
   }, [busy]);
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => setNote(null), note.tone === 'ok' ? 3_000 : 7_000);
+    const t = setTimeout(() => setNote(null), note.tone === 'ok' && !note.dropped ? 3_000 : 8_000);
     return () => clearTimeout(t);
   }, [note]);
 
@@ -128,7 +128,7 @@ function AskBar() {
       case 'wallet': return router.push(`/analytics/wallet/${i.q}`);
       case 'market': return router.push(`/analytics${qs({ market: i.sym })}`);
       case 'metric': return router.push(`/analytics${qs({ metric: i.metric, market: i.sym, range: i.range })}`);
-      case 'screen': return router.push(`/analytics/screener${qs({ preset: i.preset, days: i.days, minVolume: i.minVolume, minCloses: i.minCloses, sort: i.sort, dir: i.dir })}`);
+      case 'screen': return router.push(`/analytics/screener${qs({ preset: i.presets?.join(','), days: i.days, minVolume: i.minVolume, minCloses: i.minCloses, sort: i.sort, dir: i.dir })}`);
       case 'compare': return router.push(`/analytics/compare?w=${i.wallets.join(',')}`);
       case 'top': {
         const rows = await api<PxTrader[]>(`/stats/traders?days=${i.days}&sort=${i.sort}`);
@@ -145,8 +145,8 @@ function AskBar() {
     setBusy(true);
     setOpen(false);
     try {
-      const r = await api<{ intent: AskIntent; source: 'rules' | 'model' | 'none' }>('/stats/ask', { method: 'POST', body: { q: v } });
-      if (r.intent.kind !== 'unknown') { setNote({ text: label(r.intent), tone: 'ok' }); setQ(''); }
+      const r = await api<AskAnswer>('/stats/ask', { method: 'POST', body: { q: v } });
+      if (r.intent.kind !== 'unknown') { setNote({ text: label(r.intent), tone: 'ok', dropped: r.dropped }); setQ(''); }
       await act(r.intent);
     } catch (e) {
       setNote({ text: e instanceof Error ? e.message : 'Could not ask right now.', tone: 'warn' });
@@ -179,6 +179,7 @@ function AskBar() {
         {note && (
           <motion.p key={note.text} role="status" initial={reduce ? false : { opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className={cx('absolute top-full right-2 left-2 z-20 mt-1 rounded-sm border px-2.5 py-1.5 text-[11.5px] shadow-[0_8px_24px_rgb(0_0_0/0.35)] sm:left-auto sm:w-[26rem]', note.tone === 'ok' ? 'border-accent/45 bg-raised-2 text-fg' : 'border-warn/45 bg-raised-2 text-warn')}>
             {note.text}
+            {note.dropped && <span className="mt-0.5 block text-[11px] text-warn">Not applied: {note.dropped}</span>}
           </motion.p>
         )}
       </AnimatePresence>

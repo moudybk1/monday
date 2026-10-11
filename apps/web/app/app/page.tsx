@@ -117,7 +117,7 @@ export default function Terminal() {
   ];
 
   return (
-    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-2.75rem)]">
+    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-3rem)]">
       {/* Market strip */}
       {/* Visible overflow so the market picker can drop below the strip. */}
       <div className="panel flex-none flex-row flex-wrap items-stretch overflow-visible">
@@ -454,7 +454,7 @@ function StatusBar({ state, sim, paper, connected }: { state: DashboardState; si
 
 function Loading() {
   return (
-    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-2.75rem)]">
+    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-3rem)]">
       <Skeleton className="h-[52px] flex-none" />
       <div className="grid min-h-[60vh] flex-1 gap-1 xl:grid-cols-[minmax(0,1fr)_300px_360px]">
         <Skeleton />

@@ -522,6 +522,9 @@ describe('Perpl stats', () => {
     expect(d.buckets.map((b) => b.n)).toEqual([1, 0, 0, 0, 1, 0, 1, 0, 1, 0]);
     expect(d.buckets[0].label).toBe('under -$10k');
     expect(d.buckets[9].label).toBe('over $10k');
+    // The open ends survive JSON as null, not as Infinity turned null by accident: the top bucket stays a gain.
+    expect(JSON.parse(JSON.stringify(d.buckets))).toEqual(d.buckets);
+    expect([d.buckets[0].lo, d.buckets[9].lo, d.buckets[9].hi]).toEqual([null, 10_000, null]);
     expect(d.top10Share).toBe(1);
     expect(traderDistribution([{ volumeUsd: 100, netUsd: 1 }, { volumeUsd: 1, netUsd: 1 }, ...Array.from({ length: 10 }, () => ({ volumeUsd: 1, netUsd: 1 }))]).top10Share).toBeCloseTo(109 / 111);
   });
@@ -550,9 +553,10 @@ describe('Perpl stats', () => {
     expect(quickAsk('0x2ac5ab63587d12f547ae04437a18cfe0eb8f8935', M)).toEqual({ kind: 'wallet', q: '0x2ac5ab63587d12f547ae04437a18cfe0eb8f8935' });
     expect(quickAsk('#4734', M)).toEqual({ kind: 'wallet', q: '4734' });
     expect(quickAsk('eth', M)).toEqual({ kind: 'market', sym: 'ETH' });
-    expect(quickAsk('whales liquidated this month', M)).toEqual({ kind: 'screen', days: 30, preset: 'whales', minVolume: undefined });
-    expect(quickAsk('market makers with volume over $100k this week', M)).toEqual({ kind: 'screen', days: 7, preset: 'makers', minVolume: 100_000 });
-    expect(quickAsk('consistent winners', M)).toEqual({ kind: 'screen', days: undefined, preset: 'winners', minVolume: undefined });
+    expect(quickAsk('whales liquidated this month', M)).toEqual({ kind: 'screen', days: 30, presets: ['whales', 'liquidated'], minVolume: undefined, minCloses: undefined }); // both conditions, not just whales
+    expect(quickAsk('market makers with volume over $100k this week', M)).toEqual({ kind: 'screen', days: 7, presets: ['makers'], minVolume: 100_000, minCloses: undefined });
+    expect(quickAsk('winners with 75 closes', M)).toEqual({ kind: 'screen', days: undefined, presets: ['winners'], minVolume: undefined, minCloses: 75 });
+    expect(quickAsk('consistent winners', M)).toEqual({ kind: 'screen', days: undefined, presets: ['winners'], minVolume: undefined, minCloses: undefined });
     expect(quickAsk('BTC funding this month', M)).toEqual({ kind: 'metric', metric: 'funding', sym: 'BTC', range: 30 });
     expect(quickAsk('open interest', M)).toEqual({ kind: 'metric', metric: 'oi', sym: undefined, range: undefined });
     expect(quickAsk('compare 25 and 4734', M)).toEqual({ kind: 'compare', wallets: ['25', '4734'] });
@@ -562,7 +566,7 @@ describe('Perpl stats', () => {
     // Wondering or long sentences go to the model; without one, the best guess still serves.
     expect(quickAsk('what will the price of ETH be tomorrow', M)).toBeNull();
     expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M)).toBeNull();
-    expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M, true)).toEqual({ kind: 'screen', days: 7, preset: 'all', minVolume: undefined });
+    expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M, true)).toEqual({ kind: 'screen', days: 7, presets: undefined, minVolume: undefined, minCloses: 50 });
   });
 
   it('finds the block ranges never scanned, back to block 0', () => {

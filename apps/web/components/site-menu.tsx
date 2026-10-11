@@ -16,7 +16,7 @@ export function SiteMenu({ links }: { links: { href: string; label: string }[] }
       <button type="button" popoverTarget="site-menu" aria-label="Menu" className="grid size-8 place-items-center rounded-sm text-fg-2 hover:bg-raised hover:text-fg md:hidden">
         <ListIcon size={18} />
       </button>
-      <div ref={menu} id="site-menu" popover="auto" className="md:hidden inset-x-0 top-14 bottom-auto m-0 h-auto w-full max-w-none border-0 border-b border-line bg-void p-2 text-fg">
+      <div ref={menu} id="site-menu" popover="auto" className="md:hidden inset-x-0 top-12 bottom-auto m-0 h-auto w-full max-w-none border-0 border-b border-line bg-void p-2 text-fg">
         <nav aria-label="Main menu" className="grid">
           {links.map((l) => (
             <Link key={l.href} href={l.href} onClick={() => menu.current?.hidePopover()} className="flex h-11 items-center rounded-sm px-3 text-[15px] text-fg-2 hover:bg-raised hover:text-fg">
