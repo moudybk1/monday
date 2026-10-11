@@ -99,9 +99,9 @@ const insert = db.prepare(
 export class Collector {
   readonly kind = config.smartMoney;
   private source: Source | null;
-  private recent = { BTC: [], ETH: [], SOL: [] } as Record<MarketSym, SmartTrade[]>;
+  private recent = Object.fromEntries(MARKETS.map((m) => [m, []])) as unknown as Record<MarketSym, SmartTrade[]>;
   /** Net flow per one-minute bucket, keyed by minute index. Seven days are kept. */
-  private flows = { BTC: new Map(), ETH: new Map(), SOL: new Map() } as Record<MarketSym, Map<number, number>>;
+  private flows = Object.fromEntries(MARKETS.map((m) => [m, new Map()])) as Record<MarketSym, Map<number, number>>;
   /** Wallets Nansen has labelled (lowercase address -> label), learned from every row it sends. */
   private watch = new Map<string, string>();
   /** Trades counted live from Hyperliquid, by `${trader}:${hash}`, until Nansen's own row replaces them. */

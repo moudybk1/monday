@@ -10,15 +10,18 @@ import {
   type VenueDriver, type VenueEvents, type VenueFill, type VenuePosition,
 } from './types';
 
-// Mirrors Perpl testnet's /pub/context at the time of writing.
+// BTC, ETH and SOL mirror Perpl testnet's /pub/context at the time of writing; the rest mainnet's (2026-10-12).
+const spec = (sym: MarketSym, marketId: number, priceTick: number, sizeStep: number, maxLeverage: number): MarketSpec =>
+  ({ sym, marketId, priceTick, sizeStep, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage });
 const SPECS: Record<MarketSym, MarketSpec> = {
-  BTC: { sym: 'BTC', marketId: 16, priceTick: 0.1, sizeStep: 0.00001, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage: 15 },
-  ETH: { sym: 'ETH', marketId: 32, priceTick: 0.01, sizeStep: 0.001, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage: 12 },
-  SOL: { sym: 'SOL', marketId: 48, priceTick: 0.01, sizeStep: 0.001, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage: 10 },
+  BTC: spec('BTC', 16, 0.1, 0.00001, 15), ETH: spec('ETH', 32, 0.01, 0.001, 12), SOL: spec('SOL', 48, 0.01, 0.001, 10),
+  MON: spec('MON', 10, 0.000001, 1, 10), HYPE: spec('HYPE', 40, 0.0001, 0.01, 10), ZEC: spec('ZEC', 50, 0.01, 0.0001, 10),
+  LIT: spec('LIT', 60, 0.00001, 0.1, 3), VVV: spec('VVV', 70, 0.0001, 0.01, 3), PUMP: spec('PUMP', 90, 0.000001, 1, 5),
+  NEAR: spec('NEAR', 100, 0.0001, 0.01, 3), UNI: spec('UNI', 110, 0.0001, 0.01, 3),
 };
-const START: Record<MarketSym, number> = { BTC: 85_200, ETH: 2_690, SOL: 119.2 };
-const VOL_1M_BPS: Record<MarketSym, number> = { BTC: 2.6, ETH: 3.4, SOL: 4.6 };
-const FLOW_SCALE: Record<MarketSym, number> = { BTC: 1, ETH: 0.8, SOL: 0.6 };
+const START: Record<MarketSym, number> = { BTC: 85_200, ETH: 2_690, SOL: 119.2, MON: 0.027, HYPE: 86.7, ZEC: 1_283, LIT: 3.7, VVV: 24.5, PUMP: 0.0058, NEAR: 5.75, UNI: 7.77 };
+const VOL_1M_BPS: Record<MarketSym, number> = { BTC: 2.6, ETH: 3.4, SOL: 4.6, MON: 8, HYPE: 6, ZEC: 7, LIT: 8, VVV: 8, PUMP: 9, NEAR: 6, UNI: 6 };
+const FLOW_SCALE: Record<MarketSym, number> = { BTC: 1, ETH: 0.8, SOL: 0.6, MON: 0.3, HYPE: 0.5, ZEC: 0.3, LIT: 0.2, VVV: 0.2, PUMP: 0.3, NEAR: 0.3, UNI: 0.3 };
 
 const DAY = 86_400_000;
 const HISTORY_MS = 7 * DAY;

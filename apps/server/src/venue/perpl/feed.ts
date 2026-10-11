@@ -1,4 +1,4 @@
-// Public market data: one socket, one subscription frame, a local L2 book per
+// Public market data: a few sockets, one subscription frame each, a local L2 book per
 // market, and 1-minute candles over REST.
 
 import type { BookLevel, MarketSpec, MarketSym } from '@monday/core';
@@ -13,6 +13,21 @@ const START_TIMEOUT_MS = 10_000;
 // A book that has not been restated this long after a (re)connect is asked for again. At most 6 subscribe frames a
 // minute, inside Perpl's 10, and well before the runner's 30 s stale-data kill.
 const RESUBSCRIBE_MS = 10_000;
+// A socket may hold 16 subscriptions: the three chain-wide streams plus a book and trades for 6 markets is 15. Eleven
+// markets take two sockets, each with its own heartbeat, so each can tell its own books are current.
+const MARKETS_PER_SOCKET = 6;
+
+/** One market-data socket and the markets it carries. */
+interface Shard {
+  ids: number[];
+  subs: { stream: string; subscribe: true }[];
+  link: Link | null;
+  bookSids: Map<number, number>; // subscription id -> market id, on this socket
+  tradeSids: Map<number, number>;
+  lastSn: number | null;
+  lastFrameAt: number;
+  resubscribe?: ReturnType<typeof setTimeout>;
+}
 
 type Levels = Map<number, number>; // wire price -> wire size
 interface WireLevel { p: number; s: number; o: number }
@@ -20,42 +35,45 @@ interface WireState { orl: number; mrk: number; oi: number }
 
 export class PerplFeed implements MarketFeed {
   private ctx: PerplContext | null = null;
-  private link: Link | null = null;
-  private bookSids = new Map<number, number>(); // subscription id -> market id
-  private tradeSids = new Map<number, number>();
+  private shards: Shard[] = [];
+  private shardOf = new Map<number, Shard>(); // market id -> its socket
   private tradeCbs: ((t: TapeTrade) => void)[] = [];
   private books = new Map<number, { bid: Levels; ask: Levels }>();
   private states = new Map<number, WireState>();
   private funding = new Map<number, number>(); // market id -> rate, micros
-  private lastSn: number | null = null;
-  private lastFrameAt = 0;
   // A book is only as fresh as its last snapshot on the current socket: heartbeats keep arriving after a failed
   // order-book subscription, so they cannot vouch for it. `staleSince` is when a market's book was last known good.
   private live = new Set<number>();
   private staleSince = new Map<number, number>();
-  private resubscribe?: ReturnType<typeof setTimeout>;
-  private subs: { stream: string; subscribe: true }[] = [];
   private onReady: (() => void) | null = null;
 
   constructor(private cfg: PerplConfig, private loadCtx: () => Promise<PerplContext>) {}
 
   async start(): Promise<void> {
-    if (this.link) return;
+    if (this.shards.length) return;
     const ctx = (this.ctx = await this.loadCtx());
     const ids = [...ctx.byId.keys()];
-    // One frame for everything: 9 of the 16 allowed subscriptions, 1 of the 10 requests/min.
-    this.subs = [`market-state@${this.cfg.chainId}`, `funding@${this.cfg.chainId}`, `heartbeat@${this.cfg.chainId}`, ...ids.flatMap((id) => [`order-book@${id}`, `trades@${id}`])]
-      .map((stream) => ({ stream, subscribe: true as const }));
+    const chain = [`market-state@${this.cfg.chainId}`, `funding@${this.cfg.chainId}`, `heartbeat@${this.cfg.chainId}`];
+    for (let i = 0; i < ids.length; i += MARKETS_PER_SOCKET) {
+      const part = ids.slice(i, i + MARKETS_PER_SOCKET);
+      // One frame per socket: at most 15 of its 16 subscriptions, 1 of its 10 requests/min.
+      const subs = [...chain, ...part.flatMap((id) => [`order-book@${id}`, `trades@${id}`])].map((stream) => ({ stream, subscribe: true as const }));
+      const sh: Shard = { ids: part, subs, link: null, bookSids: new Map(), tradeSids: new Map(), lastSn: null, lastFrameAt: 0 };
+      this.shards.push(sh);
+      for (const id of part) this.shardOf.set(id, sh);
+    }
 
     await new Promise<void>((resolve) => {
-      // If the venue is unreachable the socket keeps retrying; snapshot() stays null until data arrives.
+      // If the venue is unreachable the sockets keep retrying; snapshot() stays null until data arrives.
       const timer = setTimeout(resolve, START_TIMEOUT_MS);
       this.onReady = () => (clearTimeout(timer), resolve());
-      this.link = openLink(`${this.cfg.wsUrl}/ws/v1/market-data`, {
-        open: () => this.onOpen(),
-        frame: (m) => this.onFrame(m),
-        closed: () => true, // always reconnect; market-data needs no keep-alive pings
-      });
+      for (const sh of this.shards) {
+        sh.link = openLink(`${this.cfg.wsUrl}/ws/v1/market-data`, {
+          open: () => this.onOpen(sh),
+          frame: (m) => this.onFrame(sh, m),
+          closed: () => true, // always reconnect; market-data needs no keep-alive pings
+        });
+      }
     });
   }
 
@@ -64,9 +82,12 @@ export class PerplFeed implements MarketFeed {
   }
 
   stop(): void {
-    clearTimeout(this.resubscribe);
-    this.link?.stop();
-    this.link = null;
+    for (const sh of this.shards) {
+      clearTimeout(sh.resubscribe);
+      sh.link?.stop();
+    }
+    this.shards = [];
+    this.shardOf.clear();
   }
 
   specs(): Partial<Record<MarketSym, MarketSpec>> {
@@ -99,7 +120,7 @@ export class PerplFeed implements MarketFeed {
       fundingRate: (this.funding.get(m.id) ?? 0) / 1e6,
       openInterest: st.oi / m.sz,
       // Heartbeats arrive every block, so while the book is live the receive clock is its age; otherwise the last good time.
-      updatedAt: this.live.has(m.id) ? this.lastFrameAt : this.staleSince.get(m.id) ?? 0,
+      updatedAt: this.live.has(m.id) ? this.shardOf.get(m.id)?.lastFrameAt ?? 0 : this.staleSince.get(m.id) ?? 0,
     };
   }
 
@@ -120,31 +141,33 @@ export class PerplFeed implements MarketFeed {
     return out;
   }
 
-  private onOpen(): void {
-    this.lastSn = null;
-    this.bookSids.clear();
-    this.tradeSids.clear();
-    // Every book is stale until this socket restates it: since its last frame on the old socket, or since now if it
-    // never had one. A market already stale keeps its earlier time.
+  private onOpen(sh: Shard): void {
+    sh.lastSn = null;
+    sh.bookSids.clear();
+    sh.tradeSids.clear();
+    // Every book on this socket is stale until it restates it: since its last frame on the old socket, or since now if
+    // it never had one. A market already stale keeps its earlier time.
     const now = Date.now();
-    for (const id of this.ctx!.byId.keys()) if (!this.staleSince.has(id)) this.staleSince.set(id, this.live.has(id) ? this.lastFrameAt : now);
-    this.live.clear();
-    this.link?.send({ mt: 5, subs: this.subs });
-    clearTimeout(this.resubscribe);
-    this.resubscribe = setTimeout(() => {
-      if ([...this.ctx!.byId.keys()].some((id) => !this.live.has(id))) this.link?.bounce(); // a stream failed or never answered
+    for (const id of sh.ids) {
+      if (!this.staleSince.has(id)) this.staleSince.set(id, this.live.has(id) ? sh.lastFrameAt : now);
+      this.live.delete(id);
+    }
+    sh.link?.send({ mt: 5, subs: sh.subs });
+    clearTimeout(sh.resubscribe);
+    sh.resubscribe = setTimeout(() => {
+      if (sh.ids.some((id) => !this.live.has(id))) sh.link?.bounce(); // a stream failed or never answered
     }, RESUBSCRIBE_MS);
   }
 
-  private onFrame(m: any): void {
-    this.lastFrameAt = Date.now();
+  private onFrame(sh: Shard, m: any): void {
+    sh.lastFrameAt = Date.now();
     const tracked = this.ctx!.byId;
     switch (m.mt) {
       case 6: // SubscriptionResponse: failures are per stream, the socket stays open
         for (const s of m.subs ?? []) {
           if (s.status?.code) console.warn(`[perpl] subscribe ${s.stream} failed: ${s.status.code} ${s.status.error ?? ''}`);
-          else if (s.stream.startsWith('order-book@')) this.bookSids.set(s.sid, Number(s.stream.slice('order-book@'.length)));
-          else if (s.stream.startsWith('trades@')) this.tradeSids.set(s.sid, Number(s.stream.slice('trades@'.length)));
+          else if (s.stream.startsWith('order-book@')) sh.bookSids.set(s.sid, Number(s.stream.slice('order-book@'.length)));
+          else if (s.stream.startsWith('trades@')) sh.tradeSids.set(s.sid, Number(s.stream.slice('trades@'.length)));
         }
         break;
       case 9: // MarketStateUpdate: only the markets that changed
@@ -155,7 +178,7 @@ export class PerplFeed implements MarketFeed {
         break;
       case 15: // L2BookSnapshot
       case 16: { // L2BookUpdate
-        const id = this.bookSids.get(m.sid);
+        const id = sh.bookSids.get(m.sid);
         if (id === undefined) break;
         let book = this.books.get(id);
         if (!book || m.mt === 15) this.books.set(id, (book = { bid: new Map(), ask: new Map() }));
@@ -168,20 +191,20 @@ export class PerplFeed implements MarketFeed {
         break;
       }
       case 100: // Heartbeat: the only stream with contiguous sequence numbers (one per block)
-        if (this.lastSn !== null && m.sn !== this.lastSn + 1) {
+        if (sh.lastSn !== null && m.sn !== sh.lastSn + 1) {
           // A missed block may have carried book updates. Reconnecting resubscribes and brings fresh snapshots.
-          this.lastSn = null;
-          this.link?.bounce();
+          sh.lastSn = null;
+          sh.link?.bounce();
           return;
         }
-        this.lastSn = m.sn;
-        this.link?.ok();
+        sh.lastSn = m.sn;
+        sh.link?.ok();
         break;
       case 18: { // TradesUpdate: new prints only (the mt 17 snapshot is history and is skipped)
-        const mk = tracked.get(this.tradeSids.get(m.sid) ?? -1);
+        const mk = tracked.get(sh.tradeSids.get(m.sid) ?? -1);
         if (!mk) break;
         for (const t of m.d ?? []) {
-          const trade: TapeTrade = { sym: mk.spec.sym, price: t.p / mk.px, size: t.s / mk.sz, side: t.sd === 1 ? 'buy' : 'sell', ts: this.lastFrameAt };
+          const trade: TapeTrade = { sym: mk.spec.sym, price: t.p / mk.px, size: t.s / mk.sz, side: t.sd === 1 ? 'buy' : 'sell', ts: sh.lastFrameAt };
           for (const cb of this.tradeCbs) cb(trade);
         }
         break;
