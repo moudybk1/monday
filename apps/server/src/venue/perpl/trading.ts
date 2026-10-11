@@ -4,7 +4,7 @@
 
 import { createPrivateKey, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { MARKETS, type MarketSym, type QuoteTarget, type Side } from '@monday/core';
-import { VenueError, type Venue, type VenueAccount, type VenueCredentials, type VenueEvents, type VenueFill, type VenuePosition } from '../types';
+import { VenueError, type OwnOrders, type Venue, type VenueAccount, type VenueCredentials, type VenueEvents, type VenueFill, type VenuePosition } from '../types';
 import type { PerplConfig } from './index';
 import type { PerplContext, PerplMarket } from './rest';
 import { openLink, type Link } from './socket';
@@ -106,10 +106,19 @@ export class PerplVenue implements Venue {
   private queue = new Map<string, Promise<void>>(); // one quote request in flight per slot
   private seenFills = new Set<string>();
   private mine = new Set<string>(); // `${mkt}:${oid}` of orders Monday placed or adopted as its quotes; fills of any other order are external
+  // Which orders are Monday's is decided by what Monday sent, never by position on the book: an order the user placed
+  // by hand on the same account is left alone. `own` is Monday's resting orders as of the last look, kept through a
+  // reconnect and (through `store`) a restart; `sentRq` covers a request whose order lands after a reconnect.
+  private own = new Set<string>();
+  private savedOwn = '';
+  private sentRq = new Set<number>();
   private sent = 0; // frames that spend the rate limit: order requests (retries included) and keep-alive pings
   private handlers: { [E in keyof VenueEvents]: VenueEvents[E][] } = { fill: [], error: [] };
 
-  constructor(private cfg: PerplConfig, private loadCtx: () => Promise<PerplContext>, private creds: VenueCredentials) {}
+  constructor(private cfg: PerplConfig, private loadCtx: () => Promise<PerplContext>, private creds: VenueCredentials, private store?: OwnOrders) {
+    for (const key of store?.load() ?? []) this.own.add(key);
+    this.savedOwn = [...this.own].sort().join(',');
+  }
 
   // ---- Venue ----
 
@@ -266,6 +275,8 @@ export class PerplVenue implements Venue {
   private dispatch(p: Pending): void {
     p.rq = ++this.rq; // strictly increasing: max(local counter, account.lfr) + 1
     p.sn = ++this.sn; // unique and non-zero, echoed as `cid` on the mt 3
+    this.sentRq.add(p.rq);
+    if (this.sentRq.size > 5_000) for (const r of [...this.sentRq].slice(0, 1_000)) this.sentRq.delete(r); // oldest first
     // head < lb <= head + order_ttl_blocks. Before the first heartbeat, 0 lets the server apply the same ceiling.
     p.lb = p.req.lb ?? (this.head ? this.head + this.ttl(p.req.mkt) : 0);
     // Cancels and closes are the kill path: lb 0 lets Perpl apply its current TTL, so a TTL cut can never refuse them.
@@ -372,7 +383,10 @@ export class PerplVenue implements Venue {
     this.ping ??= setInterval(() => {
       if (this.link?.send({ mt: 1, t: Date.now() })) this.sent++;
     }, PING_MS);
-    // More than one plain order on a side cannot all be "the" quote: keep the first, cancel the rest.
+    // Monday's orders that were not in the snapshot were filled or cancelled while the socket was down.
+    for (const key of this.own) if (!this.orders.has(key)) this.own.delete(key);
+    this.saveOwn();
+    // More than one of Monday's own orders on a side cannot all be "the" quote: keep the first, cancel the rest.
     for (const key of this.strays.splice(0)) void this.cancel(key).catch(() => {});
     this.boot?.resolve();
     this.boot = null;
@@ -427,16 +441,30 @@ export class PerplVenue implements Venue {
     const known = this.orders.has(key);
     this.orders.set(key, { mkt: o.mkt, oid: o.oid, p: o.p ?? 0, left: (o.os ?? 0) - (o.fs ?? 0) });
     if (known) return;
-    // Only a plain Open-type limit order can be a quote. Close and trigger orders stay tracked (cancelAll
-    // sweeps them) but are never adopted.
+    // Someone else's order on this account (placed by hand, or by another app): tracked so a Kill still sweeps it,
+    // never adopted as a quote, never cancelled here, and its fills stay external.
+    if (!p && !this.own.has(key) && !this.sentRq.has(o.rq)) return;
+    this.own.add(key);
+    this.remember(key);
+    this.saveOwn();
+    // Only a plain Open-type limit order can be a quote. Monday's close orders stay tracked but never fill a slot.
     const side = o.tp ? null : o.t === OPEN_LONG ? 'bid' : o.t === OPEN_SHORT ? 'ask' : null;
     const slot = p?.slot ?? (side ? `${o.mkt}:${side}` : null);
     if (!slot) return;
-    if (p?.slot || !this.slots.has(slot)) {
-      this.slots.set(slot, key); // our own request's order, or adoption of an existing one
-      this.remember(key);
-    } else if (this.ready) void this.cancel(key).catch(() => {}); // a late lander from before a reconnect
+    if (p?.slot || !this.slots.has(slot)) this.slots.set(slot, key); // our request's order, or our quote from before a reconnect or restart
+    else if (this.ready) void this.cancel(key).catch(() => {}); // our late lander from before a reconnect: one quote per side
     else this.strays.push(key);
+  }
+
+  private saveOwn(): void {
+    const s = [...this.own].sort().join(',');
+    if (s === this.savedOwn) return;
+    this.savedOwn = s;
+    try {
+      this.store?.save([...this.own]);
+    } catch (e) {
+      console.error('[perpl] could not save Monday\'s orders:', e instanceof Error ? e.message : e);
+    }
   }
 
   private remember(key: string): void {
@@ -447,6 +475,7 @@ export class PerplVenue implements Venue {
   private drop(key: string): void {
     this.orders.delete(key);
     for (const [slot, k] of this.slots) if (k === key) this.slots.delete(slot);
+    if (this.own.delete(key)) this.saveOwn();
   }
 
   /** Deduplication per the docs: Pending is not a verdict, the first non-failure status is definitive, else the first failure. */

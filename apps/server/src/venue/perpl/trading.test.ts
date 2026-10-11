@@ -12,18 +12,21 @@ const tick = () => new Promise((r) => setImmediate(r));
 
 it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () => {
   const sent: any[] = [];
-  const v = new PerplVenue(cfg, async () => ({}) as never, { wallet: '0x', accountId: 7, token: 't', secret: 's' }) as any;
+  // Before a restart Monday had two bids resting (16:5 and 16:6); the store remembers them.
+  const v = new PerplVenue(cfg, async () => ({}) as never, { wallet: '0x', accountId: 7, token: 't', secret: 's' }, { load: () => ['16:5', '16:6'], save() {} }) as any;
   const btc = { id: 16, px: 10, sz: 1e5, ttlBlocks: 20, spec: { sym: 'BTC' } };
   v.ctx = { markets: { BTC: btc }, byId: new Map([[16, btc]]), usd: 1e6, minDepositUsd: 100 };
   v.link = { send: (f: any) => (sent.push(f), true), bounce() {}, ok() {}, stop() {} };
   const fills: any[] = [];
   v.on('fill', (f: any) => fills.push(f));
 
-  // Sign-in snapshots: an account, one resting bid (adopted) plus a duplicate bid (stray), a 0.5 BTC long.
+  // Sign-in snapshots: an account, Monday's resting bid (adopted) plus its duplicate bid (stray), a bid the user placed
+  // by hand (left alone), a 0.5 BTC long.
   v.onFrame({ mt: 19, sn: 100, addr: '0x', as: [{ id: 7, lfr: 41, b: '900000000', fw: true }] });
   v.onFrame({ mt: 23, d: [
     { acc: 7, mkt: 16, oid: 5, rq: 40, st: 2, t: 1, p: 850000, os: 1000, fs: 0, fl: 1 },
     { acc: 7, mkt: 16, oid: 6, rq: 41, st: 2, t: 1, p: 849000, os: 1000, fs: 0, fl: 1 },
+    { acc: 7, mkt: 16, oid: 8, rq: 39, st: 2, t: 1, p: 848000, os: 1000, fs: 0, fl: 1 },
   ] });
   v.onFrame({ mt: 26, d: [{ acc: 7, mkt: 16, pid: 3, st: 1, sd: 1, s: 50000, ep: 840000, c: '100000000' }] });
   assert.equal(v.connected(), true);
@@ -31,7 +34,7 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
   assert.equal(v.quote('BTC', 'ask'), null);
   assert.deepEqual(v.position('BTC'), { size: 0.5, entryPrice: 84000 });
   assert.deepEqual(v.account(), { accountId: 7, balanceUsd: 1000, canTrade: true }); // 900 free + 100 position collateral
-  assert.deepEqual(sent.map((f) => [f.t, f.oid, f.rq, f.sn]), [[5, 6, 42, 1]]); // stray cancelled; rq seeded from lfr 41
+  assert.deepEqual(sent.map((f) => [f.t, f.oid, f.rq, f.sn]), [[5, 6, 42, 1]]); // Monday's stray cancelled, the user's bid not; rq seeded from lfr 41
   v.onFrame({ mt: 100, sn: 101, h: 5000 });
 
   // Resting bid + new target -> Change (t 7), PostOnly, leverage in hundredths, lb = head + ttl.
@@ -94,4 +97,66 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
   assert.equal(v.onClosed(1011, 'failed to process'), false);
   assert.deepEqual(errors, ['disconnected', 'rate_limited', 'fatal']);
   assert.equal(v.connected(), false);
+});
+
+it("leaves orders Monday did not send alone: no adoption, no cancel, and their fills stay external", async () => {
+  const sent: any[] = [];
+  const saved: string[][] = [];
+  const store = { load: () => [] as string[], save: (k: string[]) => saved.push([...k].sort()) };
+  const v = new PerplVenue(cfg, async () => ({}) as never, { wallet: '0x', accountId: 7, token: 't', secret: 's' }, store) as any;
+  const btc = { id: 16, px: 10, sz: 1e5, ttlBlocks: 20, spec: { sym: 'BTC' } };
+  v.ctx = { markets: { BTC: btc }, byId: new Map([[16, btc]]), usd: 1e6, minDepositUsd: 100 };
+  v.link = { send: (f: any) => (sent.push(f), true), bounce() {}, ok() {}, stop() {} };
+  const fills: any[] = [];
+  v.on('fill', (f: any) => fills.push(f));
+
+  // A key check or a first Start: two bids and an ask the user placed by hand. Nothing is Monday's, nothing is sent.
+  v.onFrame({ mt: 19, sn: 100, addr: '0x', as: [{ id: 7, lfr: 30, b: '900000000', fw: true }] });
+  v.onFrame({ mt: 23, d: [
+    { acc: 7, mkt: 16, oid: 1, rq: 10, st: 2, t: 1, p: 850000, os: 1000, fs: 0, fl: 0 },
+    { acc: 7, mkt: 16, oid: 2, rq: 11, st: 2, t: 1, p: 849000, os: 1000, fs: 0, fl: 0 },
+    { acc: 7, mkt: 16, oid: 3, rq: 12, st: 2, t: 2, p: 860000, os: 1000, fs: 0, fl: 0 },
+  ] });
+  v.onFrame({ mt: 26, d: [] });
+  v.onFrame({ mt: 100, sn: 101, h: 5000 });
+  assert.equal(v.connected(), true);
+  assert.equal(sent.length, 0);
+  assert.equal(v.quote('BTC', 'bid'), null); // the user's bid is not Monday's quote
+
+  // Monday quotes: a fresh OpenLong, not a Change of the user's order.
+  const bid = v.setQuote('BTC', 'bid', { price: 85100, size: 0.01 }, 3);
+  await tick();
+  assert.deepEqual([sent[0].t, sent[0].oid], [1, undefined]);
+  v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 20, rq: sent[0].rq, st: 2, t: 1, p: 851000, os: 1000, fs: 0 }] });
+  await bid;
+  assert.deepEqual(saved.at(-1), ['16:20']);
+
+  // While Monday quotes the bid, the user places another bid by hand: tracked, not cancelled.
+  v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 21, rq: 35, st: 2, t: 1, p: 848000, os: 1000, fs: 0 }] });
+  assert.equal(sent.length, 1);
+  // Its fill is the user's; a fill of Monday's own bid is Monday's.
+  v.onFrame({ mt: 25, d: [{ acc: 7, mkt: 16, oid: 21, t: 1, l: 1, p: 848000, s: 1000, f: '0', at: { b: 5001, t: 1, txid: 'a1', l: 0 } }] });
+  v.onFrame({ mt: 25, d: [{ acc: 7, mkt: 16, oid: 20, t: 1, l: 1, p: 851000, s: 1000, f: '0', at: { b: 5001, t: 2, txid: 'a2', l: 0 } }] });
+  assert.deepEqual(fills.map((f) => f.external), [true, false]);
+
+  // Stop: only Monday's order is cancelled. A Kill would sweep the user's too.
+  const stop = v.cancelAll(true);
+  await tick();
+  assert.deepEqual(sent.slice(1).map((f) => [f.t, f.oid]), [[5, 20]]);
+  v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 20, rq: sent[1].rq, st: 5, r: true }] });
+  await stop;
+  assert.deepEqual(saved.at(-1), []); // nothing of Monday's rests any more
+
+  // A request in flight across a reconnect: its order lands after the new snapshot and is still Monday's.
+  const late = v.setQuote('BTC', 'ask', { price: 86100, size: 0.01 }, 3);
+  await tick();
+  const rq = sent[2].rq;
+  v.onClosed(1006, '');
+  await assert.rejects(late);
+  v.onFrame({ mt: 19, sn: 200, addr: '0x', as: [{ id: 7, lfr: rq, b: '900000000', fw: true }] });
+  v.onFrame({ mt: 23, d: [{ acc: 7, mkt: 16, oid: 1, rq: 10, st: 2, t: 1, p: 850000, os: 1000, fs: 0 }] });
+  v.onFrame({ mt: 26, d: [] });
+  v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 30, rq, st: 2, t: 2, p: 861000, os: 1000, fs: 0 }] });
+  assert.deepEqual(v.quote('BTC', 'ask'), { price: 86100, size: 0.01 });
+  assert.equal(v.quote('BTC', 'bid'), null);
 });

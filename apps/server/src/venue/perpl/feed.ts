@@ -10,6 +10,9 @@ import { openLink, type Link } from './socket';
 const DEPTH = 15;
 const MAX_CANDLES = 1024; // documented per-call maximum
 const START_TIMEOUT_MS = 10_000;
+// A book that has not been restated this long after a (re)connect is asked for again. At most 6 subscribe frames a
+// minute, inside Perpl's 10, and well before the runner's 30 s stale-data kill.
+const RESUBSCRIBE_MS = 10_000;
 
 type Levels = Map<number, number>; // wire price -> wire size
 interface WireLevel { p: number; s: number; o: number }
@@ -26,6 +29,12 @@ export class PerplFeed implements MarketFeed {
   private funding = new Map<number, number>(); // market id -> rate, micros
   private lastSn: number | null = null;
   private lastFrameAt = 0;
+  // A book is only as fresh as its last snapshot on the current socket: heartbeats keep arriving after a failed
+  // order-book subscription, so they cannot vouch for it. `staleSince` is when a market's book was last known good.
+  private live = new Set<number>();
+  private staleSince = new Map<number, number>();
+  private resubscribe?: ReturnType<typeof setTimeout>;
+  private subs: { stream: string; subscribe: true }[] = [];
   private onReady: (() => void) | null = null;
 
   constructor(private cfg: PerplConfig, private loadCtx: () => Promise<PerplContext>) {}
@@ -35,20 +44,15 @@ export class PerplFeed implements MarketFeed {
     const ctx = (this.ctx = await this.loadCtx());
     const ids = [...ctx.byId.keys()];
     // One frame for everything: 9 of the 16 allowed subscriptions, 1 of the 10 requests/min.
-    const subs = [`market-state@${this.cfg.chainId}`, `funding@${this.cfg.chainId}`, `heartbeat@${this.cfg.chainId}`, ...ids.flatMap((id) => [`order-book@${id}`, `trades@${id}`])]
-      .map((stream) => ({ stream, subscribe: true }));
+    this.subs = [`market-state@${this.cfg.chainId}`, `funding@${this.cfg.chainId}`, `heartbeat@${this.cfg.chainId}`, ...ids.flatMap((id) => [`order-book@${id}`, `trades@${id}`])]
+      .map((stream) => ({ stream, subscribe: true as const }));
 
     await new Promise<void>((resolve) => {
       // If the venue is unreachable the socket keeps retrying; snapshot() stays null until data arrives.
       const timer = setTimeout(resolve, START_TIMEOUT_MS);
       this.onReady = () => (clearTimeout(timer), resolve());
       this.link = openLink(`${this.cfg.wsUrl}/ws/v1/market-data`, {
-        open: () => {
-          this.lastSn = null;
-          this.bookSids.clear();
-          this.tradeSids.clear();
-          this.link?.send({ mt: 5, subs });
-        },
+        open: () => this.onOpen(),
         frame: (m) => this.onFrame(m),
         closed: () => true, // always reconnect; market-data needs no keep-alive pings
       });
@@ -60,6 +64,7 @@ export class PerplFeed implements MarketFeed {
   }
 
   stop(): void {
+    clearTimeout(this.resubscribe);
     this.link?.stop();
     this.link = null;
   }
@@ -93,8 +98,8 @@ export class PerplFeed implements MarketFeed {
       asks,
       fundingRate: (this.funding.get(m.id) ?? 0) / 1e6,
       openInterest: st.oi / m.sz,
-      // Heartbeats arrive every block and cover every market, so one receive clock serves all three.
-      updatedAt: this.lastFrameAt,
+      // Heartbeats arrive every block, so while the book is live the receive clock is its age; otherwise the last good time.
+      updatedAt: this.live.has(m.id) ? this.lastFrameAt : this.staleSince.get(m.id) ?? 0,
     };
   }
 
@@ -113,6 +118,22 @@ export class PerplFeed implements MarketFeed {
       }
     }
     return out;
+  }
+
+  private onOpen(): void {
+    this.lastSn = null;
+    this.bookSids.clear();
+    this.tradeSids.clear();
+    // Every book is stale until this socket restates it: since its last frame on the old socket, or since now if it
+    // never had one. A market already stale keeps its earlier time.
+    const now = Date.now();
+    for (const id of this.ctx!.byId.keys()) if (!this.staleSince.has(id)) this.staleSince.set(id, this.live.has(id) ? this.lastFrameAt : now);
+    this.live.clear();
+    this.link?.send({ mt: 5, subs: this.subs });
+    clearTimeout(this.resubscribe);
+    this.resubscribe = setTimeout(() => {
+      if ([...this.ctx!.byId.keys()].some((id) => !this.live.has(id))) this.link?.bounce(); // a stream failed or never answered
+    }, RESUBSCRIBE_MS);
   }
 
   private onFrame(m: any): void {
@@ -140,6 +161,10 @@ export class PerplFeed implements MarketFeed {
         if (!book || m.mt === 15) this.books.set(id, (book = { bid: new Map(), ask: new Map() }));
         applyLevels(book.bid, m.bid);
         applyLevels(book.ask, m.ask);
+        if (m.mt === 15) {
+          this.live.add(id);
+          this.staleSince.delete(id);
+        }
         break;
       }
       case 100: // Heartbeat: the only stream with contiguous sequence numbers (one per block)

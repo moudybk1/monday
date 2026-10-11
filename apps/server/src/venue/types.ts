@@ -139,11 +139,18 @@ export interface VenueCredentials {
 }
 
 /** Everything the rest of the server needs from an execution venue. */
+/** Monday's resting orders on an account (`${mkt}:${oid}`), kept across restarts so a crash does not orphan its quotes. */
+export interface OwnOrders {
+  load(): string[];
+  save(keys: string[]): void;
+}
+
 export interface VenueDriver {
   kind: 'sim' | 'paper' | 'perpl';
   feed: MarketFeed;
   /** Does this wallet own an exchange account? Onboarding step 2. */
   detectAccount(wallet: string): Promise<{ accountId: number; balanceUsd: number } | null>;
   minDepositUsd(): number;
-  open(creds: VenueCredentials): Venue;
+  /** `own` remembers which resting orders are Monday's. Without it (a key check) nothing on the account is Monday's. */
+  open(creds: VenueCredentials, own?: OwnOrders): Venue;
 }
