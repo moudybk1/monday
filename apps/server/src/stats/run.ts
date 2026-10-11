@@ -24,15 +24,17 @@ app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, _req, 
 // ponytail: in-memory fixed window in this one process; pruned when it grows, no shared store needed.
 const hits = new Map<string, { n: number; at: number }>();
 app.addHook('onRequest', async (req, reply) => {
-  // Questions and summaries call a model: ten a minute per address; wallet profiles sixty.
+  // Questions and summaries call a model: ten a minute per address; chat answers (mostly no model) twenty; wallets sixty.
   const model = req.url.startsWith('/api/stats/ask') || /^\/api\/stats\/wallet\/[^/?]+\/explain/.test(req.url);
-  if (!model && !req.url.startsWith('/api/stats/wallet/')) return;
+  const chat = req.url.startsWith('/api/stats/chat');
+  if (!model && !chat && !req.url.startsWith('/api/stats/wallet/')) return;
   const now = Date.now();
   if (hits.size > 10_000) for (const [k, v] of hits) if (now - v.at > 60_000) hits.delete(k);
-  const key = `${req.ip}:${model ? 'model' : 'wallet'}`;
+  const kind = model ? 'model' : chat ? 'chat' : 'wallet';
+  const key = `${req.ip}:${kind}`;
   const h = hits.get(key);
   if (!h || now - h.at > 60_000) hits.set(key, { n: 1, at: now });
-  else if (++h.n > (model ? 10 : 60)) return reply.status(429).send({ error: 'rate_limited', message: 'Too many requests. Try again in a minute.' });
+  else if (++h.n > (kind === 'model' ? 10 : kind === 'chat' ? 20 : 60)) return reply.status(429).send({ error: 'rate_limited', message: 'Too many requests. Try again in a minute.' });
 });
 app.get('/api/stats/health', async () => ({ ok: true, at: Date.now(), indexer: indexerStatus() }));
 registerStats(app);

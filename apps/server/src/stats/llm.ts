@@ -15,7 +15,7 @@ const anthropic = llmReady && provider === 'anthropic' ? new Anthropic({ apiKey,
  * One answer, at most `maxTokens` long, within `timeoutMs`. Throws when the model is off, slow or refuses.
  * The request stays minimal on purpose: on b.ai, kimi-k2.6 rejects any `temperature` with a 400 and answers an empty
  * string in JSON mode or under a `max_tokens` cap (measured 2026-10-11), so the OpenAI-compatible call sends only the
- * model and the messages. Callers that want JSON ask for it in the prompt and the parser accepts fenced replies; the
+ * model, the messages and, for Kimi, thinking off. Callers that want JSON ask for it in the prompt and the parser accepts fenced replies; the
  * prompts themselves keep the answers short.
  */
 export async function ask(system: string, user: string, { maxTokens = 300, timeoutMs = 25_000, model: which = model } = {}): Promise<string> {
@@ -29,7 +29,9 @@ export async function ask(system: string, user: string, { maxTokens = 300, timeo
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: which, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+    // Kimi thinks before it writes by default: about 2,700 hidden tokens and 38 s for a wallet summary, against 4 s and
+    // 160 tokens with thinking off (measured on b.ai 2026-10-12). These are short, factual tasks, so it stays off.
+    body: JSON.stringify({ model: which, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], ...(/^kimi/i.test(which) ? { thinking: { type: 'disabled' } } : {}) }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`LLM ${res.status}`);

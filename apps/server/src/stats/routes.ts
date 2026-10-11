@@ -8,7 +8,8 @@ import {
   retentionCohorts, spanCoverage, streakOf, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
   type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
-import { explainWallet, resolveAsk, walletFacts } from './ask';
+import { Intent, explainWallet, resolveAsk, walletFacts } from './ask';
+import { chat } from './answer';
 import { history, positionSignals } from './history';
 import { historyComplete, indexerStatus, KINDS, scanHoles, sdb } from './indexer';
 import { accountOf, accounts, addressOf, allPositions, cached, client, dailyVolume, funding, fundingHistory, hyperliquidVolume, meta, positionsOf, statsNet, ticker, tvl } from './perpl';
@@ -460,6 +461,14 @@ export function registerStats(app: FastifyInstance) {
   app.post('/api/stats/ask', async (req) => {
     const { q } = z.object({ q: z.string().trim().min(1).max(300) }).parse(req.body ?? {});
     return resolveAsk(q);
+  });
+  // Ask Monday's chat: an answer with the figures, a small table and links, from the same data as the pages.
+  app.post('/api/stats/chat', async (req) => {
+    const b = z.object({ q: z.string().trim().min(1).max(300), wallet: z.string().trim().max(64).optional(), last: z.unknown().optional() }).parse(req.body ?? {});
+    const last = Intent.safeParse(b.last);
+    return chat(b.q, { wallet: b.wallet, last: last.success ? last.data : undefined }, {
+      overview, screen, leaderboard: (d, s) => leaderboard(d, s)(), wallet: walletCached,
+    });
   });
   app.get('/api/stats/wallet/:q/explain', async (req, reply) => {
     const q = String((req.params as { q: string }).q).trim().toLowerCase();
