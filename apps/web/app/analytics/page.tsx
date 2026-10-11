@@ -3,7 +3,8 @@
 import { ArrowDownLeftIcon, ArrowUpRightIcon, LightningIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { PxActivity, PxCohorts, PxFlows, PxFunding, PxHistory, PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxSignal, PxTrader, PxTraderStats, PxWindow } from '@monday/core';
 import { CATS, EASE, HeatGrid, LineChart, Share, SignedBars, Sparkline, StackedBars, type Series, type Tone } from '@/components/charts';
 import { AccountLink, Delta, Kpi, Num, Segments, Skew, Tabs, ago, liqText, liqTone, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
@@ -30,6 +31,11 @@ const apr = (rate: number, intervalMin: number) => rate * ((365 * 24 * 60) / Mat
 const int = (n: number) => Math.round(n).toLocaleString('en-US');
 
 export default function StatsPage() {
+  return <Suspense fallback={<Loading />}><Stats /></Suspense>;
+}
+
+function Stats() {
+  const params = useSearchParams();
   const ov = useQuery({ queryKey: ['stats-overview'], queryFn: () => api<PxOverview>('/stats/overview'), refetchInterval: 15_000 });
   const risk = useQuery({ queryKey: ['stats-risk'], queryFn: () => api<Risk>('/stats/risk'), refetchInterval: 30_000 });
   const liqs = useQuery({ queryKey: ['stats-liqs'], queryFn: () => api<PxLiquidation[]>('/stats/liquidations?limit=40'), refetchInterval: 10_000 });
@@ -39,6 +45,11 @@ export default function StatsPage() {
   useEffect(() => {
     document.title = 'Analytics - Monday';
   }, []);
+  // The ask bar names a market in the URL; the chart panel reads its own metric and range from the same place.
+  useEffect(() => {
+    const m = params.get('market');
+    if (m) setSym(m);
+  }, [params]);
 
   if (ov.isLoading) return <Loading />;
   if (ov.isError || !ov.data) return <div className="p-4"><Notice tone="warn">Could not load Perpl stats. {ov.error instanceof Error ? ov.error.message : ''}</Notice></div>;
@@ -129,9 +140,16 @@ export default function StatsPage() {
 
 /** Every metric in one panel: daily bars for the flows, sampled lines for the levels, Perpl's own history for funding. */
 function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: string) => void }) {
+  const params = useSearchParams();
   const [metric, setMetric] = useState<Metric>('volume');
   const [range, setRange] = useState<7 | 30 | 90 | 0>(30);
   const [stack, setStack] = useState(false);
+  useEffect(() => {
+    const m = params.get('metric');
+    if (METRICS.some(([k]) => k === m)) setMetric(m as Metric);
+    const r = params.get('range');
+    if (r != null && ['0', '7', '30', '90'].includes(r)) setRange(Number(r) as 7 | 30 | 90 | 0);
+  }, [params]);
   const sampledDays = range === 7 ? 7 : 30;
   const hist = useQuery({ queryKey: ['stats-history', sampledDays], queryFn: () => api<PxHistory>(`/stats/history?days=${sampledDays}`), refetchInterval: 60_000, enabled: SAMPLED.includes(metric) });
   const fund = useQuery({ queryKey: ['stats-funding', sampledDays], queryFn: () => api<PxFunding>(`/stats/funding?days=${sampledDays}`), refetchInterval: 600_000, enabled: metric === 'funding' });

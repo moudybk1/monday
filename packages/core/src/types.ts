@@ -156,6 +156,8 @@ export interface ReflexState {
   book?: boolean;
   /** A move in the reference price (Hyperliquid's mid) triggered it. */
   ref?: boolean;
+  /** One of Monday's own quotes was just taken (a fill that grew the position). */
+  fill?: boolean;
   /** A pull that ran out and stepped down to a widen before letting go. */
   released?: boolean;
 }

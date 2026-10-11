@@ -41,10 +41,12 @@ const TEMPLATES: { id: Exclude<PresetName, 'custom'>; label: string; note: strin
 const LOSS_PCT = [0.05, 0.1, 0.25, 0.5]; // Tread's stop loss choices; 100% would leave no margin for a position
 const TP_PCT = [0.1, 0.25, 0.5, 1, null];
 const REF_MODES: { id: RefMode; label: string; note: string }[] = [
-  { id: 'mid', label: 'Mid', note: "Quotes around Perpl's own mid and exits at the market. Fills most often; a fast move can close a trade at a loss." },
-  { id: 'grid', label: 'Grid', note: `Never sells below what it bought, nor buys back above what it sold: an exit rests at the entry plus fees and 1 bp, or closes at the best price once the position is ${STAGE.stopLossBps} bps under its entry.` },
-  { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's and Hyperliquid's mid, where price moves first, and exits at the market." },
+  { id: 'mid', label: 'Mid', note: "Quotes around Perpl's own mid. Fills most often, and Perpl's price can lag Hyperliquid's." },
+  { id: 'grid', label: 'Grid', note: "Quotes around a half-and-half mix of Perpl's and Hyperliquid's mid, where price moves first. The default." },
+  { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's and Hyperliquid's mid with the weight you choose." },
 ];
+/** The same in every mode since 2026-10-11: before that Mid and Blend exited at the market, and most of those exits lost. */
+const EXIT_NOTE = `In every mode an exit rests at the entry plus fees and 1 bp, never below what it bought nor above what it sold, or closes at the best price once the position is ${STAGE.stopLossBps} bps under its entry.`;
 const PARTICIPATIONS: { id: Participation; label: string }[] = [{ id: 'aggressive', label: 'Aggressive' }, { id: 'normal', label: 'Normal' }, { id: 'passive', label: 'Passive' }];
 const EPS = 1e-9;
 
@@ -201,7 +203,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
               </div>
             </Row>
 
-            <Choices legend="Reference price" note={REF_MODES.find((m) => m.id === value.refMode)?.note} wide>
+            <Choices legend="Reference price" note={`${REF_MODES.find((m) => m.id === value.refMode)?.note} ${EXIT_NOTE}`} wide>
               {REF_MODES.map((m) => (
                 <Chip key={m.id} type="radio" name="ref" checked={value.refMode === m.id} onChange={() => onChange({ ...value, refMode: m.id })}>{m.label}</Chip>
               ))}

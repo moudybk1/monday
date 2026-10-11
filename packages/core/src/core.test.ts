@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
-  riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
-  type QuoteInput, type SmartTrade, retentionCohorts, streakOf, traderDistribution,
+  riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, fillTrigger, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
+  type QuoteInput, type SmartTrade, quickAsk, retentionCohorts, streakOf, traderDistribution,
 } from './index';
 
 const base: QuoteInput = {
@@ -545,6 +545,26 @@ describe('Perpl stats', () => {
     expect(streakOf([])).toBe(0);
   });
 
+  it('turns the common questions into actions without a model', () => {
+    const M = ['BTC', 'ETH', 'SOL'];
+    expect(quickAsk('0x2ac5ab63587d12f547ae04437a18cfe0eb8f8935', M)).toEqual({ kind: 'wallet', q: '0x2ac5ab63587d12f547ae04437a18cfe0eb8f8935' });
+    expect(quickAsk('#4734', M)).toEqual({ kind: 'wallet', q: '4734' });
+    expect(quickAsk('eth', M)).toEqual({ kind: 'market', sym: 'ETH' });
+    expect(quickAsk('whales liquidated this month', M)).toEqual({ kind: 'screen', days: 30, preset: 'whales', minVolume: undefined });
+    expect(quickAsk('market makers with volume over $100k this week', M)).toEqual({ kind: 'screen', days: 7, preset: 'makers', minVolume: 100_000 });
+    expect(quickAsk('consistent winners', M)).toEqual({ kind: 'screen', days: undefined, preset: 'winners', minVolume: undefined });
+    expect(quickAsk('BTC funding this month', M)).toEqual({ kind: 'metric', metric: 'funding', sym: 'BTC', range: 30 });
+    expect(quickAsk('open interest', M)).toEqual({ kind: 'metric', metric: 'oi', sym: undefined, range: undefined });
+    expect(quickAsk('compare 25 and 4734', M)).toEqual({ kind: 'compare', wallets: ['25', '4734'] });
+    expect(quickAsk('compare the top 3 winners this week', M)).toEqual({ kind: 'top', days: 7, sort: 'net', n: 3 });
+    expect(quickAsk('show me SOL', M)).toEqual({ kind: 'market', sym: 'SOL' });
+    expect(quickAsk('what is the meaning of life', M)).toBeNull();
+    // Wondering or long sentences go to the model; without one, the best guess still serves.
+    expect(quickAsk('what will the price of ETH be tomorrow', M)).toBeNull();
+    expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M)).toBeNull();
+    expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M, true)).toEqual({ kind: 'screen', days: 7, preset: 'all', minVolume: undefined });
+  });
+
   it('finds the block ranges never scanned, back to block 0', () => {
     const ranges = [{ lo: 500, hi: 900 }, { lo: 0, hi: 100 }, { lo: 100, hi: 200 }];
     expect(holesOf(ranges, 900)).toEqual([{ lo: 200, hi: 500 }]);
@@ -623,9 +643,9 @@ describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', ()
 
 describe('Tread-style quoting modes (2026-10-11)', () => {
   it('maps mid, grid and blend onto the reference blend and the profit exit, and participation onto the size cap', () => {
-    expect(quotingFor({})).toEqual({ cfg: { blend: 0.5, participation: 0.05 }, profitExit: true }); // policies saved before: grid, normal
-    expect(quotingFor({ refMode: 'mid' })).toEqual({ cfg: { blend: 0, participation: 0.05 }, profitExit: false });
-    expect(quotingFor({ refMode: 'blend', blendWeight: 1, participation: 'passive' })).toEqual({ cfg: { blend: 1, participation: 0.01 }, profitExit: false });
+    expect(quotingFor({})).toEqual({ cfg: { blend: 0.5, participation: 0.05 } }); // policies saved before: grid, normal
+    expect(quotingFor({ refMode: 'mid' })).toEqual({ cfg: { blend: 0, participation: 0.05 } });
+    expect(quotingFor({ refMode: 'blend', blendWeight: 1, participation: 'passive' })).toEqual({ cfg: { blend: 1, participation: 0.01 } });
     expect(quotingFor({ refMode: 'blend', blendWeight: 7 }).cfg.blend).toBe(1); // clamped
     expect(PARTICIPATION.aggressive).toBe(0.1);
   });
@@ -635,5 +655,21 @@ describe('Tread-style quoting modes (2026-10-11)', () => {
     expect(computeQuotes({ ...wide, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ refMode: 'blend', blendWeight: 1 }).cfg } }).ref).toBe(85_020);
     const passive = computeQuotes({ ...base, hourlyVolumeUsd: 2_000, cfg: { ...DEFAULT_CONFIG, ...quotingFor({ participation: 'passive' }).cfg } });
     expect(passive.sizeCapUsd).toBe(20); // 1% of $2,000 an hour
+  });
+});
+
+describe('fill reflex (2026-10-11)', () => {
+  const t0 = 1_000_000;
+  it('widens the side of one fresh opening fill, pulls it after two inside the window, and lets go after', () => {
+    expect(fillTrigger({ bid: [], ask: [] }, t0)).toBeNull();
+    expect(fillTrigger({ bid: [], ask: [t0 - 5_000] }, t0)).toEqual({ side: 'ask', action: 'widen' });
+    expect(fillTrigger({ bid: [], ask: [t0 - 45_000] }, t0)).toBeNull(); // older than fillHoldMs, alone
+    expect(fillTrigger({ bid: [], ask: [t0 - 45_000, t0 - 2_000] }, t0)).toEqual({ side: 'ask', action: 'pull' }); // two inside burstWindowMs
+    expect(fillTrigger({ bid: [], ask: [t0 - 70_000, t0 - 2_000] }, t0)).toEqual({ side: 'ask', action: 'widen' }); // the first fell out of the window
+    expect(fillTrigger({ bid: [t0 - 1_000], ask: [t0 - 30_000, t0 - 20_000] }, t0)).toEqual({ side: 'ask', action: 'pull' }); // a sweep outranks a lone fill
+  });
+  it('folds into the reflex state with its own kind', () => {
+    const r = nextReflex(null, { side: 'ask', action: 'widen', fill: true }, t0, 0, [], { ...DEFAULT_CONFIG, reflexHoldMs: DEFAULT_CONFIG.refHoldMs });
+    expect(r.state).toMatchObject({ side: 'ask', action: 'widen', fill: true, until: t0 + DEFAULT_CONFIG.refHoldMs });
   });
 });

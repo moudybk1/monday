@@ -8,6 +8,7 @@ import {
   retentionCohorts, spanCoverage, streakOf, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
   type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
+import { explainWallet, resolveAsk, walletFacts } from './ask';
 import { history, positionSignals } from './history';
 import { historyComplete, indexerStatus, KINDS, scanHoles, sdb } from './indexer';
 import { accountOf, accounts, addressOf, allPositions, cached, client, dailyVolume, funding, fundingHistory, hyperliquidVolume, meta, positionsOf, statsNet, ticker, tvl } from './perpl';
@@ -455,6 +456,22 @@ export function registerStats(app: FastifyInstance) {
   app.get('/api/stats/flows', async (req) => {
     const { days } = z.object({ days: z.coerce.number().int().refine((d) => FLOW_DAYS.includes(d), `days must be one of ${FLOW_DAYS.join(', ')}`).default(1) }).parse(req.query);
     return flows(days);
+  });
+  app.post('/api/stats/ask', async (req) => {
+    const { q } = z.object({ q: z.string().trim().min(1).max(300) }).parse(req.body ?? {});
+    return resolveAsk(q);
+  });
+  app.get('/api/stats/wallet/:q/explain', async (req, reply) => {
+    const q = String((req.params as { q: string }).q).trim().toLowerCase();
+    const w = await walletCached(q);
+    if (!w) return reply.status(404).send({ error: 'not_found', message: 'No Perpl account for that address or account id.' });
+    const text = explainWallet(w);
+    if (!text) return { available: false, facts: walletFacts(w) };
+    try {
+      return { available: true, text: await text, facts: walletFacts(w), at: Date.now() };
+    } catch (e) {
+      return reply.status(503).send({ error: 'model_unavailable', message: `The model did not answer: ${e instanceof Error ? e.message : String(e)}` });
+    }
   });
   app.get('/api/stats/wallet/:q', async (req, reply) => {
     const q = String((req.params as { q: string }).q).trim().toLowerCase();

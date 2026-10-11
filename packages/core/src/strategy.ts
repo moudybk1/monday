@@ -5,7 +5,7 @@ import type { InventoryStage } from './execution';
 import type { BookLevel, GovernorParams, MarketSpec, MarketSym, Participation, Policy, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
-export const STRATEGY_VERSION = '2026-10-10.1';
+export const STRATEGY_VERSION = '2026-10-11.1';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
@@ -36,6 +36,8 @@ export interface StrategyConfig {
   kTrend: number; // centre shift per bps of trend beyond that
   trendMaxBps: number; // and at most this (also at most half the half-spread, so the near side keeps clear of the fee)
   exitMinProfitBps: number; // below the urgent stage, an exit rests at least this far past the entry, after both fees
+  fillHoldMs: number; // a fill that grew the position widens that side for this long: the taker who hit it is often still working
+  burstWindowMs: number; // two such fills inside this window are a sweep: the side is pulled (fillTrigger)
 }
 
 // PRD 10.6
@@ -94,6 +96,11 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   // that guard it is worse than nothing: a quarter never got there and lost -28 bps on the way out. Keep the two together.
   // The urgent stage (an hour old, a quarter of the daily loss, far past the cap) and a kill still get out at the market.
   exitMinProfitBps: 1,
+  // A fill is the strongest sign of a sweep on that side. Live on mainnet (2026-10-08 to 10) a fill with another on the
+  // same side inside the minute ran -4.9 bps at five minutes against -2.0 for a lone fill, and seven asks in 18 seconds
+  // (each quote under a second old, re-joining the touch as it rose) built the short that lost the most.
+  fillHoldMs: 30_000,
+  burstWindowMs: 60_000,
 };
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -102,17 +109,16 @@ export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.ma
 export const PARTICIPATION: Record<Participation, number> = { aggressive: 0.1, normal: 0.05, passive: 0.01 };
 
 /**
- * A user's quoting choices, Tread style, on top of DEFAULT_CONFIG.
- * mid: Perpl's own mid is the reference and exits are priced off the market (Tread's Mid mode).
- * grid: Hyperliquid blended in at half, and the exit never rests better for the taker than the entry plus fees (7c),
- * as Tread's Grid mode never sells below what it bought. The default, and what the policies saved before had.
- * blend: the chosen Hyperliquid weight, exits off the market (Tread's Blend mode).
- * The Hyperliquid touch guard (7b) and the per-position stop loss apply in every mode.
+ * A user's quoting choices, Tread style, on top of DEFAULT_CONFIG. The modes only pick the reference price:
+ * mid is Perpl's own mid, grid blends Hyperliquid in at half (the default, and what policies saved before had), blend
+ * uses the chosen Hyperliquid weight. The exit in profit (7c), the Hyperliquid touch guard (7b) and the stop loss apply
+ * in every mode: until 2026-10-11 Mid and Blend priced exits off the market, and live that closed 20 of 27 round trips
+ * at a loss (-5 bps each) where Grid, the same day, closed 3 of 16.
  */
-export function quotingFor(p: Pick<Policy, 'refMode' | 'blendWeight' | 'participation'>): { cfg: Pick<StrategyConfig, 'blend' | 'participation'>; profitExit: boolean } {
+export function quotingFor(p: Pick<Policy, 'refMode' | 'blendWeight' | 'participation'>): { cfg: Pick<StrategyConfig, 'blend' | 'participation'> } {
   const mode = p.refMode ?? 'grid';
   const blend = mode === 'mid' ? 0 : mode === 'blend' ? clamp(p.blendWeight ?? DEFAULT_CONFIG.blend, 0, 1) : DEFAULT_CONFIG.blend;
-  return { cfg: { blend, participation: PARTICIPATION[p.participation ?? 'normal'] }, profitExit: mode === 'grid' };
+  return { cfg: { blend, participation: PARTICIPATION[p.participation ?? 'normal'] } };
 }
 
 // Float-safe rounding to a grid: 85181.8 / 0.1 is not an integer in IEEE 754.
@@ -336,6 +342,17 @@ export const refTrigger = (moveBps: number, cfg: StrategyConfig = DEFAULT_CONFIG
   reflexTrigger(moveBps, 0, { ...cfg, z1: cfg.refWidenBps, z2: cfg.refPullBps }, held);
 
 /**
+ * The reflex ladder on Monday's own fills. `opens` holds the times of fills that grew the position, per side. One
+ * inside fillHoldMs widens that side (no touch, double distance); two inside burstWindowMs pull it: a taker is
+ * sweeping, and the next fill would be the one at the worst price. Fills that shrank the position never count.
+ */
+export function fillTrigger(opens: Record<Side, number[]>, now: number, cfg: StrategyConfig = DEFAULT_CONFIG): Pick<ReflexState, 'side' | 'action'> | null {
+  for (const side of ['ask', 'bid'] as const) if (opens[side].filter((t) => now - t < cfg.burstWindowMs).length >= 2) return { side, action: 'pull' };
+  for (const side of ['ask', 'bid'] as const) if (opens[side].some((t) => now - t < cfg.fillHoldMs)) return { side, action: 'widen' };
+  return null;
+}
+
+/**
  * Fold a trigger into the held reflex. A reflex holds for `reflexHoldMs` after
  * the last trigger; a pull is never downgraded to a widen while it holds. When a
  * pull runs out it steps down to a widen for half the hold, so protection lets go
@@ -343,7 +360,7 @@ export const refTrigger = (moveBps: number, cfg: StrategyConfig = DEFAULT_CONFIG
  */
 export function nextReflex(
   prev: ReflexState | null,
-  trigger: Pick<ReflexState, 'side' | 'action' | 'book' | 'ref'> | null,
+  trigger: Pick<ReflexState, 'side' | 'action' | 'book' | 'ref' | 'fill'> | null,
   now: number,
   z: number,
   triggerHashes: string[],
@@ -357,7 +374,7 @@ export function nextReflex(
   const until = now + cfg.reflexHoldMs;
   // The state carries which kind of trigger it came from (flow, book, reference): the runner reads that to pick the
   // hold and the release time. A hold extended by a different kind keeps the kind of the trigger that just fired.
-  const kind = { book: trigger.book, ref: trigger.ref };
+  const kind = { book: trigger.book, ref: trigger.ref, fill: trigger.fill };
   if (held && held.side === trigger.side) {
     const action = held.action === 'pull' ? 'pull' : trigger.action;
     // A short book hold must not cut a longer smart-money hold.
