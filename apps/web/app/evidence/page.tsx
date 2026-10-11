@@ -11,11 +11,15 @@ import { fmtBps, fmtSigned, fmtUsd } from '@/lib/format';
 const WRAP = 'mx-auto max-w-[1120px] px-4 sm:px-8';
 
 export default function EvidencePage() {
-  const [ev, setEv] = useState<Evidence | null | 'none'>(null);
+  const [ev, setEv] = useState<Evidence | null | 'none' | 'error'>(null);
   const [sym, setSym] = useState<MarketSym>('BTC');
+  const load = () => {
+    setEv(null);
+    api<Evidence & { pending?: boolean }>('/evidence').then((e) => setEv(e.pending ? 'none' : e)).catch(() => setEv('error'));
+  };
   useEffect(() => {
     document.title = 'Evidence - Monday';
-    api<Evidence & { pending?: boolean }>('/evidence').then((e) => setEv(e.pending ? 'none' : e)).catch(() => setEv('none'));
+    load();
   }, []);
 
   return (
@@ -29,6 +33,10 @@ export default function EvidencePage() {
 
         {ev === null ? (
           <div className="mt-12 grid gap-4"><Skeleton className="h-12" /><Skeleton className="h-80" /></div>
+        ) : ev === 'error' ? (
+          <div className="mt-12">
+            <Notice tone="warn" action={<button type="button" onClick={load} className="text-[12.5px] underline underline-offset-2">Try again</button>}>Could not reach the server for the study. Try again in a moment.</Notice>
+          </div>
         ) : ev === 'none' || !Object.keys(ev.studies).length ? (
           <div className="mt-12">
             <Notice>Not enough data yet. The study needs at least two days of one-minute prices and Smart Trader trades. It recomputes every hour.</Notice>

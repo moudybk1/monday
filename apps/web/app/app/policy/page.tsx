@@ -31,6 +31,9 @@ export default function PolicyPage() {
   useEffect(() => {
     if (view.data && !draft) setDraft(draftFrom(view.data.pending?.policy ?? view.data.policy));
   }, [view.data, draft]);
+  if (view.isError && !view.data) {
+    return <div className="py-8"><Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={() => void view.refetch()}>Try again</Button>}>Could not load your settings: {view.error instanceof Error ? view.error.message : 'the server did not answer.'}</Notice></div>;
+  }
   if (!draft || !view.data) return <div className="grid gap-4 py-8"><Skeleton className="h-8 w-56" /><Skeleton className="h-96" /></div>;
 
   const specs = cfg?.specs ?? {};

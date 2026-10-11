@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { PxOverview } from '@monday/core';
 import { api } from '@/lib/api';
+import { at } from '@/lib/hosts';
 import { cx } from './ui';
 
 // Shared pieces of the public Perpl stats pages. Same tokens as the terminal: mono numerals, 12px workhorse text,
@@ -128,7 +129,7 @@ export function Tabs<T extends string>({ value, options, onChange, label, size =
 /** An account, by address when known: every one of them opens its wallet page. */
 export function AccountLink({ account, address, className }: { account: number; address?: string | null; className?: string }) {
   return (
-    <Link href={`/analytics/wallet/${address || account}`} className={cx('num text-fg underline-offset-2 hover:text-accent hover:underline', className)}>
+    <Link href={at(`/analytics/wallet/${address || account}`)} className={cx('num text-fg underline-offset-2 hover:text-accent hover:underline', className)}>
       {address ? shortAddress(address) : `#${account}`}
     </Link>
   );

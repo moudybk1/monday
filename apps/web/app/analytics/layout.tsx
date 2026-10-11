@@ -10,6 +10,7 @@ import type { AskAnswer, AskIntent, PxOverview, PxTrader } from '@monday/core';
 import { AppHeader } from '@/components/app-header';
 import { Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
+import { at } from '@/lib/hosts';
 
 // Analytics, one place: Perpl's protocol and any wallet on it (public, no sign-in, so anyone can open a link),
 // side-by-side wallets, and the signed-in user's own Monday fills. The header matches the app's.
@@ -65,7 +66,7 @@ function SubNav() {
     <div className="panel mt-1 flex-row flex-wrap items-stretch justify-between overflow-visible">
       <div role="tablist" aria-label="Analytics" className="flex h-9">
         {TABS.map((t) => (
-          <Link key={t.href} href={t.href} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex items-center px-3 text-[12.5px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
+          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex items-center px-3 text-[12.5px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
             {t.label}
             {t.on(pathname) && <motion.span layoutId="analytics-tab" aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
           </Link>
@@ -123,19 +124,20 @@ function AskBar() {
   }, [note]);
 
   const act = async (i: AskIntent) => {
+    const go = (path: string) => router.push(at(path)); // from My Monday on the app's host, the public pages are on theirs
     const qs = (o: Record<string, string | number | undefined>) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== '') p.set(k, String(v)); const s = p.toString(); return s ? `?${s}` : ''; };
     switch (i.kind) {
-      case 'wallet': return router.push(`/analytics/wallet/${i.q}`);
-      case 'market': return router.push(`/analytics${qs({ market: i.sym })}`);
-      case 'metric': return router.push(`/analytics${qs({ metric: i.metric, market: i.sym, range: i.range })}`);
-      case 'screen': return router.push(`/analytics/screener${qs({ preset: i.presets?.join(','), days: i.days, minVolume: i.minVolume, minCloses: i.minCloses, sort: i.sort, dir: i.dir })}`);
-      case 'compare': return router.push(`/analytics/compare?w=${i.wallets.join(',')}`);
+      case 'wallet': return go(`/analytics/wallet/${i.q}`);
+      case 'market': return go(`/analytics${qs({ market: i.sym })}`);
+      case 'metric': return go(`/analytics${qs({ metric: i.metric, market: i.sym, range: i.range })}`);
+      case 'screen': return go(`/analytics/screener${qs({ preset: i.presets?.join(','), days: i.days, minVolume: i.minVolume, minCloses: i.minCloses, sort: i.sort, dir: i.dir })}`);
+      case 'compare': return go(`/analytics/compare?w=${i.wallets.join(',')}`);
       case 'top': {
         const rows = await api<PxTrader[]>(`/stats/traders?days=${i.days}&sort=${i.sort}`);
         if (!rows.length) return setNote({ text: 'No traders in that window yet.', tone: 'warn' });
-        return router.push(`/analytics/compare?w=${rows.slice(0, i.n).map((t) => t.address || t.account).join(',')}`);
+        return go(`/analytics/compare?w=${rows.slice(0, i.n).map((t) => t.address || t.account).join(',')}`);
       }
-      case 'tab': return router.push(i.tab === 'perpl' ? '/analytics' : `/analytics/${i.tab}`);
+      case 'tab': return go(i.tab === 'perpl' ? '/analytics' : `/analytics/${i.tab}`);
       default: return setNote({ text: i.reason, tone: 'warn' });
     }
   };

@@ -8,7 +8,8 @@ import { Button, Notice, Skeleton, Tag, cx } from '@/components/ui';
 import { shortAddr } from '@/lib/format';
 import { safeReturnPath } from '@monday/core';
 import { showAccount } from '@/lib/api';
-import { Providers, chain, useAppConfig, useMe, useSession } from '@/lib/wallet';
+import { at } from '@/lib/hosts';
+import { Providers, chain, useAppConfig, useMe, useSession, walletConnectReady } from '@/lib/wallet';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -73,9 +74,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         ) : me.isError ? (
           <div className="grid max-w-[46rem] gap-3 py-16" role="status">
             <h1 className="display text-2xl">Connecting to Monday</h1>
-            <p className="text-fg-2">The server takes up to a minute to start. This page connects by itself as soon as it is ready.</p>
+            <p className="text-fg-2">Monday&apos;s server is not answering right now. This page keeps trying and connects by itself as soon as it can. Your bot and your funds on Perpl are not affected by this page.</p>
             <Skeleton className="mt-2 h-1.5 w-56" />
-            <p className="mt-4 text-[12.5px] text-fg-3">Still here after a minute? Check that the server is running (<code className="num">npm run dev</code>).</p>
+            {process.env.NODE_ENV === 'development' && <p className="mt-4 text-[12.5px] text-fg-3">Still here after a minute? Check that the server is running (<code className="num">npm run dev</code>).</p>}
           </div>
         ) : cfg.data && !cfg.data.sim && cfg.data.chainId !== chain.id ? (
           <div className="py-16">
@@ -93,8 +94,30 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** This page's address when no wallet can connect from this browser (none installed, no WalletConnect for a phone). */
+function useNoWallet(): string | null {
+  const [here, setHere] = useState<string | null>(null);
+  useEffect(() => {
+    if (!walletConnectReady && !(window as { ethereum?: unknown }).ethereum) setHere(`${location.host}${location.pathname}`);
+  }, []);
+  return here;
+}
+
+/** Say what works instead of a wallet button that would wait forever for an extension that is not there. */
+function NoWallet({ here }: { here: string }) {
+  const link = 'underline underline-offset-2 hover:text-fg';
+  return (
+    <div className="mt-6 max-w-[52ch]">
+      <Notice>
+        No wallet found in this browser. Install a browser wallet such as MetaMask or Rabby and reload this page, or open it in your wallet app&apos;s own browser: <a className={link} href={`https://metamask.app.link/dapp/${here}`}>open in MetaMask</a>. The <a className={link} href={at('/analytics')}>Perpl analytics</a> need no wallet.
+      </Notice>
+    </div>
+  );
+}
+
 function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
   const session = useSession();
+  const noWallet = useNoWallet();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,10 +143,11 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
           {realFunds && ' This server trades real funds.'}
         </p>
         <div className="mt-8 flex flex-wrap gap-2.5">
-          <Button size="lg" onClick={session.signIn} disabled={busy}>Connect wallet</Button>
+          <Button size="lg" onClick={session.signIn} disabled={busy || noWallet !== null}>Connect wallet</Button>
           {sim && <Button size="lg" variant="ghost" onClick={demo} disabled={busy}>{busy ? 'Opening' : 'Use a demo account'}</Button>}
         </div>
         {error && <p role="alert" className="mt-3 text-[12.5px] text-ask-fg">{error}</p>}
+        {noWallet && <NoWallet here={noWallet} />}
       </div>
       <dl className="panel divide-y divide-line text-[13px]">
         {[

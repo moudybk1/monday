@@ -1,7 +1,12 @@
-# TLS is automatic once DOMAIN and analytics.DOMAIN point at this machine. Public stats go to the stats process, the
-# rest of the API and its WebSocket to the trading server, every other path to the web app. One origin per site, so the
-# session cookie stays first-party.
+# TLS is automatic once DOMAIN, app.DOMAIN and analytics.DOMAIN point at this machine. Public stats go to the stats
+# process, the rest of the API and its WebSocket to the trading server, every other path to the web app. Everything
+# that needs the session (the app and My Monday) is on app.DOMAIN, so the cookie stays first-party on one host.
 {$DOMAIN} {
+	@app path /app /app/* /analytics/monday /analytics/monday/*
+	@analytics {
+		path /analytics /analytics/*
+		not path /analytics/monday /analytics/monday/*
+	}
 	handle /api/stats/* {
 		reverse_proxy stats:3002
 	}
@@ -11,19 +16,35 @@
 	handle /ws {
 		reverse_proxy server:3001
 	}
+	handle @app {
+		redir https://app.{$DOMAIN}{uri}
+	}
+	handle @analytics {
+		redir https://analytics.{$DOMAIN}{uri}
+	}
 	handle {
 		reverse_proxy web:3000
 	}
 }
 
-# The public analytics on their own address. Signing in, the trading app and a user's own analytics need the session,
-# which belongs to the main domain, so those paths go there.
+# The signed-in app: onboarding, the terminal, Bot settings and My Monday.
+app.{$DOMAIN} {
+	route {
+		reverse_proxy /api/stats/* stats:3002
+		reverse_proxy /api/* server:3001
+		reverse_proxy /ws server:3001
+		redir / /app
+		reverse_proxy web:3000
+	}
+}
+
+# The public analytics. A user's own analytics need the session, which belongs to the app's host.
 analytics.{$DOMAIN} {
 	@session path /app /app/* /analytics/monday /analytics/monday/*
 	route {
 		reverse_proxy /api/stats/* stats:3002
 		reverse_proxy /api/* server:3001
-		redir @session https://{$DOMAIN}{uri}
+		redir @session https://app.{$DOMAIN}{uri}
 		redir / /analytics
 		reverse_proxy web:3000
 	}

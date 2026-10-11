@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ComponentProps, ReactNode } from 'react';
+import { at } from '@/lib/hosts';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 export { cx };
@@ -63,7 +64,7 @@ const LETTERS: [string, number][] = [
 ];
 
 /** The full lockup, cropped to its ink. Symbol in amber; letters take the text colour so one file serves both themes. */
-export function Wordmark({ href = '/', size = 20 }: { href?: string; size?: number }) {
+export function Wordmark({ href = at('/'), size = 20 }: { href?: string; size?: number }) {
   return (
     <Link href={href} className="inline-flex text-fg" aria-label="Monday home">
       <svg height={size} viewBox="24 24 556 104" aria-hidden>

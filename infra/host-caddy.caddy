@@ -1,8 +1,15 @@
 # infra/Caddyfile for a host Caddy, against the ports in infra/docker-compose.host-caddy.yml. Copy to
 # /etc/caddy/conf.d/monday.caddy, then: caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+# Three hosts, one web app: the site here, the signed-in app on app., the public analytics on analytics. Everything
+# that needs the session (the app and My Monday) is on app., so the cookie stays on one host.
 mondaytrade.xyz {
 	# JSON from the stats API compresses about ten to one; the 90-day screener is 1.5 MB raw.
 	encode zstd gzip
+	@app path /app /app/* /analytics/monday /analytics/monday/*
+	@analytics {
+		path /analytics /analytics/*
+		not path /analytics/monday /analytics/monday/*
+	}
 	handle /api/stats/* {
 		reverse_proxy 127.0.0.1:3102
 	}
@@ -11,6 +18,13 @@ mondaytrade.xyz {
 	}
 	handle /ws {
 		reverse_proxy 127.0.0.1:3101
+	}
+	# Old links and bookmarks land on the new hosts.
+	handle @app {
+		redir https://app.mondaytrade.xyz{uri}
+	}
+	handle @analytics {
+		redir https://analytics.mondaytrade.xyz{uri}
 	}
 	handle {
 		reverse_proxy 127.0.0.1:3100
@@ -21,13 +35,24 @@ www.mondaytrade.xyz {
 	redir https://mondaytrade.xyz{uri} permanent
 }
 
+app.mondaytrade.xyz {
+	encode zstd gzip
+	route {
+		reverse_proxy /api/stats/* 127.0.0.1:3102
+		reverse_proxy /api/* 127.0.0.1:3101
+		reverse_proxy /ws 127.0.0.1:3101
+		redir / /app
+		reverse_proxy 127.0.0.1:3100
+	}
+}
+
 analytics.mondaytrade.xyz {
 	encode zstd gzip
 	@session path /app /app/* /analytics/monday /analytics/monday/*
 	route {
 		reverse_proxy /api/stats/* 127.0.0.1:3102
 		reverse_proxy /api/* 127.0.0.1:3101
-		redir @session https://mondaytrade.xyz{uri}
+		redir @session https://app.mondaytrade.xyz{uri}
 		redir / /analytics
 		reverse_proxy 127.0.0.1:3100
 	}
