@@ -94,7 +94,7 @@ export default async function Landing() {
           </div>
           <div className="relative mt-12 md:mt-16">
             {/* Amber light behind the terminal: the one place the page glows. */}
-            <div aria-hidden className="pointer-events-none absolute -inset-x-24 -top-[22rem] h-[24rem] bg-[radial-gradient(55%_75%_at_50%_100%,color-mix(in_oklab,var(--accent)_22%,transparent),transparent_72%)]" />
+            <div aria-hidden className="pointer-events-none absolute -inset-x-24 -top-[22rem] h-[24rem] bg-[radial-gradient(55%_75%_at_50%_100%,var(--glow),transparent_72%)]" />
             <div className="rise relative" style={{ '--i': 3 } as React.CSSProperties}>
               <LiveMarket />
             </div>
