@@ -9,9 +9,9 @@ import { useEffect, useState } from 'react';
 import type { PxWallet } from '@monday/core';
 import { EASE, HeatGrid, LineChart, Share, Sparkline, type Tone } from '@/components/charts';
 import { Kpi, Segments, WatchButton, ago, liqText, liqTone, money, price, profitText, shortAddress, signedMoney, tone } from '@/components/stats-ui';
-import { Notice, Panel, Skeleton, cx } from '@/components/ui';
+import { Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
-import { walletInsights, type Insight } from '@/lib/insights';
+import { walletBadges, walletInsights, type Insight } from '@/lib/insights';
 
 // One wallet on Perpl: what it holds now (read live from the Exchange), how it has traded (indexed fills), and what
 // stands out about the way it trades.
@@ -57,6 +57,11 @@ export default function WalletPage() {
             {d.frozen && <span className="ml-2 text-ask-fg">frozen</span>}
             {p.firstTs && <> · trading since <span className="num">{shortDay(p.firstTs)}</span>, last fill {ago(p.lastTs!)} ago</>}
           </p>
+          {walletBadges(d).length > 0 && (
+            <p className="mt-1.5 flex flex-wrap gap-1">
+              {walletBadges(d).map((b) => <span key={b.text} title={b.title}><Tag tone={b.tone}>{b.text}</Tag></span>)}
+            </p>
+          )}
           {d.rank.volumePct != null && d.rank.pnlPct != null && (
             <p className="mt-1 text-[11.5px] text-fg-2" title={`Among the ${d.rank.accounts.toLocaleString('en-US')} accounts with a fill in the last ${d.rank.days} days`}>
               Last {d.rank.days} days: more volume than <span className="num text-fg">{Math.round((1 - d.rank.volumePct) * 100)}%</span> of traders, a better result than <span className={cx('num', d.rank.pnlPct <= 0.5 ? 'text-bid-fg' : 'text-ask-fg')}>{Math.round((1 - d.rank.pnlPct) * 100)}%</span>.
@@ -177,7 +182,21 @@ export default function WalletPage() {
             </div>
           )}
         </Panel>
-        <Panel title="Deposits and withdrawals" aside={<span>{deposits ? `${signedMoney(deposits)} net` : ''}</span>} className="h-[440px]">
+        <Panel title={d.liquidations.length ? 'Liquidations and flows' : 'Deposits and withdrawals'} aside={<span>{deposits ? `${signedMoney(deposits)} net` : ''}</span>} className="h-[440px]">
+          {d.liquidations.length > 0 && (
+            <table className="w-full border-b border-line text-[11.5px]">
+              <tbody className="num">
+                {d.liquidations.map((l, i) => (
+                  <tr key={`${l.ts}${l.sym}${i}`} className="h-[24px] border-t border-line first:border-t-0 bg-ask/5">
+                    <td className="pl-2.5 text-fg-3">{shortDay(l.ts)}</td>
+                    <td className="font-sans"><span className="text-ask-fg">Liquidated</span> <span className="font-medium">{l.sym}</span> <span className={l.long ? 'text-bid-fg' : 'text-ask-fg'}>{l.long ? 'long' : 'short'}</span></td>
+                    <td className="text-right text-fg-2">{money(l.usd)}</td>
+                    <td className={cx('pr-2.5 text-right', tone(l.pnl))}>{signedMoney(l.pnl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           {!d.flows.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">None indexed yet.</p> : (
             <table className="w-full text-[11.5px]">
               <tbody className="num">

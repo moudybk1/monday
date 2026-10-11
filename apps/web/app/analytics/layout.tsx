@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 
 const TABS = [
   { href: '/analytics', label: 'Perpl', on: (p: string) => p === '/analytics' || p.startsWith('/analytics/wallet') },
+  { href: '/analytics/screener', label: 'Screener', on: (p: string) => p.startsWith('/analytics/screener') },
   { href: '/analytics/compare', label: 'Compare', on: (p: string) => p.startsWith('/analytics/compare') },
   { href: '/analytics/monday', label: 'My Monday', on: (p: string) => p.startsWith('/analytics/monday') },
 ];

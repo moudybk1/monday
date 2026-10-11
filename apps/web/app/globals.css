@@ -37,6 +37,8 @@
      under colour-blind simulation (validated in both themes); further indicators use greys and dash patterns. */
   --ind-1: #3987e5;
   --ind-2: #d55181;
+  /* The landing hero's amber light behind the terminal. */
+  --glow: color-mix(in oklab, var(--accent) 22%, transparent);
   /* Market series on the analytics charts, in assignment order (validated: adjacent pairs stay apart under
      colour-blind simulation on this surface). Past five, markets fold into a grey "Other". */
   --cat-1: #4a8ee6;
@@ -46,26 +48,32 @@
   --cat-5: #2fa3b5;
   color-scheme: dark;
 }
+/*
+  Light is warm, not white: an off-white with a low warm tint (luminance 0.89 against white's 1.0) cuts glare over a
+  long session, warm greys for the steps and lines, and text a shade softer than black (15:1 on the canvas). Every
+  text colour keeps at least 4.5:1 on every surface; the accent and the red text are a touch darker to hold that.
+*/
 [data-theme="light"] {
-  --void: #e7e9ec;
-  --canvas: #fbfbfc;
-  --raised: #f0f1f3;
-  --raised-2: #e2e4e8;
-  --line: rgb(12 13 16 / 0.1);
-  --line-2: rgb(12 13 16 / 0.24);
-  --fg: #0e1013;
-  --fg-2: #454b53;
-  --fg-3: #666d77;
-  --accent: #b85f00;
+  --void: #e6e1d8;
+  --canvas: #f5f2ec;
+  --raised: #ece8e0;
+  --raised-2: #dfd9ce;
+  --line: rgb(40 30 16 / 0.11);
+  --line-2: rgb(40 30 16 / 0.25);
+  --fg: #1d1b18;
+  --fg-2: #48443d;
+  --fg-3: #665f55;
+  --accent: #ad5900;
   --accent-fg: #ffffff;
   --bid: #0b8468;
   --ask: #d2512a;
   --ask-deep: #b8401a;
   --bid-fg: #086b54;
-  --ask-fg: #ad3d1c;
+  --ask-fg: #a6391a;
   --warn: #7a5200;
   --ind-1: #2a78d6;
-  --ind-2: #e87ba4;
+  --ind-2: #df6d99;
+  --glow: color-mix(in oklab, var(--accent) 10%, transparent); /* on a warm page more amber turns muddy */
   --cat-1: #2a78d6;
   --cat-2: #c43f6f;
   --cat-3: #8a6d00;

@@ -130,6 +130,30 @@ export interface PxTraderStats {
 /** Traders by the week of their first fill, and the share that traded again one, two and four weeks later. */
 export interface PxCohort { week: number; coverage: Coverage; size: number; retained: (number | null)[] }
 export interface PxCohorts { offsets: number[]; cohorts: PxCohort[] }
+/** One account in the screener: its results over the window, how it trades, and its last two weeks day by day. */
+export interface PxScreenRow {
+  account: number;
+  address: string | null;
+  volumeUsd: number;
+  netUsd: number;
+  feesUsd: number;
+  trades: number;
+  closes: number;
+  wins: number;
+  grossWinUsd: number;
+  grossLossUsd: number;
+  makerVolumeUsd: number;
+  activeDays: number;
+  /** UTC day (ms) of the last fill in the window. */
+  lastDay: number;
+  /** Net PnL per UTC day over the last 14 days, oldest first; null for a day without a fill. */
+  daily: (number | null)[];
+  /** Consecutive profitable (positive) or losing (negative) active days, ending at the last active day. */
+  streak: number;
+  liquidations: number;
+  liquidatedUsd: number;
+}
+export interface PxScreen { days: number; at: number; rows: PxScreenRow[] }
 /** Something worth a second look: a large deposit or withdrawal, a liquidation, a large position opened or closed. */
 export interface PxSignal { ts: number; kind: 'deposit' | 'withdraw' | 'liquidation' | 'open' | 'close'; account: number; address: string | null; sym?: string; long?: boolean; usd: number; pnl?: number }
 export interface PxFlows { days: number; depositsUsd: number; withdrawalsUsd: number; depositors: number; withdrawers: number; deposits: PxFlowRow[]; withdrawals: PxFlowRow[] }
@@ -208,6 +232,18 @@ export interface PxWallet {
   historyComplete: boolean;
   /** Where this wallet stands among every account active in the last `days` days: 0.04 means the top 4%. Null: not active. */
   rank: { days: number; accounts: number; volumePct: number | null; pnlPct: number | null };
+  /** Every time the Exchange closed one of this wallet's positions, newest first. */
+  liquidations: { ts: number; sym: string; long: boolean; usd: number; pnl: number }[];
+}
+
+/** The streak a day series ends on: +n for n profitable days in a row, -n for losing ones; days without fills are skipped. */
+export function streakOf(daily: (number | null)[]): number {
+  const active = daily.filter((v): v is number => v != null && v !== 0);
+  if (!active.length) return 0;
+  const sign = Math.sign(active[active.length - 1]);
+  let n = 0;
+  for (let i = active.length - 1; i >= 0 && Math.sign(active[i]) === sign; i--) n++;
+  return sign * n;
 }
 
 /** A block range [lo, hi) the indexer has scanned end to end. */

@@ -4,7 +4,7 @@ import { walletInsights } from './insights';
 
 const base = (): PxWallet => ({
   network: 'mainnet', address: '0x1', account: 1, balanceUsd: 100, lockedUsd: 0, frozen: false, equityUsd: 120, positions: [], trades: [], flows: [{ ts: 0, kind: 'deposit', usd: 100 }],
-  fills: { total: 10, used: 10, since: 0 }, historyComplete: true, rank: { days: 30, accounts: 1000, volumePct: 0.4, pnlPct: 0.02 },
+  fills: { total: 10, used: 10, since: 0 }, historyComplete: true, rank: { days: 30, accounts: 1000, volumePct: 0.4, pnlPct: 0.02 }, liquidations: [],
   performance: {
     trades: 20, closes: 10, volumeUsd: 1000, makerVolumeUsd: 100, feesUsd: 2, fundingUsd: 0, pnlUsd: 30, netUsd: 28, winRate: 0.6, profitFactor: 0.8, grossWinUsd: 40, grossLossUsd: 50,
     avgWinUsd: 6.7, avgLossUsd: 12.5, largestWinUsd: 10, largestLossUsd: 30, maxDrawdownUsd: 5, longestWin: 2, longestLoss: 3, avgHoldMin: 10, firstTs: 0, lastTs: 1,

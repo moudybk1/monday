@@ -39,9 +39,36 @@ create table if not exists px_trades (
 create index if not exists px_trades_acct on px_trades (account, block);
 create table if not exists px_liqs (block integer, idx integer, ts integer, perp integer, account integer, long integer, size real, mark real, pnl real, primary key (block, idx));
 create index if not exists px_liqs_ts on px_liqs (ts);
-create table if not exists px_day (day integer, account integer, volume real, net real, fees real, trades integer, primary key (day, account));
+create table if not exists px_day (
+  day integer, account integer, volume real, net real, fees real, trades integer,
+  closes integer default 0, wins integer default 0, gross_win real default 0, gross_loss real default 0, maker real default 0, primary key (day, account)
+);
 create table if not exists px_ranges (lo integer primary key, hi integer not null);
 `);
+
+// px_day gained per-account results (closes, wins, gross win and loss, maker volume) on 2026-10-11. A database from
+// before then is rebuilt once from its fills, in one transaction, before anything is served. Kinds 2..5 realise PnL
+// (decrease, close, invert, liquidation), as in walletPerformance.
+if (!(sdb.prepare('pragma table_info(px_day)').all() as { name: string }[]).some((c) => c.name === 'closes')) {
+  const t0 = Date.now();
+  sdb.exec(`
+begin;
+alter table px_day add column closes integer default 0;
+alter table px_day add column wins integer default 0;
+alter table px_day add column gross_win real default 0;
+alter table px_day add column gross_loss real default 0;
+alter table px_day add column maker real default 0;
+delete from px_day;
+insert into px_day (day, account, volume, net, fees, trades, closes, wins, gross_win, gross_loss, maker)
+select ts / 86400000, account, sum(price * size), sum(pnl + funding - fee), sum(fee), count(*),
+  sum(kind between 2 and 5), sum(kind between 2 and 5 and pnl + funding - fee > 0),
+  sum(case when kind between 2 and 5 and pnl + funding - fee > 0 then pnl + funding - fee else 0 end),
+  sum(case when kind between 2 and 5 and pnl + funding - fee <= 0 then fee - pnl - funding else 0 end),
+  sum(case when taker = 0 then price * size else 0 end)
+from px_trades group by 1, 2;
+commit;`);
+  console.log(JSON.stringify({ service: 'stats', event: 'px_day_rebuilt', ms: Date.now() - t0 }));
+}
 
 export const KINDS = ['open', 'increase', 'decrease', 'close', 'invert', 'liquidation', 'fill'] as const;
 const kindId = (k: (typeof KINDS)[number]) => KINDS.indexOf(k);
@@ -55,8 +82,9 @@ const insAccount = sdb.prepare('insert or ignore into px_accounts (id, address, 
 const insFlow = sdb.prepare('insert or ignore into px_flows (block, idx, ts, account, deposit, usd) values (?, ?, ?, ?, ?, ?)');
 const insTrade = sdb.prepare('insert or ignore into px_trades (block, idx, ts, perp, account, taker, kind, long, price, size, fee, pnl, funding) values (?,?,?,?,?,?,?,?,?,?,?,?,?)');
 const insLiq = sdb.prepare('insert or ignore into px_liqs (block, idx, ts, perp, account, long, size, mark, pnl) values (?,?,?,?,?,?,?,?,?)');
-const upDay = sdb.prepare(`insert into px_day (day, account, volume, net, fees, trades) values (?, ?, ?, ?, ?, 1)
-  on conflict (day, account) do update set volume = volume + excluded.volume, net = net + excluded.net, fees = fees + excluded.fees, trades = trades + 1`);
+const upDay = sdb.prepare(`insert into px_day (day, account, volume, net, fees, trades, closes, wins, gross_win, gross_loss, maker) values (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+  on conflict (day, account) do update set volume = volume + excluded.volume, net = net + excluded.net, fees = fees + excluded.fees, trades = trades + 1,
+  closes = closes + excluded.closes, wins = wins + excluded.wins, gross_win = gross_win + excluded.gross_win, gross_loss = gross_loss + excluded.gross_loss, maker = maker + excluded.maker`);
 const selRanges = sdb.prepare('select lo, hi from px_ranges order by lo');
 const selTouching = sdb.prepare('select lo, hi from px_ranges where lo <= ? and hi >= ?');
 const delRange = sdb.prepare('delete from px_ranges where lo = ?');
@@ -159,7 +187,11 @@ function ingest(logs: RawLog[], m: Meta, lo: number, hi: number) {
           const pnl = pos?.pnl ?? 0, fund = pos?.funding ?? 0;
           // Ranges can be read twice (restarts, switching RPC to HyperSync): only a new fill moves the daily totals.
           const added = insTrade.run(l.block, l.idx, l.ts, perp, account, maker ? 0 : 1, kindId(pos?.kind ?? 'fill'), pos?.long ? 1 : 0, price, size, fee, pnl, fund).changes;
-          if (added) upDay.run(Math.floor(l.ts / 86_400_000), account, price * size, pnl + fund - fee, fee);
+          if (added) {
+            const net = pnl + fund - fee;
+            const closes = pos && pos.kind !== 'open' && pos.kind !== 'increase' ? 1 : 0;
+            upDay.run(Math.floor(l.ts / 86_400_000), account, price * size, net, fee, closes, closes && net > 0 ? 1 : 0, closes && net > 0 ? net : 0, closes && net <= 0 ? -net : 0, maker ? price * size : 0);
+          }
           break;
         }
       }

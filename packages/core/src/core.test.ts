@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
-  type QuoteInput, type SmartTrade, retentionCohorts, traderDistribution,
+  type QuoteInput, type SmartTrade, retentionCohorts, streakOf, traderDistribution,
 } from './index';
 
 const base: QuoteInput = {
@@ -536,6 +536,13 @@ describe('Perpl stats', () => {
     expect(c[1].retained).toEqual([0, null, null]);
     expect(c[2].week).toBe(697 * 86_400_000); // Monday 1971-11-29: weeks start on Monday
     expect(new Date(c[2].week).getUTCDay()).toBe(1);
+  });
+
+  it('reads the streak a day series ends on', () => {
+    expect(streakOf([5, -1, null, 2, 3, 0, 4])).toBe(3);
+    expect(streakOf([5, -1, -2])).toBe(-2);
+    expect(streakOf([null, 0])).toBe(0);
+    expect(streakOf([])).toBe(0);
   });
 
   it('finds the block ranges never scanned, back to block 0', () => {
