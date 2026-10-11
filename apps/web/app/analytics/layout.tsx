@@ -1,13 +1,13 @@
 'use client';
 
-import { CircleNotchIcon, MagnifyingGlassIcon, SparkleIcon } from '@phosphor-icons/react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import type { AskAnswer, AskIntent, PxOverview, PxTrader } from '@monday/core';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+import type { PxOverview } from '@monday/core';
 import { AppHeader } from '@/components/app-header';
+import { AskChat } from '@/components/ask-chat';
 import { Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { at } from '@/lib/hosts';
@@ -32,6 +32,7 @@ export default function AnalyticsLayout({ children }: { children: React.ReactNod
           <SubNav />
           {children}
         </main>
+        <AskChat />
       </div>
     </QueryClientProvider>
   );
@@ -72,119 +73,7 @@ function SubNav() {
           </Link>
         ))}
       </div>
-      <AskBar />
     </div>
   );
 }
 
-const EXAMPLES = ['whales liquidated this month', 'consistent winners 30D', 'BTC funding', 'compare the top 3 winners this week', 'market makers with volume over $1M'];
-const label = (i: AskIntent) => {
-  const days = (d?: number) => (d === 1 ? 'today' : d ? `${d}D` : '');
-  switch (i.kind) {
-    case 'wallet': return `Opening wallet ${i.q.startsWith('0x') ? `${i.q.slice(0, 6)}…${i.q.slice(-4)}` : `#${i.q}`}`;
-    case 'market': return `Focusing ${i.sym}`;
-    case 'metric': return `Showing ${i.metric === 'oi' ? 'open interest' : i.metric === 'liqs' ? 'liquidations' : i.metric === 'skew' ? 'long / short' : i.metric}${i.sym ? ` on ${i.sym}` : ''}`;
-    case 'screen': return `Screener: ${i.presets?.join(' + ') ?? 'everyone'}${i.days ? `, ${days(i.days)}` : ''}${i.minVolume ? `, volume $${i.minVolume.toLocaleString('en-US')}+` : ''}${i.minCloses ? `, ${i.minCloses}+ closes` : ''}`;
-    case 'compare': return `Comparing ${i.wallets.length} wallets`;
-    case 'top': return `Comparing the top ${i.n} by ${i.sort === 'net' ? 'PnL' : i.sort === 'loss' ? 'loss' : 'volume'}, ${days(i.days)}`;
-    case 'tab': return `Opening ${i.tab === 'perpl' ? 'Perpl' : i.tab === 'monday' ? 'My Monday' : i.tab}`;
-    default: return i.reason;
-  }
-};
-
-/**
- * Ask Monday: an address, a market or a sentence. The server turns it into one action from a fixed menu (common shapes
- * without a model, sentences with one), and the page moves there with real data. Cmd/Ctrl+K focuses it.
- */
-function AskBar() {
-  const router = useRouter();
-  const reduce = useReducedMotion();
-  const ref = useRef<HTMLInputElement>(null);
-  const [q, setQ] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [slow, setSlow] = useState(false); // the model is taking its time: say so instead of looking stuck
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState<{ text: string; tone: 'ok' | 'warn'; dropped?: string } | null>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ref.current?.focus(); ref.current?.select(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-  useEffect(() => {
-    if (!busy) { setSlow(false); return; }
-    const t = setTimeout(() => setSlow(true), 6_000);
-    return () => clearTimeout(t);
-  }, [busy]);
-  useEffect(() => {
-    if (!note) return;
-    const t = setTimeout(() => setNote(null), note.tone === 'ok' && !note.dropped ? 3_000 : 8_000);
-    return () => clearTimeout(t);
-  }, [note]);
-
-  const act = async (i: AskIntent) => {
-    const go = (path: string) => router.push(at(path)); // from My Monday on the app's host, the public pages are on theirs
-    const qs = (o: Record<string, string | number | undefined>) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== '') p.set(k, String(v)); const s = p.toString(); return s ? `?${s}` : ''; };
-    switch (i.kind) {
-      case 'wallet': return go(`/analytics/wallet/${i.q}`);
-      case 'market': return go(`/analytics${qs({ market: i.sym })}`);
-      case 'metric': return go(`/analytics${qs({ metric: i.metric, market: i.sym, range: i.range })}`);
-      case 'screen': return go(`/analytics/screener${qs({ preset: i.presets?.join(','), days: i.days, minVolume: i.minVolume, minCloses: i.minCloses, sort: i.sort, dir: i.dir })}`);
-      case 'compare': return go(`/analytics/compare?w=${i.wallets.join(',')}`);
-      case 'top': {
-        const rows = await api<PxTrader[]>(`/stats/traders?days=${i.days}&sort=${i.sort}`);
-        if (!rows.length) return setNote({ text: 'No traders in that window yet.', tone: 'warn' });
-        return go(`/analytics/compare?w=${rows.slice(0, i.n).map((t) => t.address || t.account).join(',')}`);
-      }
-      case 'tab': return go(i.tab === 'perpl' ? '/analytics' : `/analytics/${i.tab}`);
-      default: return setNote({ text: i.reason, tone: 'warn' });
-    }
-  };
-  const submit = async (text: string) => {
-    const v = text.trim();
-    if (!v || busy) return;
-    setBusy(true);
-    setOpen(false);
-    try {
-      const r = await api<AskAnswer>('/stats/ask', { method: 'POST', body: { q: v } });
-      if (r.intent.kind !== 'unknown') { setNote({ text: label(r.intent), tone: 'ok', dropped: r.dropped }); setQ(''); }
-      await act(r.intent);
-    } catch (e) {
-      setNote({ text: e instanceof Error ? e.message : 'Could not ask right now.', tone: 'warn' });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); void submit(q); }} role="search" className="relative flex flex-1 items-center justify-end px-2 py-1 sm:flex-none">
-      <label className={cx('flex h-7 w-full items-center gap-2 rounded-sm border bg-raised px-2 transition-colors sm:w-[26rem]', busy ? 'border-accent/60' : 'border-line-2 focus-within:border-accent')}>
-        {busy ? <CircleNotchIcon size={13} className="flex-none animate-spin text-accent" /> : <MagnifyingGlassIcon size={13} className="flex-none text-fg-3" />}
-        <span className="sr-only">Ask Monday: an address, a market, or a question about wallets</span>
-        <input
-          ref={ref} value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder={busy ? (slow ? 'Still thinking, the model can take up to a minute…' : 'Thinking…') : 'Ask Monday: an address, a market, or "whales liquidated this month"'} spellCheck={false} disabled={busy}
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-fg placeholder:text-fg-3 focus:outline-none disabled:opacity-70"
-        />
-        <kbd className="num hidden flex-none rounded-[3px] border border-line-2 px-1 text-[10px] text-fg-3 sm:inline">⌘K</kbd>
-      </label>
-      <AnimatePresence>
-        {open && !q && !busy && (
-          <motion.div key="ex" initial={reduce ? false : { opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }} className="absolute top-full right-2 left-2 z-20 mt-1 rounded-sm border border-line-2 bg-raised-2 p-2 shadow-[0_8px_24px_rgb(0_0_0/0.35)] sm:left-auto sm:w-[26rem]">
-            <p className="mb-1.5 flex items-center gap-1 text-[10.5px] text-fg-3"><SparkleIcon size={11} weight="fill" className="text-accent" /> Try</p>
-            <div className="flex flex-wrap gap-1">
-              {EXAMPLES.map((x) => <button key={x} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setQ(x); void submit(x); }} className="rounded-sm border border-line-2 px-2 py-0.5 text-[11.5px] text-fg-2 hover:border-accent/45 hover:text-fg">{x}</button>)}
-            </div>
-          </motion.div>
-        )}
-        {note && (
-          <motion.p key={note.text} role="status" initial={reduce ? false : { opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className={cx('absolute top-full right-2 left-2 z-20 mt-1 rounded-sm border px-2.5 py-1.5 text-[11.5px] shadow-[0_8px_24px_rgb(0_0_0/0.35)] sm:left-auto sm:w-[26rem]', note.tone === 'ok' ? 'border-accent/45 bg-raised-2 text-fg' : 'border-warn/45 bg-raised-2 text-warn')}>
-            {note.text}
-            {note.dropped && <span className="mt-0.5 block text-[11px] text-warn">Not applied: {note.dropped}</span>}
-          </motion.p>
-        )}
-      </AnimatePresence>
-    </form>
-  );
-}

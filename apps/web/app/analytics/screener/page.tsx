@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'motion/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import type { PxScreen, PxScreenRow } from '@monday/core';
+import { SCREEN_PRESETS, screenStats, type PxScreen, type ScreenStats } from '@monday/core';
 import { EASE, Share, Sparkline } from '@/components/charts';
 import { AccountLink, Segments, money, signedMoney, tone, useStatsNetwork, useWatchlist } from '@/components/stats-ui';
 import { Notice, Panel, Skeleton, cx } from '@/components/ui';
@@ -15,20 +15,11 @@ import { api } from '@/lib/api';
 // filters for size and sample, and every column sortable. Each row opens the wallet; the star keeps it on the watchlist.
 
 type Days = 1 | 7 | 30 | 90;
-type Row = PxScreenRow & { winRate: number | null; profitFactor: number | null; makerShare: number; avgTradeUsd: number };
+type Row = ScreenStats;
 type SortKey = 'netUsd' | 'winRate' | 'profitFactor' | 'volumeUsd' | 'trades' | 'makerShare' | 'activeDays' | 'streak' | 'liquidatedUsd' | 'avgTradeUsd';
-type Preset = { id: string; label: string; hint: string; keep: (r: Row) => boolean; sort: SortKey; dir: 'asc' | 'desc' };
+type Preset = (typeof SCREEN_PRESETS)[number];
 
-const PRESETS: Preset[] = [
-  { id: 'all', label: 'Everyone', hint: 'every account with a fill in the window, by net PnL', keep: () => true, sort: 'netUsd', dir: 'desc' },
-  { id: 'winners', label: 'Consistent winners', hint: 'at least 30 closes, profit factor 1.5 or better, in the money', keep: (r) => r.closes >= 30 && (r.profitFactor ?? Infinity) >= 1.5 && r.netUsd > 0, sort: 'netUsd', dir: 'desc' },
-  { id: 'streaks', label: 'On a streak', hint: 'three or more profitable days in a row', keep: (r) => r.streak >= 3, sort: 'streak', dir: 'desc' },
-  { id: 'whales', label: 'Whales', hint: 'the most volume', keep: () => true, sort: 'volumeUsd', dir: 'desc' },
-  { id: 'makers', label: 'Market makers', hint: 'at least 70% of volume made, not taken, and $100k traded', keep: (r) => r.makerShare >= 0.7 && r.volumeUsd >= 100_000, sort: 'volumeUsd', dir: 'desc' },
-  { id: 'takers', label: 'Takers', hint: 'at most 20% made, at least 10 closes, by net PnL', keep: (r) => r.makerShare <= 0.2 && r.closes >= 10, sort: 'netUsd', dir: 'desc' },
-  { id: 'liquidated', label: 'Liquidated', hint: 'closed by the Exchange at least once in the window', keep: (r) => r.liquidations > 0, sort: 'liquidatedUsd', dir: 'desc' },
-  { id: 'losers', label: 'Biggest losers', hint: 'in the red, worst first', keep: (r) => r.netUsd < 0, sort: 'netUsd', dir: 'asc' },
-];
+const PRESETS = SCREEN_PRESETS;
 const VOLUMES = [[0, 'Any volume'], [10_000, '$10k+'], [100_000, '$100k+'], [1_000_000, '$1M+']] as const;
 const CLOSES = [[0, 'Any sample'], [10, '10+ closes'], [50, '50+ closes'], [200, '200+ closes']] as const;
 const PAGE = 50;
@@ -74,10 +65,7 @@ function Screener() {
   }, []);
   useEffect(() => setShown(PAGE), [params]);
 
-  const rows = useMemo<Row[]>(() => (q.data?.rows ?? []).map((r) => ({
-    ...r, winRate: r.closes ? r.wins / r.closes : null, profitFactor: r.grossLossUsd > 0 ? r.grossWinUsd / r.grossLossUsd : r.grossWinUsd > 0 ? Infinity : null,
-    makerShare: r.volumeUsd ? r.makerVolumeUsd / r.volumeUsd : 0, avgTradeUsd: r.trades ? r.volumeUsd / r.trades : 0,
-  })), [q.data]);
+  const rows = useMemo<Row[]>(() => (q.data?.rows ?? []).map(screenStats), [q.data]);
   const pick = (next: Preset) => set({ preset: next.id === 'all' ? null : next.id, sort: null, dir: null });
   const visible = useMemo(() => {
     const kept = rows.filter((r) => presets.every((x) => x.keep(r)) && r.volumeUsd >= minVolume && r.closes >= minCloses);

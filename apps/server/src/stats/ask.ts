@@ -8,7 +8,7 @@ import { ask, firstJsonObject, llmReady } from './llm';
 import { meta } from './perpl';
 
 const Days = z.union([z.literal(1), z.literal(7), z.literal(30), z.literal(90)]);
-const Intent = z.discriminatedUnion('kind', [
+export const Intent = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('wallet'), q: z.string().min(1).max(64) }),
   z.object({ kind: z.literal('market'), sym: z.string().min(1).max(12) }),
   z.object({ kind: z.literal('metric'), metric: z.enum(ASK_METRICS), sym: z.string().max(12).optional(), range: z.union([z.literal(7), z.literal(30), z.literal(90), z.literal(0)]).optional() }),
@@ -146,7 +146,8 @@ export function explainWallet(w: PxWallet): Promise<string> | null {
   const key = `${w.network}:${w.account ?? w.address}`;
   const hit = explanations.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.v;
-  const v = ask(EXPLAIN, walletFacts(w).join('\n'), { maxTokens: 220, timeoutMs: EXPLAIN_TIMEOUT_MS }).then((t) => t.trim());
+  // With thinking off Kimi answers in seconds but runs long: the prompt's three sentences are kept, the rest dropped.
+  const v = ask(EXPLAIN, walletFacts(w).join('\n'), { maxTokens: 220, timeoutMs: EXPLAIN_TIMEOUT_MS }).then((t) => t.trim().split(/(?<=[.!?])\s+/).slice(0, 3).join(' '));
   explanations.set(key, { at: Date.now(), v });
   v.catch(() => explanations.delete(key));
   if (explanations.size > 500) explanations.delete(explanations.keys().next().value!);
