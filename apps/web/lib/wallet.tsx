@@ -18,10 +18,13 @@ export const chain = process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? monad : mon
 const rpc = (id: number) => http(id === chain.id ? process.env.NEXT_PUBLIC_MONAD_RPC_URL : undefined);
 // Browser wallets always; phone wallets over WalletConnect once a project id is set (free at cloud.reown.com).
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
+export const walletConnectReady = Boolean(projectId);
 const wagmiConfig = createConfig({
   chains: [monadTestnet, monad],
   connectors: connectorsForWallets(
-    [{ groupName: 'Wallets', wallets: [injectedWallet, rabbyWallet, metaMaskWallet, okxWallet, ...(projectId ? [coinbaseWallet, walletConnectWallet] : [])] }],
+    // A named wallet that is not installed falls back to WalletConnect, which hangs without a project id. Without one,
+    // only the browser's own wallet is offered; installed extensions still show by name through EIP-6963.
+    [{ groupName: 'Wallets', wallets: projectId ? [injectedWallet, rabbyWallet, metaMaskWallet, okxWallet, coinbaseWallet, walletConnectWallet] : [injectedWallet] }],
     { appName: 'Monday', projectId: projectId || 'unset' },
   ),
   transports: { [monadTestnet.id]: rpc(monadTestnet.id), [monad.id]: rpc(monad.id) },

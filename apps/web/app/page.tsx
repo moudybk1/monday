@@ -3,6 +3,7 @@ import type { AppConfig } from '@monday/core';
 import { EvidenceTeaser, LiveMarket, Reveal, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ButtonLink, Mark, Tag, cx } from '@/components/ui';
+import { at } from '@/lib/hosts';
 
 const WRAP = 'mx-auto max-w-[1320px] px-4 sm:px-8';
 const H2 = 'display text-[2.25rem] md:text-5xl';
@@ -88,7 +89,7 @@ export default async function Landing() {
               An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.
             </p>
             <div className="rise flex flex-none flex-wrap gap-2.5" style={{ '--i': 2 } as React.CSSProperties}>
-              <ButtonLink href="/app" size="lg" className="px-6">Launch app</ButtonLink>
+              <ButtonLink href={at('/app')} size="lg" className="px-6">Launch app</ButtonLink>
               <ButtonLink href="#how" size="lg" variant="ghost">How it works</ButtonLink>
             </div>
           </div>
@@ -210,7 +211,7 @@ export default async function Landing() {
             <Reveal>
               <h2 className="display max-w-[16ch] text-4xl md:text-6xl xl:text-7xl">Quote both sides without betting on direction.</h2>
             </Reveal>
-            <ButtonLink href="/app" size="lg" className="px-6">Launch app</ButtonLink>
+            <ButtonLink href={at('/app')} size="lg" className="px-6">Launch app</ButtonLink>
           </div>
         </section>
       </main>

@@ -2,13 +2,14 @@ import Link from 'next/link';
 import { NetworkNote } from './network-note';
 import { SiteMenu } from './site-menu';
 import { ThemeToggle } from './theme-toggle';
+import { at } from '@/lib/hosts';
 import { ButtonLink, Wordmark } from './ui';
 
 const LINKS = [
-  { href: '/#how', label: 'How it works' },
-  { href: '/#custody', label: 'Custody' },
-  { href: '/analytics', label: 'Analytics' },
-  { href: '/evidence', label: 'Evidence' },
+  { href: at('/#how'), label: 'How it works' },
+  { href: at('/#custody'), label: 'Custody' },
+  { href: at('/analytics'), label: 'Analytics' },
+  { href: at('/evidence'), label: 'Evidence' },
 ];
 
 /** Header for the public pages. One line, 48px and full width like the app header, so nothing jumps between them. */
@@ -26,7 +27,7 @@ export function SiteHeader() {
         </nav>
         <div className="flex items-center gap-1 md:justify-self-end">
           <span className="hidden md:contents"><ThemeToggle /></span>
-          <ButtonLink href="/app" size="sm" className="ml-1 h-8 px-3 text-[12.5px] md:ml-2 md:px-3.5">Launch app</ButtonLink>
+          <ButtonLink href={at('/app')} size="sm" className="ml-1 h-8 px-3 text-[12.5px] md:ml-2 md:px-3.5">Launch app</ButtonLink>
           <SiteMenu links={LINKS} />
         </div>
       </div>

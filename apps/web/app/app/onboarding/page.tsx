@@ -61,7 +61,7 @@ export default function Onboarding() {
       </nav>
 
       <div className="max-w-[46rem]">
-        {current === 1 && <AccountStep wallet={me.demo ? null : me.wallet} account={account.data} loading={account.isLoading} retry={() => void account.refetch()} next={() => setStep(2)} />}
+        {current === 1 && <AccountStep wallet={me.demo ? null : me.wallet} account={account.data} loading={account.isLoading} error={account.error} retry={() => void account.refetch()} next={() => setStep(2)} />}
         {current === 2 && <KeyStep sim={Boolean(cfg?.sim || cfg?.paper)} paper={Boolean(cfg?.paper)} perplUrl={cfg?.perplAppUrl ?? ''} hasKey={me.hasKey} revoked={me.keyStatus === 'revoked'} next={async () => { await Promise.all([refresh(), account.refetch()]); setLinked(true); setStep(3); }} />}
         {current === 3 && (
           <LimitsStep
@@ -86,7 +86,10 @@ function Heading({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function AccountStep({ wallet, account, loading, retry, next }: { wallet: string | null; account?: Account; loading: boolean; retry: () => void; next: () => void }) {
+function AccountStep({ wallet, account, loading, error, retry, next }: { wallet: string | null; account?: Account; loading: boolean; error: Error | null; retry: () => void; next: () => void }) {
+  if (!account && error) {
+    return <Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={retry}>Check now</Button>}>Could not look up your Perpl account: {error.message} It retries by itself every few seconds.</Notice>;
+  }
   if (loading || !account) return <div className="grid gap-4"><Skeleton className="h-10 w-80" /><Skeleton className="h-24" /></div>;
   if (!account.exists) {
     return (

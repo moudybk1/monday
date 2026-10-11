@@ -7,6 +7,7 @@ import { SignedBars } from '@/components/charts';
 import { Segments } from '@/components/stats-ui';
 import { ButtonLink, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
+import { at } from '@/lib/hosts';
 import { fmtBps, fmtSigned, fmtUsd, shortAddr } from '@/lib/format';
 
 // Tread-style performance view over Monday's own fills: is the spread paying for the adverse selection,
@@ -51,7 +52,7 @@ export default function MyMondayPage() {
       {q.isLoading ? (
         <div className="grid gap-1"><Skeleton className="h-16" /><Skeleton className="h-64" /><Skeleton className="h-48" /></div>
       ) : signedOut ? (
-        <Notice action={<ButtonLink href="/app?next=/analytics/monday" size="sm">Sign in</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
+        <Notice action={<ButtonLink href={at('/app?next=/analytics/monday')} size="sm">Sign in</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
       ) : q.isError || !q.data ? (
         <Notice tone="warn">Could not load your analytics. {q.error instanceof Error ? q.error.message : ''}</Notice>
       ) : q.data.summary.fills === 0 ? (
