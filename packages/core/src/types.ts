@@ -1,7 +1,9 @@
 // Shared domain types. The web app and the server both import these, so the
 // wire format has one definition.
 
-export const MARKETS = ['BTC', 'ETH', 'SOL'] as const;
+// Every market Perpl lists on mainnet (2026-10-12). The first three keep their place: MARKET_BIT encodes policies on-chain
+// by position. A market the venue does not list (testnet has fewer) is simply absent from its specs.
+export const MARKETS = ['BTC', 'ETH', 'SOL', 'MON', 'HYPE', 'ZEC', 'LIT', 'VVV', 'PUMP', 'NEAR', 'UNI'] as const;
 export type MarketSym = (typeof MARKETS)[number];
 export type Side = 'bid' | 'ask';
 export type Regime = 'calm' | 'active' | 'storm' | 'stale';
@@ -311,7 +313,7 @@ export interface DashboardState {
 export const REGIME_CODE: Record<string, number> = { calm: 0, active: 1, storm: 2, stale: 3, reflex: 4 };
 // The registry knows codes 0-4; the session stop loss and the margin floor are loss limits too.
 export const KILL_CODE: Record<KillReason, number> = { manual: 0, loss_limit: 1, stale_data: 2, order_failures: 3, key_error: 4, session_loss: 1, margin: 1 };
-export const MARKET_BIT: Record<MarketSym, number> = { BTC: 0, ETH: 1, SOL: 2 };
+export const MARKET_BIT = Object.fromEntries(MARKETS.map((m, i) => [m, i])) as Record<MarketSym, number>;
 
 // Human-readable ABI of MondayRegistry (PRD 13.1). Each app runs it through viem's parseAbi.
 export const REGISTRY_ABI = [

@@ -71,7 +71,7 @@ function decodeSession(raw: string | undefined): Cookie | null {
 
 const PolicyBody = z.object({
   preset: z.enum(['conservative', 'balanced', 'active', 'high', 'custom']),
-  markets: z.array(z.enum(MARKETS)).min(1).max(3),
+  markets: z.array(z.enum(MARKETS)).min(1).max(MARKETS.length),
   limits: z.object({
     // $1 floors: any deposit can start. A quote below a market's size step simply does not post.
     quoteSizeUsd: z.number().min(1).max(5_000),

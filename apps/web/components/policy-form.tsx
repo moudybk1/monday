@@ -179,9 +179,9 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
           }
         >
           <div className="grid gap-x-5 gap-y-5 p-4 @2xl:grid-cols-2">
-            <Choices legend="Markets" note="Each market gets its own bid, ask and position limit.">
+            <Choices legend="Markets" note="Each market gets its own bid, ask and position limit." grid wide>
               {MARKETS.map((m) => (
-                <Chip key={m} type="checkbox" name="markets" checked={value.markets.includes(m)} disabled={!available.includes(m)} onChange={() => toggle(m)}>{m}</Chip>
+                <Chip key={m} type="checkbox" name="markets" boxed checked={value.markets.includes(m)} disabled={!available.includes(m)} onChange={() => toggle(m)}>{m}</Chip>
               ))}
             </Choices>
             <Row id="leverage" label="Leverage" value={Number.isFinite(l.maxLeverage) ? `${l.maxLeverage}x` : '-'} note={`Up to ${lev.max}x for ${n > 1 ? 'these markets' : lev.sym}. Higher leverage needs less margin per dollar of position.`} error={bad.maxLeverage}>
@@ -291,20 +291,20 @@ const num = (v: number) => (Number.isFinite(v) ? String(v) : '');
 const SEG = 'flex h-9 min-w-0 overflow-hidden rounded-sm border border-line-2';
 
 /** One option of a segmented control: a real radio or checkbox under the label, so keyboards and screen readers get the native behaviour. */
-function Chip({ type, name, checked, disabled, onChange, children }: { type: 'radio' | 'checkbox'; name: string; checked: boolean; disabled?: boolean; onChange: () => void; children: ReactNode }) {
+function Chip({ type, name, checked, disabled, boxed, onChange, children }: { type: 'radio' | 'checkbox'; name: string; checked: boolean; disabled?: boolean; boxed?: boolean; onChange: () => void; children: ReactNode }) {
   return (
-    <label className={cx('num flex min-w-0 flex-1 items-center justify-center border-l border-line-2 px-2 text-[12.5px] first:border-l-0 has-focus-visible:outline-2 has-focus-visible:-outline-offset-2', checked ? 'bg-accent/12 font-semibold text-accent' : 'text-fg-2', disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer', !checked && !disabled && 'hover:bg-raised-2 hover:text-fg')}>
+    <label className={cx('num flex min-w-0 items-center justify-center px-2 text-[12.5px] has-focus-visible:outline-2 has-focus-visible:-outline-offset-2', boxed ? 'h-8 rounded-sm border border-line-2' : 'flex-1 border-l border-line-2 first:border-l-0', checked ? 'bg-accent/12 font-semibold text-accent' : 'text-fg-2', disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer', !checked && !disabled && 'hover:bg-raised-2 hover:text-fg')}>
       <input type={type} name={name} className="sr-only" checked={checked} disabled={disabled} onChange={onChange} />
       {children}
     </label>
   );
 }
 
-function Choices({ legend, note, error, wide, children }: { legend: string; note: ReactNode; error?: string; wide?: boolean; children: ReactNode }) {
+function Choices({ legend, note, error, wide, grid, children }: { legend: string; note: ReactNode; error?: string; wide?: boolean; grid?: boolean; children: ReactNode }) {
   return (
     <fieldset className={cx('min-w-0', wide && '@2xl:col-span-2')}>
       <legend className="mb-2 text-[12.5px] font-medium">{legend}</legend>
-      <div className={SEG}>{children}</div>
+      <div className={grid ? 'grid grid-cols-4 gap-1 sm:grid-cols-6' : SEG}>{children}</div>
       <p className={cx('mt-2 text-[12px]', error ? 'text-ask-fg' : 'text-fg-3')}>{error ?? note}</p>
     </fieldset>
   );
