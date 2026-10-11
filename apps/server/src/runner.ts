@@ -246,6 +246,8 @@ export class Runner {
     this.fills = f.slice(0, 80).map((r) => ({
       id: r.id, sym: r.sym, side: r.side, price: r.price, size: r.size, feeUsd: r.fee, isMaker: !!r.is_maker, ts: r.ts, regime: r.regime,
       markout1sBps: r.markout_1s, markout5sBps: r.markout_5s, markout10sBps: r.markout_10s, markout1mBps: r.markout_1m, markout5mBps: r.markout_5m,
+      // Rows from before ctx said whether a fill closed only know their PnL: a non-zero one was a close.
+      realizedUsd: ((r.ctx ? JSON.parse(r.ctx).reduces : undefined) ?? r.realized) ? r.realized : null,
     }));
     const e = db.prepare('select ts, equity from pnl_snapshots where user_id = ? and ts >= ? order by ts').all(userId, Date.now() - 86_400_000) as { ts: number; equity: number }[];
     this.equity = e.map((r) => ({ t: r.ts, v: r.equity }));
@@ -1077,6 +1079,7 @@ export class Runner {
     const fill: Fill = {
       id: f.id, sym: f.sym, side: f.side, price: f.price, size: f.size, feeUsd: f.feeUsd, isMaker: f.isMaker, ts: f.ts, regime,
       markout1sBps: null, markout5sBps: null, markout10sBps: null, markout1mBps: null, markout5mBps: null,
+      realizedUsd: ctx.reduces ? f.realizedUsd : null,
     };
     this.fills.unshift(fill);
     if (this.fills.length > 80) this.fills.pop();

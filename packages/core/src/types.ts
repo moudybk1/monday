@@ -177,6 +177,8 @@ export interface Fill {
   markout10sBps: number | null;
   markout1mBps: number | null;
   markout5mBps: number | null;
+  /** PnL this fill closed, before its fee. Null when the fill opened or added to the position. */
+  realizedUsd: number | null;
   /** Not one of Monday's orders: a trade the user placed on Perpl by hand. Counted for risk, left out of Monday's results. */
   external?: boolean;
 }
