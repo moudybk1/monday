@@ -452,3 +452,62 @@ export function retentionCohorts(firstDay: Map<number, number>, activeWeeks: Map
   }
   return out;
 }
+
+// "Ask Monday": a typed question becomes one action on the analytics pages. The quick resolver below handles the
+// common shapes without a model (an address, a market, a preset); anything else goes to the model with the same schema.
+
+export const ASK_METRICS = ['volume', 'oi', 'tvl', 'fees', 'traders', 'accounts', 'flows', 'liqs', 'funding', 'skew', 'fills'] as const;
+export const ASK_PRESETS = ['all', 'winners', 'streaks', 'whales', 'makers', 'takers', 'liquidated', 'losers'] as const;
+export const ASK_SORTS = ['netUsd', 'winRate', 'profitFactor', 'volumeUsd', 'trades', 'makerShare', 'activeDays', 'streak', 'liquidatedUsd', 'avgTradeUsd'] as const;
+export type AskMetric = (typeof ASK_METRICS)[number];
+export type AskPreset = (typeof ASK_PRESETS)[number];
+export type AskSort = (typeof ASK_SORTS)[number];
+export type AskDays = 1 | 7 | 30 | 90;
+export type AskIntent =
+  | { kind: 'wallet'; q: string }
+  | { kind: 'market'; sym: string }
+  | { kind: 'metric'; metric: AskMetric; sym?: string; range?: 7 | 30 | 90 | 0 }
+  | { kind: 'screen'; days?: AskDays; preset?: AskPreset; minVolume?: number; minCloses?: number; sort?: AskSort; dir?: 'asc' | 'desc' }
+  | { kind: 'compare'; wallets: string[] }
+  | { kind: 'top'; days: AskDays; sort: 'net' | 'volume' | 'loss'; n: number }
+  | { kind: 'tab'; tab: 'perpl' | 'screener' | 'compare' | 'monday' }
+  | { kind: 'unknown'; reason: string };
+
+const WALLET_RE = /^(0x[0-9a-f]{40}|#?\d{1,8})$/i;
+const usdOf = (s: string) => { const m = /\$?\s*(\d+(?:\.\d+)?)\s*(k|m)?\b/i.exec(s); return m ? Number(m[1]) * (m[2]?.toLowerCase() === 'm' ? 1e6 : m[2] ? 1e3 : 1) : null; };
+
+const WONDERING = /\b(will|would|should|could|predict|forecast|why|how|price|tomorrow|next (week|month)|explain|what is|what's|mean)\b/;
+
+/**
+ * The shapes a reader types most, resolved at once. Null means the model should read it: a long or wondering sentence
+ * is left to the model unless `loose` (no model available), when the best guess is better than nothing.
+ */
+export function quickAsk(raw: string, markets: string[], loose = false): AskIntent | null {
+  const q = raw.trim();
+  if (!q) return null;
+  if (WALLET_RE.test(q)) return { kind: 'wallet', q: q.replace(/^#/, '') };
+  const t = ` ${q.toLowerCase().replace(/[^\w$.#]+/g, ' ')} `;
+  const sym = markets.find((m) => t.includes(` ${m.toLowerCase()} `));
+  if (sym && q.trim().toUpperCase() === sym) return { kind: 'market', sym };
+  if (!loose && (t.trim().split(' ').length > 8 || WONDERING.test(t))) return null;
+  const ids = q.match(/0x[0-9a-f]{40}|(?<![\w.$])#?\d{1,8}(?![\w.%])/gi)?.map((x) => x.replace(/^#/, '')) ?? [];
+  if (/\b(compare|vs|versus|against)\b/.test(t) && ids.length >= 2) return { kind: 'compare', wallets: ids.slice(0, 4) };
+
+  const days: AskDays | undefined = /\btoday\b/.test(t) ? 1 : /\b(7 ?d|week|7 days)\b/.test(t) ? 7 : /\b(30 ?d|month|30 days)\b/.test(t) ? 30 : /\b(90 ?d|quarter|3 months|90 days)\b/.test(t) ? 90 : undefined;
+  const top = /\btop (\d{1,2})\b/.exec(t);
+  if (/\bcompare\b/.test(t) && top) return { kind: 'top', days: days ?? 7, sort: /\b(loser|losing|worst)/.test(t) ? 'loss' : /\b(volume|active|biggest traders)\b/.test(t) ? 'volume' : 'net', n: Math.min(4, Math.max(2, Number(top[1]))) };
+
+  const preset: AskPreset | undefined = /\bwhale/.test(t) ? 'whales' : /\b(market ?maker|makers?|mm)\b/.test(t) ? 'makers' : /\btakers?\b/.test(t) ? 'takers'
+    : /\bliquidated\b/.test(t) ? 'liquidated' : /\bstreak/.test(t) ? 'streaks' : /\b(winner|consistent|profitable)/.test(t) ? 'winners' : /\b(loser|losing|worst)/.test(t) ? 'losers' : undefined;
+  const screenish = preset || /\b(wallets?|traders?|accounts?|screen|who)\b/.test(t);
+  const minVolume = /\b(over|above|more than|min(?:imum)?|at least)\s+\$?\d/.test(t) && /\bvolume\b/.test(t) ? usdOf(t.slice(t.search(/\b(over|above|more than|min(?:imum)?|at least)\b/))) ?? undefined : undefined;
+  if (screenish && (preset || days || minVolume)) return { kind: 'screen', days, preset: preset ?? 'all', minVolume };
+
+  const metric: AskMetric | undefined = /\bfunding\b/.test(t) ? 'funding' : /\b(open interest|oi)\b/.test(t) ? 'oi' : /\btvl\b/.test(t) ? 'tvl' : /\b(fees?|revenue)\b/.test(t) ? 'fees'
+    : /\b(long ?short|skew|positioning)\b/.test(t) ? 'skew' : /\bliquidations?\b/.test(t) ? 'liqs' : /\b(flows?|deposits?|withdrawals?)\b/.test(t) ? 'flows' : /\b(new accounts?|signups?|growth)\b/.test(t) ? 'accounts'
+    : /\b(active )?traders\b/.test(t) ? 'traders' : /\bfills?\b/.test(t) ? 'fills' : /\bvolume\b/.test(t) ? 'volume' : undefined;
+  if (metric) return { kind: 'metric', metric, sym, range: days === 7 ? 7 : days === 30 ? 30 : days === 90 ? 90 : undefined };
+  if (sym) return { kind: 'market', sym };
+  if (/\bscreener\b/.test(t)) return { kind: 'tab', tab: 'screener' };
+  return null;
+}

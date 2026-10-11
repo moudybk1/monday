@@ -1,8 +1,8 @@
 'use client';
 
-import { ArrowSquareOutIcon, CopyIcon, InfoIcon, TrendDownIcon, TrendUpIcon, UsersThreeIcon, WarningIcon } from '@phosphor-icons/react';
+import { ArrowSquareOutIcon, CircleNotchIcon, CopyIcon, InfoIcon, SparkleIcon, TrendDownIcon, TrendUpIcon, UsersThreeIcon, WarningIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -238,11 +238,29 @@ function Curve({ p }: { p: PxWallet['performance'] }) {
 const ICON: Record<Insight['tone'], { Icon: typeof InfoIcon; cls: string }> = {
   good: { Icon: TrendUpIcon, cls: 'text-bid-fg' }, bad: { Icon: TrendDownIcon, cls: 'text-ask-fg' }, warn: { Icon: WarningIcon, cls: 'text-warn' }, neutral: { Icon: InfoIcon, cls: 'text-fg-3' },
 };
+type Explanation = { available: boolean; text?: string; facts: string[] };
 function Insights({ w }: { w: PxWallet }) {
   const reduce = useReducedMotion();
   const lines = walletInsights(w);
+  const id = w.account != null ? String(w.account) : w.address;
+  // Asked for, not automatic: a model call per wallet, cached ten minutes on the server.
+  const ex = useQuery({ queryKey: ['stats-explain', id], queryFn: () => api<Explanation>(`/stats/wallet/${id}/explain`), enabled: false, retry: false, staleTime: 600_000 });
   return (
     <Panel title="What stands out" aside={<span>from this wallet&apos;s own numbers</span>} bodyClassName="p-2.5" className="h-[340px]">
+      <AnimatePresence initial={false}>
+        {ex.data?.text && (
+          <motion.div key="explain" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-3 rounded-sm border border-accent/30 bg-accent/6 px-2.5 py-2 text-[12.5px] leading-snug text-fg">
+            <p>{ex.data.text}</p>
+            <p className="mt-1.5 text-[10.5px] text-fg-3">Written by a model from the figures on this page only.</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {!ex.data?.text && ex.data?.available !== false && (
+        <button type="button" onClick={() => void ex.refetch()} disabled={ex.isFetching} className="mb-3 inline-flex h-7 items-center gap-1.5 rounded-sm border border-accent/45 bg-accent/12 px-2.5 text-[12px] text-accent hover:bg-accent/20 disabled:opacity-70">
+          {ex.isFetching ? <CircleNotchIcon size={12} className="animate-spin" /> : <SparkleIcon size={12} weight="fill" />}{ex.isFetching ? 'Writing…' : 'Explain in plain words'}
+        </button>
+      )}
+      {ex.isError && <p className="mb-2 text-[11.5px] text-warn">{ex.error instanceof Error ? ex.error.message : 'The model did not answer.'}</p>}
       <ul className="grid gap-2 text-[12px] leading-snug text-fg-2">
         {lines.map((l, i) => {
           const { Icon, cls } = ICON[l.tone];

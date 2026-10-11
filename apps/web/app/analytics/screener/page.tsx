@@ -3,8 +3,8 @@
 import { CaretDownIcon, CaretUpIcon, StarIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'motion/react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import type { PxScreen, PxScreenRow } from '@monday/core';
 import { EASE, Share, Sparkline } from '@/components/charts';
 import { AccountLink, Segments, money, signedMoney, tone, useStatsNetwork, useWatchlist } from '@/components/stats-ui';
@@ -46,6 +46,11 @@ const COLS: { key: SortKey; label: string; title: string }[] = [
 const pct = (v: number | null, d = 0) => (v == null ? 'n/a' : `${(v * 100).toFixed(d)}%`);
 
 export default function ScreenerPage() {
+  return <Suspense fallback={<Skeleton className="mt-1 h-64" />}><Screener /></Suspense>;
+}
+
+function Screener() {
+  const params = useSearchParams();
   const [days, setDays] = useState<Days>(7);
   const [preset, setPreset] = useState('all');
   const [minVolume, setMinVolume] = useState<number>(0);
@@ -56,6 +61,20 @@ export default function ScreenerPage() {
   useEffect(() => {
     document.title = 'Screener - Monday';
   }, []);
+  // The ask bar arrives with its answer in the URL; apply it whenever it changes.
+  useEffect(() => {
+    const d = Number(params.get('days'));
+    if ([1, 7, 30, 90].includes(d)) setDays(d as Days);
+    const pr = PRESETS.find((x) => x.id === params.get('preset'));
+    if (pr) { setPreset(pr.id); setSort({ key: pr.sort, dir: pr.dir }); }
+    const mv = Number(params.get('minVolume'));
+    if (mv > 0) setMinVolume([...VOLUMES].reverse().find(([v]) => v <= mv)?.[0] ?? 0);
+    const mc = Number(params.get('minCloses'));
+    if (mc > 0) setMinCloses([...CLOSES].reverse().find(([v]) => v <= mc)?.[0] ?? 0);
+    const sk = params.get('sort') as SortKey | null;
+    if (sk && COLS.some((c) => c.key === sk)) setSort({ key: sk, dir: params.get('dir') === 'asc' ? 'asc' : 'desc' });
+    setShown(PAGE);
+  }, [params]);
 
   const rows = useMemo<Row[]>(() => (q.data?.rows ?? []).map((r) => ({
     ...r, winRate: r.closes ? r.wins / r.closes : null, profitFactor: r.grossLossUsd > 0 ? r.grossWinUsd / r.grossLossUsd : r.grossWinUsd > 0 ? Infinity : null,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   riskGate, inventoryStage, lossBps, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
-  type QuoteInput, type SmartTrade, retentionCohorts, streakOf, traderDistribution,
+  type QuoteInput, type SmartTrade, quickAsk, retentionCohorts, streakOf, traderDistribution,
 } from './index';
 
 const base: QuoteInput = {
@@ -543,6 +543,26 @@ describe('Perpl stats', () => {
     expect(streakOf([5, -1, -2])).toBe(-2);
     expect(streakOf([null, 0])).toBe(0);
     expect(streakOf([])).toBe(0);
+  });
+
+  it('turns the common questions into actions without a model', () => {
+    const M = ['BTC', 'ETH', 'SOL'];
+    expect(quickAsk('0x2ac5ab63587d12f547ae04437a18cfe0eb8f8935', M)).toEqual({ kind: 'wallet', q: '0x2ac5ab63587d12f547ae04437a18cfe0eb8f8935' });
+    expect(quickAsk('#4734', M)).toEqual({ kind: 'wallet', q: '4734' });
+    expect(quickAsk('eth', M)).toEqual({ kind: 'market', sym: 'ETH' });
+    expect(quickAsk('whales liquidated this month', M)).toEqual({ kind: 'screen', days: 30, preset: 'whales', minVolume: undefined });
+    expect(quickAsk('market makers with volume over $100k this week', M)).toEqual({ kind: 'screen', days: 7, preset: 'makers', minVolume: 100_000 });
+    expect(quickAsk('consistent winners', M)).toEqual({ kind: 'screen', days: undefined, preset: 'winners', minVolume: undefined });
+    expect(quickAsk('BTC funding this month', M)).toEqual({ kind: 'metric', metric: 'funding', sym: 'BTC', range: 30 });
+    expect(quickAsk('open interest', M)).toEqual({ kind: 'metric', metric: 'oi', sym: undefined, range: undefined });
+    expect(quickAsk('compare 25 and 4734', M)).toEqual({ kind: 'compare', wallets: ['25', '4734'] });
+    expect(quickAsk('compare the top 3 winners this week', M)).toEqual({ kind: 'top', days: 7, sort: 'net', n: 3 });
+    expect(quickAsk('show me SOL', M)).toEqual({ kind: 'market', sym: 'SOL' });
+    expect(quickAsk('what is the meaning of life', M)).toBeNull();
+    // Wondering or long sentences go to the model; without one, the best guess still serves.
+    expect(quickAsk('what will the price of ETH be tomorrow', M)).toBeNull();
+    expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M)).toBeNull();
+    expect(quickAsk('which wallets made the most money on short trades last week with at least 50 closes', M, true)).toEqual({ kind: 'screen', days: 7, preset: 'all', minVolume: undefined });
   });
 
   it('finds the block ranges never scanned, back to block 0', () => {
