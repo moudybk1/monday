@@ -477,6 +477,8 @@ const WALLET_RE = /^(0x[0-9a-f]{40}|#?\d{1,8})$/i;
 const usdOf = (s: string) => { const m = /\$?\s*(\d+(?:\.\d+)?)\s*(k|m)?\b/i.exec(s); return m ? Number(m[1]) * (m[2]?.toLowerCase() === 'm' ? 1e6 : m[2] ? 1e3 : 1) : null; };
 
 const WONDERING = /\b(will|would|should|could|predict|forecast|why|how|price|tomorrow|next (week|month)|explain|what is|what's|mean)\b/;
+/** A question that wonders, predicts or asks for advice: never something to guess an action for. */
+export const isWondering = (q: string) => WONDERING.test(` ${q.toLowerCase()} `);
 
 /**
  * The shapes a reader types most, resolved at once. Null means the model should read it: a long or wondering sentence

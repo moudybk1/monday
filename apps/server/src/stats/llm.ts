@@ -11,11 +11,17 @@ const model = (process.env.STATS_LLM_MODEL ?? '').trim() || configured || (provi
 export const llmReady = Boolean(apiKey && model && (provider === 'anthropic' || (provider === 'openai-compatible' && baseUrl)));
 const anthropic = llmReady && provider === 'anthropic' ? new Anthropic({ apiKey, baseURL: baseUrl || undefined, timeout: 30_000, maxRetries: 0 }) : null;
 
-/** One answer, at most `maxTokens` long, within `timeoutMs`. Throws when the model is off, slow or refuses. */
-export async function ask(system: string, user: string, { maxTokens = 300, timeoutMs = 25_000, json = false } = {}): Promise<string> {
+/**
+ * One answer, at most `maxTokens` long, within `timeoutMs`. Throws when the model is off, slow or refuses.
+ * The request stays minimal on purpose: on b.ai, kimi-k2.6 rejects any `temperature` with a 400 and answers an empty
+ * string in JSON mode or under a `max_tokens` cap (measured 2026-10-11), so the OpenAI-compatible call sends only the
+ * model and the messages. Callers that want JSON ask for it in the prompt and the parser accepts fenced replies; the
+ * prompts themselves keep the answers short.
+ */
+export async function ask(system: string, user: string, { maxTokens = 300, timeoutMs = 25_000, model: which = model } = {}): Promise<string> {
   if (!llmReady) throw new Error('No model configured');
   if (anthropic) {
-    const res = await anthropic.messages.create({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, { timeout: timeoutMs });
+    const res = await anthropic.messages.create({ model: which, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, { timeout: timeoutMs });
     const text = res.content.find((b) => b.type === 'text');
     if (!text) throw new Error('no text block');
     return text.text;
@@ -23,7 +29,7 @@ export async function ask(system: string, user: string, { maxTokens = 300, timeo
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], ...(json ? { response_format: { type: 'json_object' } } : {}) }),
+    body: JSON.stringify({ model: which, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`LLM ${res.status}`);

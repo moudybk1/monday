@@ -3,7 +3,7 @@
 // pick an action from a fixed menu, never state a figure. The pages act on the answer with real data.
 
 import { z } from 'zod';
-import { ASK_METRICS, ASK_PRESETS, ASK_SORTS, quickAsk, type AskIntent, type PxWallet } from '@monday/core';
+import { ASK_METRICS, ASK_PRESETS, ASK_SORTS, isWondering, quickAsk, type AskIntent, type PxWallet } from '@monday/core';
 import { ask, firstJsonObject, llmReady } from './llm';
 import { meta } from './perpl';
 
@@ -51,9 +51,13 @@ function normalise(o: Record<string, unknown>): Record<string, unknown> {
 
 const answers = new Map<string, { at: number; v: Promise<{ intent: AskIntent; source: 'rules' | 'model' | 'none' }> }>();
 const CACHE_MS = 10 * 60_000;
-// A command bar should answer within a breath; a summary the reader asked for may take longer.
-const ASK_TIMEOUT_MS = Number(process.env.STATS_ASK_TIMEOUT_MS) || 25_000;
-const EXPLAIN_TIMEOUT_MS = Number(process.env.STATS_EXPLAIN_TIMEOUT_MS) || 60_000;
+// Kimi k2.6 on b.ai needs 25 to 50 s for these prompts (measured 2026-10-11); the bar says it is still thinking.
+// STATS_ASK_MODEL lets the bar use a quicker model than the summaries without touching the governor's setting.
+const ASK_TIMEOUT_MS = Number(process.env.STATS_ASK_TIMEOUT_MS) || 60_000;
+const EXPLAIN_TIMEOUT_MS = Number(process.env.STATS_EXPLAIN_TIMEOUT_MS) || 75_000;
+const ASK_MODEL = (process.env.STATS_ASK_MODEL ?? '').trim() || undefined;
+/** Without the model, or when it is late: the loose rules, except for questions that wonder, which must not be guessed. */
+const guess = (key: string, markets: string[], reason: string): AskIntent => (isWondering(key) ? unknown(reason) : quickAsk(key, markets, true) ?? unknown(reason));
 
 export function resolveAsk(raw: string): Promise<{ intent: AskIntent; source: 'rules' | 'model' | 'none' }> {
   const key = raw.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 300);
@@ -64,13 +68,13 @@ export function resolveAsk(raw: string): Promise<{ intent: AskIntent; source: 'r
     const markets = [...m.markets.values()].map((x) => x.sym);
     const quick = quickAsk(key, markets);
     if (quick) return { intent: quick, source: 'rules' as const };
-    if (!llmReady) return { intent: quickAsk(key, markets, true) ?? unknown(HELP), source: 'none' as const };
+    if (!llmReady) return { intent: guess(key, markets, HELP), source: 'none' as const };
     try {
-      const text = await ask(SYSTEM(markets), key, { maxTokens: 200, timeoutMs: ASK_TIMEOUT_MS, json: true });
+      const text = await ask(SYSTEM(markets), key, { maxTokens: 200, timeoutMs: ASK_TIMEOUT_MS, model: ASK_MODEL });
       const parsed = Intent.safeParse(normalise(firstJsonObject(text)));
       if (!parsed.success) {
         console.warn(JSON.stringify({ service: 'stats', event: 'ask_unparsed', text: text.slice(0, 300), issues: parsed.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`) }));
-        return { intent: quickAsk(key, markets, true) ?? unknown('The model answered in a shape the page cannot act on. ' + HELP), source: 'model' as const };
+        return { intent: guess(key, markets, 'The model answered in a shape the page cannot act on. ' + HELP), source: 'model' as const };
       }
       const intent = parsed.data;
       // A market the model named must be one Perpl lists, in Perpl's spelling.
@@ -81,7 +85,7 @@ export function resolveAsk(raw: string): Promise<{ intent: AskIntent; source: 'r
     } catch (e) {
       console.warn(JSON.stringify({ service: 'stats', event: 'ask_failed', error: e instanceof Error ? e.message : String(e) }));
       // The model was slow or down: the loose rules are a better answer than nothing.
-      return { intent: quickAsk(key, markets, true) ?? unknown('The model did not answer in time. ' + HELP), source: 'model' as const };
+      return { intent: guess(key, markets, 'The model did not answer in time. ' + HELP), source: 'model' as const };
     }
   })();
   answers.set(key, { at: Date.now(), v });

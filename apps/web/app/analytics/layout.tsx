@@ -101,6 +101,7 @@ function AskBar() {
   const ref = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
+  const [slow, setSlow] = useState(false); // the model is taking its time: say so instead of looking stuck
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   useEffect(() => {
@@ -110,6 +111,11 @@ function AskBar() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  useEffect(() => {
+    if (!busy) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 6_000);
+    return () => clearTimeout(t);
+  }, [busy]);
   useEffect(() => {
     if (!note) return;
     const t = setTimeout(() => setNote(null), note.tone === 'ok' ? 3_000 : 7_000);
@@ -156,7 +162,7 @@ function AskBar() {
         <span className="sr-only">Ask Monday: an address, a market, or a question about wallets</span>
         <input
           ref={ref} value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder={busy ? 'Thinking…' : 'Ask Monday: an address, a market, or "whales liquidated this month"'} spellCheck={false} disabled={busy}
+          placeholder={busy ? (slow ? 'Still thinking, the model can take up to a minute…' : 'Thinking…') : 'Ask Monday: an address, a market, or "whales liquidated this month"'} spellCheck={false} disabled={busy}
           className="min-w-0 flex-1 bg-transparent text-[12px] text-fg placeholder:text-fg-3 focus:outline-none disabled:opacity-70"
         />
         <kbd className="num hidden flex-none rounded-[3px] border border-line-2 px-1 text-[10px] text-fg-3 sm:inline">⌘K</kbd>
