@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { getAddress, isAddress, type Address } from 'viem';
 import { z } from 'zod';
 import {
+  FLOW_GROUPS, SCREEN_PRESETS, screenStats, type FlowGroup, type PxPositioning, type PxTape, type PxTapeRow,
   retentionCohorts, spanCoverage, streakOf, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
   type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
@@ -45,6 +46,9 @@ function blockAt(ts: number): number {
   }
   return lo;
 }
+
+/** The history's holes that reach into a window starting at `block`: when they change, that window's rows changed. */
+const holesSince = (block: number) => JSON.stringify(scanHoles().filter((h) => h.hi > block));
 
 /**
  * The scanned history in time: each unscanned block range becomes a gap from the last fill before it to the first fill
@@ -399,8 +403,8 @@ function leaderboard(days: number, sort: 'net' | 'volume' | 'loss') {
 const ACTIVITY_DAYS = 7;
 const HOUR = 3_600_000;
 // Taker fills per UTC hour, topped up from the last block read. Re-reading the whole week every 10 minutes took 14 s on
-// the VPS (a million rows from disk) and stalled every stats request meanwhile (2026-10-13). A hole filled in the history
-// changes what the week holds, so the hours start over then. Batches hold whole blocks, so nothing lands behind `hoursFrom`.
+// the VPS (a million rows from disk) and stalled every stats request meanwhile (2026-10-13). A hole filled inside the
+// week changes what it holds, so the hours start over then. Batches hold whole blocks, so nothing lands behind `hoursFrom`.
 const hours = new Map<number, { trades: number; usd: number }>();
 let hoursFrom = 0;
 let hoursHoles = '';
@@ -408,7 +412,8 @@ let hoursHoles = '';
 const activity = cached(10 * 60_000, async (): Promise<PxActivity> => {
   const first = Math.floor(Date.now() / HOUR) - ACTIVITY_DAYS * 24 + 1;
   const since = first * HOUR;
-  const holes = JSON.stringify(scanHoles());
+  const start = blockAt(since);
+  const holes = holesSince(start);
   if (holes !== hoursHoles) {
     hoursHoles = holes;
     hoursFrom = 0;
@@ -416,7 +421,7 @@ const activity = cached(10 * 60_000, async (): Promise<PxActivity> => {
   }
   const rows = all<{ h: number; trades: number; usd: number; last: number }>(
     'select ts / 3600000 h, count(*) trades, sum(price * size) usd, max(block) last from px_trades where block >= ? and taker = 1 group by h',
-    Math.max(hoursFrom, blockAt(since)),
+    Math.max(hoursFrom, start),
   );
   for (const r of rows) {
     const c = hours.get(r.h) ?? { trades: 0, usd: 0 };
@@ -450,11 +455,142 @@ function flows(days: number) {
   return f();
 }
 
+// ---- Flow: what groups of traders hold and how they moved, and every order as it lands ----
+
+const GROUP_IDS = FLOW_GROUPS.map((g) => g.id) as [FlowGroup, ...FlowGroup[]];
+const keep = (id: string) => SCREEN_PRESETS.find((p) => p.id === id)!.keep;
+/** Each group's accounts, from the 30-day screen; membership moves slowly, so every 10 minutes is enough. */
+const groups = cached(10 * 60_000, async (): Promise<Record<FlowGroup, Set<number>>> => {
+  const rows = (await screen(30)).rows.map(screenStats);
+  const ids = (rs: typeof rows) => new Set(rs.map((r) => r.account));
+  return {
+    top: ids(rows.filter((r) => r.netUsd > 0).sort((a, b) => b.netUsd - a.netUsd).slice(0, 100)),
+    winners: ids(rows.filter((r) => keep('winners')(r, 30))),
+    whales: ids(rows.filter((r) => keep('whales')(r, 30))),
+  };
+});
+
+const BUCKET = 300_000; // net buying is kept in five-minute buckets
+const FLOW_BUCKETS = 288; // a day of them
+const TAPE_MINS = [1_000, 10_000, 50_000];
+const TAPE_KEEP = 20_000; // orders of $1k or more, newest first: a day of them, about
+type Order = Omit<PxTapeRow, 'address' | 'groups'>;
+const flowNet = new Map<number, Map<string, number>>(); // bucket -> "perp:account" -> net bought, USD
+let tape: Order[] = [];
+let flowFrom = 0;
+let flowHoles = '';
+/**
+ * The fills indexed since the last read, every 3 s: net buying per account and market, and the tape. One account's fills
+ * on one market and side in one block are one order (a market order sweeping five levels is one line). A filled hole
+ * changes the last day, so it starts over then, like the heatmap.
+ */
+const flowRead = cached(3_000, async () => {
+  const m = await meta();
+  const now = Date.now();
+  const start = blockAt(now - FLOW_BUCKETS * BUCKET);
+  const holes = holesSince(start);
+  if (holes !== flowHoles) {
+    flowHoles = holes;
+    flowFrom = 0;
+    flowNet.clear();
+    tape = [];
+  }
+  const rows = all<{ block: number; ts: number; perp: number; account: number; taker: number; kind: number; long: number; price: number; size: number }>(
+    'select block, ts, perp, account, taker, kind, long, price, size from px_trades where block >= ? and account != 0 and kind != 6 order by block, idx',
+    flowFrom || start,
+  );
+  const orders = new Map<string, Order & { kinds: Set<string> }>();
+  for (const r of rows) {
+    const kind = KINDS[r.kind];
+    const long = r.long === 1;
+    const buy = kind === 'open' || kind === 'increase' || kind === 'invert' ? long : !long;
+    const usd = r.price * r.size;
+    const b = Math.floor(r.ts / BUCKET);
+    const net = flowNet.get(b) ?? flowNet.set(b, new Map()).get(b)!;
+    const key = `${r.perp}:${r.account}`;
+    net.set(key, (net.get(key) ?? 0) + (buy ? usd : -usd));
+    const ok = `${r.block}:${r.account}:${r.perp}:${r.taker}:${buy}`;
+    const o = orders.get(ok);
+    if (o) {
+      o.size += r.size;
+      o.usd += usd;
+      o.long = long;
+      o.kinds.add(kind);
+    } else {
+      orders.set(ok, {
+        ts: r.ts, block: r.block, account: r.account, sym: m.markets.get(r.perp)?.sym ?? `#${r.perp}`, long, action: kind,
+        type: kind === 'liquidation' ? 'liquidation' : r.taker ? 'market' : 'limit', size: r.size, price: 0, usd, kinds: new Set([kind]),
+      });
+    }
+    flowFrom = r.block + 1; // batches hold whole blocks, so nothing lands behind this
+  }
+  const fresh: Order[] = [];
+  for (const { kinds, ...o } of orders.values()) {
+    if (o.usd < TAPE_MINS[0]) continue;
+    // What the order did: a liquidation, a flip or a close says more than the fills around it. Closing one side and
+    // opening the other in one order (same direction, so one key) is a flip.
+    const flip = kinds.has('invert') || (kinds.has('close') && kinds.has('open'));
+    const action = kinds.has('liquidation') ? 'liquidation' : flip ? 'invert' : kinds.has('close') ? 'close' : o.action;
+    fresh.push({ ...o, action, price: o.usd / o.size });
+  }
+  const cutoff = now - FLOW_BUCKETS * BUCKET;
+  tape = [...fresh.reverse(), ...tape].filter((o) => o.ts >= cutoff).slice(0, TAPE_KEEP);
+  const oldest = Math.floor(now / BUCKET) - FLOW_BUCKETS;
+  for (const b of flowNet.keys()) if (b <= oldest) flowNet.delete(b);
+  return now;
+});
+
+/** One group's positioning per market: net bought over the last 1, 6 and 24 hours, and its open positions now. */
+async function positioning(group: FlowGroup): Promise<PxPositioning> {
+  const [, g, m, positions] = await Promise.all([flowRead(), groups(), meta(), allPositions()]);
+  const members = g[group];
+  const now = Date.now();
+  const nowBucket = Math.floor(now / BUCKET);
+  const bySym = new Map([...m.markets.values()].map((mk) => [mk.id, { sym: mk.sym, change1hUsd: 0, change6hUsd: 0, change24hUsd: 0, longUsd: 0, shortUsd: 0, holders: 0 }]));
+  for (const [b, net] of flowNet) {
+    const age = nowBucket - b; // 0 is the bucket now filling: "1 hour" is it and the 11 before
+    for (const [key, usd] of net) {
+      const [perp, account] = key.split(':').map(Number);
+      const row = bySym.get(perp);
+      if (!row || !members.has(account)) continue;
+      if (age < 12) row.change1hUsd += usd;
+      if (age < 72) row.change6hUsd += usd;
+      row.change24hUsd += usd;
+    }
+  }
+  const held = new Map<number, Set<number>>();
+  const idOf = new Map([...m.markets.values()].map((mk) => [mk.sym, mk.id]));
+  for (const p of positions) {
+    const id = idOf.get(p.sym);
+    const row = id == null ? undefined : bySym.get(id);
+    if (!row || !members.has(p.account)) continue;
+    if (p.long) row.longUsd += p.usd;
+    else row.shortUsd += p.usd;
+    (held.get(id!) ?? held.set(id!, new Set()).get(id!)!).add(p.account);
+  }
+  for (const [id, row] of bySym) row.holders = held.get(id)?.size ?? 0;
+  return { at: now, group, accounts: members.size, markets: [...bySym.values()] };
+}
+
+/** The newest orders, filtered: a group (or everyone), a smallest size, a market. At most 100. */
+async function tapeFor(group: FlowGroup | 'all', min: number, sym?: string): Promise<PxTape> {
+  const [, g] = await Promise.all([flowRead(), groups()]);
+  const members = group === 'all' ? null : g[group];
+  const rows: PxTapeRow[] = [];
+  for (const o of tape) {
+    if (o.usd < min || (members && !members.has(o.account)) || (sym && o.sym !== sym)) continue;
+    rows.push({ ...o, address: addressById(o.account), groups: GROUP_IDS.filter((id) => g[id].has(o.account)) });
+    if (rows.length === 100) break;
+  }
+  return { at: Date.now(), rows };
+}
+
 export function registerStats(app: FastifyInstance) {
   // Load once at boot, so the first visitor gets numbers at once (every later refresh happens in the background).
   void overview().catch(() => {});
   void risk().catch(() => {});
   void activity().catch(() => {}); // the one full week's read, before the port opens rather than on a visitor's click
+  void flowRead().catch(() => {}); // and the last day's fills for the Flow tab
   app.get('/api/stats/overview', () => overview());
   app.get('/api/stats/risk', () => risk());
   app.get('/api/stats/liquidations', async (req): Promise<PxLiquidation[]> => {
@@ -487,6 +623,18 @@ export function registerStats(app: FastifyInstance) {
   app.get('/api/stats/flows', async (req) => {
     const { days } = z.object({ days: z.coerce.number().int().refine((d) => FLOW_DAYS.includes(d), `days must be one of ${FLOW_DAYS.join(', ')}`).default(1) }).parse(req.query);
     return flows(days);
+  });
+  app.get('/api/stats/positioning', async (req) => {
+    const { group } = z.object({ group: z.enum(GROUP_IDS).default('top') }).parse(req.query);
+    return positioning(group);
+  });
+  app.get('/api/stats/tape', async (req) => {
+    const q = z.object({
+      group: z.enum(['all', ...GROUP_IDS]).default('all'),
+      min: z.coerce.number().refine((v) => TAPE_MINS.includes(v), `min must be one of ${TAPE_MINS.join(', ')}`).default(1_000),
+      sym: z.string().trim().toUpperCase().max(12).optional(),
+    }).parse(req.query);
+    return tapeFor(q.group, q.min, q.sym || undefined);
   });
   app.post('/api/stats/ask', async (req) => {
     const { q } = z.object({ q: z.string().trim().min(1).max(300) }).parse(req.body ?? {});
