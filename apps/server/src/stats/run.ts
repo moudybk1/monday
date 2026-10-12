@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { config } from '../config';
 import { startSnapshots } from './history';
 import { indexerStatus, startIndexer } from './indexer';
-import { registerStats } from './routes';
+import { registerStats, warmOverview } from './routes';
 
 const port = Number(process.env.STATS_PORT ?? 3002);
 // A stray rejection (a Perpl read, a model call) is logged, not a reason to take the stats down.
@@ -43,6 +43,7 @@ app.addHook('onRequest', async (req, reply) => {
 });
 app.get('/api/stats/health', async () => ({ ok: true, at: Date.now(), indexer: indexerStatus() }));
 registerStats(app);
+setInterval(warmOverview, 10_000).unref();
 
 startIndexer();
 startSnapshots();
