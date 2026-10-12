@@ -193,7 +193,7 @@ it('a fill message seen twice counts once, and a deposit is neither profit nor t
   expect(r.state().pnl).toMatchObject({ realizedUsd: 2, feesUsd: 0.05 });
 
   v.balance += 100; // a deposit
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 20; i++) {
     vi.setSystemTime(Date.now() + 1_000);
     r.tick();
   }
@@ -201,6 +201,46 @@ it('a fill message seen twice counts once, and a deposit is neither profit nor t
   expect(s.status).toBe('quoting'); // +$101.95 of equity, but only $1.95 of it is trading: no take profit
   expect(s.session!.pnlUsd).toBeCloseTo(1.95);
   expect(s.pnl.depositsUsd).toBe(100);
+});
+
+it('margin moving between Perpl\'s cash and position messages is not a loss; a real loss still stops Monday', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  let onFill: (f: VenueFill) => void = () => {};
+  const v = {
+    balance: 1_000, size: 0,
+    connect: async () => v.account(), close() {}, connected: () => true, quote: () => null, setQuote: async () => {}, cancelAll: async () => {}, flatten: async () => { v.size = 0; },
+    on: (e: string, cb: never) => { if (e === 'fill') onFill = cb; },
+    account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const deps = { driver, collector: new Collector(null), k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xmgn', accountId: 1, token: 't', secret: 's' }) };
+  const r = new Runner(upsertUser('0xmgn'), '0xmgn', 1, { ...POLICY, maxDailyLossUsd: 1 }, deps);
+  await r.start();
+  const ticks = (n: number) => {
+    for (let i = 0; i < n; i++) {
+      vi.setSystemTime(Date.now() + 1_000);
+      r.tick();
+    }
+  };
+  ticks(1);
+
+  // 2026-10-12: a fill's cash message took $2 of margin out seconds before its position message showed it.
+  const fill = { sym: 'BTC' as const, price: 100_000, size: 0.0002, feeUsd: 0.01, isMaker: true, ts: Date.now() };
+  onFill({ ...fill, id: 'perpl:1:0xm:1:1', side: 'bid', realizedUsd: 0 });
+  v.size = 0.0002;
+  v.balance -= 2 + 0.01;
+  ticks(4);
+  expect(r.status).toBe('quoting');
+  v.balance += 2;
+  ticks(20);
+  expect(r.state().pnl.lossLimitUsedPct).toBeCloseTo(1); // the $0.01 fee, of a $1 limit
+
+  onFill({ ...fill, id: 'perpl:1:0xm:2:2', side: 'ask', realizedUsd: -1.5 });
+  v.size = 0;
+  v.balance -= 1.5 + 0.01;
+  ticks(1);
+  expect(r.state()).toMatchObject({ status: 'killed', killReason: 'loss_limit' });
+  r.dispose();
 });
 
 it('dropping a market from the policy keeps its position in view and works its exit', async () => {
@@ -231,7 +271,7 @@ it('cash that moves while Monday is stopped is not PnL: a deposit during a resta
   const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
   const deps = { driver, collector: new Collector(null), k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xca5', accountId: 1, token: 't', secret: 's' }) };
   const uid = upsertUser('0xca5');
-  const ticks = (r: InstanceType<typeof Runner>, n = 8) => {
+  const ticks = (r: InstanceType<typeof Runner>, n = 20) => {
     for (let i = 0; i < n; i++) {
       vi.setSystemTime(Date.now() + 1_000);
       r.tick();

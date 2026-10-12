@@ -9,7 +9,7 @@
 // behind it, and a restart does not lose positions, PnL or unfinished cleanup.
 
 import {
-  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STAGE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, fillTrigger, inventoryStage, lossBps, marginFloorUsd,
+  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, fillTrigger, inventoryStage, marginFloorUsd,
   markoutBps, median, nextReflex, orderJobs, quotingFor, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
   type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type Priority,
@@ -29,7 +29,9 @@ const RESERVED_TOKENS = 8; // PRD 11.7: kept for cancels and exits, never spent 
 const STALE_CANCEL_MS = 5_000;
 const STALE_KILL_MS = 30_000;
 const LATE_DECISION_MS = 120_000; // a governor answer older than this describes a market that has moved on
-const CASH_SETTLE_MS = 5_000; // an unexplained balance move must hold this long before it is booked
+// An unexplained balance move must hold this long before it is booked. Perpl reports cash and position margin in
+// separate messages: after a fill the margin has left the cash seconds before the position shows it.
+const CASH_SETTLE_MS = 15_000;
 const DEPOSIT_MIN_USD = 1; // smaller unexplained moves are funding or rounding, and count as trading PnL
 
 export interface RunnerDeps {
@@ -91,8 +93,6 @@ interface MarketRt {
   stage: InventoryStage;
   posSince: number;
   posSign: number;
-  /** The stop loss was hit for the position held now: it is closed at the best price, and a bounce does not undo that. */
-  stopped: boolean;
   /** Times of fills that grew the position, per side, within the burst window (fillTrigger). */
   opens: Record<Side, number[]>;
   basis: { bps: number; dev: number; gap: number; n: number };
@@ -478,7 +478,7 @@ export class Runner {
       params: { market: sym, enabled: true, spread_mult: 2, skew_bias_bps: 0, size_mult: 0.5, max_inventory_usd: this.policy.maxInventoryUsd, ttl_min: 15, regime: 'stale', reason: 'Waiting for the first governor decision.' },
       paramsSource: 'fallback', paramsUntil: 0, nextGovAt: 0, lastGovAt: 0, govBusy: false, govAsap: false, wasStorm: false, wasStale: false, reflex: null, lastBigTs: Date.now(),
       lastSent: { bid: 0, ask: 0 }, inflight: { bid: false, ask: false }, sending: { bid: null, ask: null }, since: { bid: 0, ask: 0 }, held: { bid: null, ask: null },
-      block: { bid: null, ask: null }, ackedAt: { bid: 0, ask: 0 }, resting: { bid: null, ask: null }, model: null, stage: 'normal', posSince: 0, posSign: 0, stopped: false, opens: { bid: [], ask: [] },
+      block: { bid: null, ask: null }, ackedAt: { bid: 0, ask: 0 }, resting: { bid: null, ask: null }, model: null, stage: 'normal', posSince: 0, posSign: 0, opens: { bid: [], ask: [] },
       basis: { bps: 0, dev: 0, gap: 0, n: 0 }, gapAlarm: false, why: '', min: null, bothHist: [], lastDecisionId: null, series: [], bandAlertAt: 0,
     });
   }
@@ -574,16 +574,7 @@ export class Runner {
       const cap = this.capUsd(rt);
       const ageMs = this.positionAge(rt, pos.size, now);
       const unrealizedUsd = pos.size * (snap.mark - pos.entryPrice);
-      // Stop loss per position (STAGE.stopLossBps). It holds once hit, so a bounce back above it cannot bring back the
-      // profit target and the wait; positionAge clears it when the position is closed or turns over.
-      if (!rt.stopped && pos.size && pos.entryPrice > 0 && lossBps(posUsd, unrealizedUsd) >= STAGE.stopLossBps) {
-        rt.stopped = true;
-        const text = `${sym} ${pos.size > 0 ? 'long' : 'short'} is ${STAGE.stopLossBps} bps under its entry: stop loss, closing it at the best price.`;
-        this.alert('warn', text);
-        this.deps.notify(`Monday stop loss for ${this.wallet.slice(0, 8)}: ${text}`);
-        event(this.userId, 'stop_loss', { market: sym, size: pos.size, entry: pos.entryPrice, mark: snap.mark });
-      }
-      rt.stage = inventoryStage({ positionUsd: posUsd, capUsd: cap, ageMs, unrealizedUsd, dailyLossUsd: this.policy.maxDailyLossUsd, inPolicy, stopped: rt.stopped });
+      rt.stage = inventoryStage({ positionUsd: posUsd, capUsd: cap, ageMs, unrealizedUsd, dailyLossUsd: this.policy.maxDailyLossUsd, inPolicy });
       // A Perpl/Hyperliquid gap far from its usual level: quote wider and smaller until it settles, rather than treat it as an opportunity.
       const gov = { ...rt.params, max_inventory_usd: cap, enabled: inPolicy && rt.params.enabled };
       if (rt.gapAlarm) Object.assign(gov, { spread_mult: gov.spread_mult * 1.5, size_mult: gov.size_mult * 0.5 });
@@ -858,13 +849,11 @@ export class Runner {
   private positionAge(rt: MarketRt, size: number, now: number): number {
     if (size === 0) {
       rt.posSince = rt.posSign = 0;
-      rt.stopped = false;
       return 0;
     }
     if (Math.sign(size) !== rt.posSign || !rt.posSince) {
       rt.posSign = Math.sign(size);
       rt.posSince = now;
-      rt.stopped = false; // a new position: its own stop loss
       // Walk back through the fills until the position was flat or the other way: that fill opened this one.
       let s = size;
       for (const f of db.prepare('select side, size, ts from fills where user_id = ? and sym = ? order by ts desc limit 500').all(this.userId, rt.sym) as { side: Side; size: number; ts: number }[]) {
@@ -1154,16 +1143,18 @@ export class Runner {
     }
     return u;
   }
+  /**
+   * Cash as fills and booked deposits, withdrawals and funding explain it, plus unrealised PnL. Not Perpl's balance as
+   * read this second: between a fill's cash and position messages that is off by the position's margin, and on
+   * 2026-10-12 a $2 dip of that kind stopped Monday three times at a $1 daily limit while the account was up.
+   * A move no fill explains (a deposit, a liquidation) counts once it has held CASH_SETTLE_MS (trackCash).
+   */
   private equityNow(): number {
-    return (this.venue?.account().balanceUsd ?? 0) + this.unrealized();
-  }
-  /** A balance rise no fill explains, still settling: not profit until it is (it is most likely a deposit). */
-  private unexplainedIn(): number {
-    return this.cash.since && this.cash.drift > 0 ? this.cash.drift : 0;
+    return (this.cash.expected ?? this.venue?.account().balanceUsd ?? 0) + this.unrealized();
   }
   /** Trading PnL today: equity change minus net deposits. Fees and funding are already in equity. */
   private pnlToday(): number {
-    return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.flows.dayOut - this.unexplainedIn() : 0;
+    return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.flows.dayOut : 0;
   }
   /**
    * What the loss limits see. Deposits are taken out; withdrawals are not, so an unexplained drop in the balance
@@ -1171,10 +1162,10 @@ export class Runner {
    * pause Monday and close positions before withdrawing.
    */
   private riskPnlToday(): number {
-    return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.flows.dayOutIdle - this.unexplainedIn() : 0;
+    return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.flows.dayOutIdle : 0;
   }
   private sessionPnl(): number {
-    return this.session ? this.equityNow() - this.session.startEquity - this.flows.sessionIn - this.flows.sessionOut - this.unexplainedIn() : 0;
+    return this.session ? this.equityNow() - this.session.startEquity - this.flows.sessionIn - this.flows.sessionOut : 0;
   }
   private lossUsedPct(): number {
     return (Math.max(0, -this.riskPnlToday()) / Math.min(this.policy.maxDailyLossUsd, config.caps?.maxDailyLossUsd ?? Infinity)) * 100;
@@ -1224,7 +1215,7 @@ export class Runner {
       if ((this.venue?.account().balanceUsd ?? 0) > 0 && equity < marginFloorUsd(this.policy, this.policy.markets.length)) return void this.kill('margin');
       const s = this.session;
       if (s) {
-        if (s.stopLossUsd != null && equity - s.startEquity - this.flows.sessionIn - this.unexplainedIn() <= -s.stopLossUsd) return void this.kill('session_loss');
+        if (s.stopLossUsd != null && equity - s.startEquity - this.flows.sessionIn <= -s.stopLossUsd) return void this.kill('session_loss');
         // Take profit counts what would be left after closing the position, not the paper gain.
         const pnl = this.sessionPnl();
         if (s.takeProfitUsd != null && pnl - this.exitCostUsd() >= s.takeProfitUsd) return void this.takeProfit(pnl);
@@ -1262,7 +1253,7 @@ export class Runner {
 
   private snapshot(now: number, equity: number) {
     db.prepare('insert or replace into pnl_snapshots (user_id, ts, equity, realized, unrealized, fees, balance) values (?,?,?,?,?,?,?)')
-      .run(this.userId, now, equity, this.realized, this.unrealized(), this.fees, this.venue?.account().balanceUsd ?? null);
+      .run(this.userId, now, equity, this.realized, this.unrealized(), this.fees, this.cash.expected ?? this.venue?.account().balanceUsd ?? null);
   }
 
   // ---- what happened when nothing filled ----

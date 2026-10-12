@@ -46,7 +46,7 @@ const REF_MODES: { id: RefMode; label: string; note: string }[] = [
   { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's and Hyperliquid's mid with the weight you choose." },
 ];
 /** The same in every mode since 2026-10-11: before that Mid and Blend exited at the market, and most of those exits lost. */
-const EXIT_NOTE = `In every mode an exit rests at the entry plus fees and 1 bp, never below what it bought nor above what it sold, or closes at the best price once the position is ${STAGE.stopLossBps} bps under its entry.`;
+const EXIT_NOTE = `In every mode an exit rests at the entry plus fees and 1 bp, never below what it bought nor above what it sold, or closes at the best price once its open loss reaches ${STAGE.urgentLossFrac * 100}% of your stop loss or it has been open an hour.`;
 const PARTICIPATIONS: { id: Participation; label: string }[] = [{ id: 'aggressive', label: 'Aggressive' }, { id: 'normal', label: 'Normal' }, { id: 'passive', label: 'Passive' }];
 const EPS = 1e-9;
 
@@ -260,7 +260,6 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
             <Line k="Quote per side" v={money(l.quoteSizeUsd)} />
             <Line k="Reference price" v={value.refMode === 'blend' ? `Blend ${value.blendWeight * 100}%` : REF_MODES.find((m) => m.id === value.refMode)?.label ?? '-'} />
             <Line k="Participation" v={`${PARTICIPATIONS.find((p) => p.id === value.participation)?.label}, ${PARTICIPATION[value.participation] * 100}%`} />
-            <Line k="Stop per position" v={`${STAGE.stopLossBps} bps`} />
           </dl>
           {balance != null && !fits && (
             <p role="alert" className="mx-3 mb-3 text-[12px] text-ask-fg">
