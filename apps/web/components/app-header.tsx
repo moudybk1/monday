@@ -7,10 +7,11 @@ import { ThemeToggle } from './theme-toggle';
 import { at } from '@/lib/hosts';
 import { Wordmark, cx } from './ui';
 
+// In the order a user goes through them: set Monday up, then watch it trade.
 const NAV = [
+  { href: '/app/policy', label: 'Setup' },
   { href: '/app', label: 'Terminal' },
   { href: '/analytics', label: 'Analytics' },
-  { href: '/app/policy', label: 'Bot settings' },
   { href: '/evidence', label: 'Evidence' },
 ];
 const isOn = (href: string, path: string) => (href === '/analytics' ? path.startsWith('/analytics') : path === href);

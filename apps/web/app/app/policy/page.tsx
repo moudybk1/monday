@@ -135,7 +135,7 @@ export default function PolicyPage() {
     <div className="grid gap-5 py-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="display text-2xl">Bot settings</h1>
+          <h1 className="display text-2xl">Setup</h1>
           <p className="mt-1 text-[13px] text-fg-2">The rules Monday trades by. They stay in force until you change them.</p>
         </div>
         {me.accountId != null && <Tag>Perpl account {me.accountId}</Tag>}

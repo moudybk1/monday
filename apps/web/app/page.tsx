@@ -161,7 +161,7 @@ export default async function Landing() {
           <div className={`${WRAP} py-20 md:py-28`}>
             <Reveal>
               <h2 className={`${H2} max-w-[18ch]`}>You set the limits. Monday stops when one is hit.</h2>
-              <p className={LEAD}>Pick a margin and a leverage in Bot settings and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
+              <p className={LEAD}>Pick a margin and a leverage in Setup and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
             </Reveal>
             <dl className="mt-12 grid gap-8 md:grid-cols-3 md:gap-10">
               {CONTROLS.map((c) => (
