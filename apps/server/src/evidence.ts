@@ -196,11 +196,12 @@ export async function computeEvidence(driver: VenueDriver, collector: Collector)
     }
     // Point-in-time rule: a trade counts from the moment we could have seen it.
     const flows = collector.minuteFlows(sym, from - lag, end - lag);
-    // No Smart Trader trade in the window (markets added on 2026-10-11, or ones they do not trade on Hyperliquid): there is
-    // nothing to study, and a correlation of 0.00 from 0.00 to 0.00 would read as a result.
-    if (!flows.some((x) => x !== 0)) continue;
     const offset = closes.length - candles.length; // leading minutes with no price yet
     const r = await offThread({ sym, spec, candles, closes, flows, offset });
+    // Smart Traders trade this market too rarely for a score (markets added on 2026-10-11, or barely traded on
+    // Hyperliquid): with most five-minute buckets empty the robust scale is 0, every score is 0, and "0.00, interval 0.00
+    // to 0.00" would read as a result. Not a study.
+    if (r.study.grid.every((g) => g.lo === 0 && g.hi === 0)) continue;
     out.studies[sym] = r.study;
     out.replays[sym] = r.replay;
   }
