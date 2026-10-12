@@ -306,16 +306,17 @@ describe('FR-RSK-3 final risk gate', () => {
 
 describe('inventory lifecycle', () => {
   const p = { positionUsd: 100, capUsd: 500, ageMs: 0, unrealizedUsd: 0, dailyLossUsd: 50, inPolicy: true };
-  it('moves from normal to reduce to urgent by size, age and open loss', () => {
-    expect(inventoryStage(p)).toBe('normal');
-    expect(inventoryStage({ ...p, positionUsd: -400 })).toBe('reduce');
-    expect(inventoryStage({ ...p, ageMs: 25 * 60_000 })).toBe('reduce');
-    expect(inventoryStage({ ...p, inPolicy: false })).toBe('reduce'); // dropped from the policy: work the exit
+  it('works the exit of any open position, and gets out at the market by size, age and open loss', () => {
+    expect(inventoryStage({ ...p, positionUsd: 0.4 })).toBe('normal'); // flat, give or take dust
+    expect(inventoryStage(p)).toBe('reduce'); // one entry per position: never added to
+    expect(inventoryStage({ ...p, positionUsd: -100 })).toBe('reduce');
+    expect(inventoryStage({ ...p, inPolicy: false })).toBe('reduce');
     expect(inventoryStage({ ...p, positionUsd: 700 })).toBe('urgent'); // limits lowered under the position
+    expect(inventoryStage({ ...p, ageMs: 60 * 60_000 })).toBe('urgent');
     expect(inventoryStage({ ...p, unrealizedUsd: -13 })).toBe('urgent');
   });
   it('has no fixed stop per position: the open loss that forces the exit is a share of the user\'s stop loss', () => {
-    expect(inventoryStage({ ...p, unrealizedUsd: -1 })).toBe('normal'); // 100 bps under entry, still waiting for its target
+    expect(inventoryStage({ ...p, unrealizedUsd: -1 })).toBe('reduce'); // 100 bps under entry, still waiting for its target
     expect(inventoryStage({ ...p, unrealizedUsd: -12.5 })).toBe('urgent'); // a quarter of the $50 daily stop loss
     expect(inventoryStage({ ...p, positionUsd: -100, unrealizedUsd: -12.5 })).toBe('urgent'); // shorts too
   });
@@ -620,11 +621,12 @@ describe('sign-in return path', () => {
 describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', () => {
   const wide = { ...base, bestBid: 84_990, bestAsk: 85_010 };
   it('keeps a touch quote off the side Hyperliquid has already moved past', () => {
-    const up = computeQuotes({ ...wide, hlMid: 85_010 }); // Hyperliquid 1.2 bps above Perpl: the ask would be lifted
+    const off = { ...DEFAULT_CONFIG, hlGuardBps: null }; // the touch rule alone, without the entry guard (7d)
+    const up = computeQuotes({ ...wide, hlMid: 85_010, cfg: off }); // Hyperliquid 1.2 bps above Perpl: the ask would be lifted
     expect(up.ask!.price).toBe(85_013.9); // Hyperliquid's mid plus the maker fee, not one tick inside Perpl's ask
     expect(up.touch.ask).toBe(false);
     expect(up.bid!.price).toBe(84_990.1); // the side Hyperliquid moved away from still joins
-    const down = computeQuotes({ ...wide, hlMid: 84_990 });
+    const down = computeQuotes({ ...wide, hlMid: 84_990, cfg: off });
     expect(down.bid!.price).toBe(84_986.1);
     expect(down.ask!.price).toBe(85_009.9);
     expect(computeQuotes(wide).ask!.price).toBe(85_009.9); // no Hyperliquid mid: unchanged
@@ -638,6 +640,22 @@ describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', ()
     expect(computeQuotes({ ...short, entryPrice: 84_900 }).bid!.price).toBe(84_883.8); // 84,900 x (1 - 1.9 bps)
     expect(computeQuotes({ ...short, entryPrice: 84_900, stage: 'reduce' }).bid!.price).toBe(84_883.8);
     expect(computeQuotes({ ...long, entryPrice: 85_100 }).bid).not.toBeNull(); // the adding side is unchanged
+  });
+  it('drops the profit from the exit once the position is 10 minutes old (2026-10-12)', () => {
+    const long = { ...wide, positionUsd: 300, positionBase: 300 / 85_000, entryPrice: 85_100, stage: 'reduce' as const };
+    expect(computeQuotes({ ...long, positionAgeMs: 9 * 60_000 }).ask!.price).toBe(85_116.2); // 85,100 x (1 + 1.9 bps)
+    expect(computeQuotes({ ...long, positionAgeMs: 10 * 60_000 }).ask!.price).toBe(85_107.7); // 85,100 x (1 + 0.9 bps): out flat
+    const short = { ...wide, positionUsd: -300, positionBase: -300 / 85_000, entryPrice: 84_900, stage: 'reduce' as const };
+    expect(computeQuotes({ ...short, positionAgeMs: 10 * 60_000 }).bid!.price).toBe(84_892.3); // 84,900 x (1 - 0.9 bps)
+  });
+  it('keeps every entry 3 bps on the safe side of Hyperliquid, never the exit (on trial, 2026-10-12)', () => {
+    const up = computeQuotes({ ...wide, hlMid: 85_010 });
+    expect(up.bid!.price).toBe(84_984.4); // 85,010 x (1 - 3 bps)
+    expect(up.ask!.price).toBe(85_035.6); // 85,010 x (1 + 3 bps)
+    const short = computeQuotes({ ...wide, hlMid: 85_010, positionUsd: -300, positionBase: -300 / 85_000, stage: 'reduce' });
+    expect(short.ask).toBeNull(); // no adding
+    expect(short.bid!.price).toBeGreaterThan(84_984.4); // the exit is not held back
+    expect(computeQuotes({ ...wide, hlMid: 85_010, cfg: { ...DEFAULT_CONFIG, hlGuardBps: null } }).bid!.price).toBe(84_990.1); // off
   });
 });
 

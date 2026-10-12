@@ -52,9 +52,7 @@ export function riskGate(i: GateInput): { target: QuoteTarget } | { reject: Gate
 export type InventoryStage = 'normal' | 'reduce' | 'urgent';
 
 export const STAGE = {
-  reduceQ: 0.75, // share of the cap
   urgentQ: 1.25, // well past the cap: limits were lowered under the position, or a gap filled through it
-  reduceAgeMs: 20 * 60_000,
   urgentAgeMs: 60 * 60_000,
   // Open loss as a share of the user's daily stop loss. There is no fixed stop per position: the user sets the risk
   // (a 20 bps stop for everyone was removed on 2026-10-12 at the user's request).
@@ -62,17 +60,19 @@ export const STAGE = {
 };
 
 /**
- * Where a position is in its life. normal: quote both sides, skewed. reduce: stop adding, quote the exit tighter.
- * urgent: the exit joins the best price, profit target or not. The hard limits (loss, margin) are kills, handled by the
- * runner.
+ * Where a position is in its life. normal: flat, quote both sides. reduce: any open position, stop adding and quote
+ * the exit alone. urgent: the exit joins the best price, profit target or not. The hard limits (loss, margin) are
+ * kills, handled by the runner.
+ *
+ * One entry per position (2026-10-12): round trips that never added came out about even on the real and paper fills,
+ * those that added carried about 98% of the loss, so a position is never grown, only closed.
  */
 export function inventoryStage(i: { positionUsd: number; capUsd: number; ageMs: number; unrealizedUsd: number; dailyLossUsd: number; inPolicy: boolean }): InventoryStage {
   const size = Math.abs(i.positionUsd);
   if (size < 0.5) return 'normal';
   const q = i.capUsd > 0 ? size / i.capUsd : Infinity;
   if (i.ageMs >= STAGE.urgentAgeMs || i.unrealizedUsd <= -STAGE.urgentLossFrac * i.dailyLossUsd || (i.inPolicy && q >= STAGE.urgentQ)) return 'urgent';
-  if (!i.inPolicy || q >= STAGE.reduceQ || i.ageMs >= STAGE.reduceAgeMs) return 'reduce';
-  return 'normal';
+  return 'reduce';
 }
 
 /**

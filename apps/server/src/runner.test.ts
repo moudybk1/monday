@@ -261,6 +261,21 @@ it('dropping a market from the policy keeps its position in view and works its e
   r.dispose();
 });
 
+it('never adds to a position: with one open, only its exit is quoted (2026-10-12)', async () => {
+  const w = paperWorld();
+  const wallet = '0x00000000000000000000000000000000000000b3';
+  simStore.save(wallet, 1_000, { BTC: { size: 0.0005, entryPrice: 99_000 } }); // long $50, well under the $500 limit
+  const r = runnerOn(w.driver as never, wallet);
+  await r.start();
+  r.tick();
+  await settle();
+  const btc = r.state().markets.BTC!;
+  expect(btc).toMatchObject({ inPolicy: true, stage: 'reduce' });
+  expect(btc.quotes.bid).toBeNull();
+  expect(btc.quotes.ask!.size).toBeLessThanOrEqual(0.0005);
+  r.dispose();
+});
+
 it('cash that moves while Monday is stopped is not PnL: a deposit during a restart, a withdrawal while paused and flat', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   const v = {
