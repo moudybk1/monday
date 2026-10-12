@@ -6,7 +6,7 @@ import { coinbaseWallet, injectedWallet, metaMaskWallet, okxWallet, rabbyWallet,
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { parseAbi } from 'viem';
-import { monad, monadTestnet } from 'viem/chains';
+import { arbitrum, base as baseChain, bsc, mainnet, monad, monadTestnet, optimism, polygon } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
 import { WagmiProvider, createConfig, http, useAccount, useDisconnect, usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
 import { REGISTRY_ABI, type AppConfig, type Me, type Policy } from '@monday/core';
@@ -19,15 +19,24 @@ const rpc = (id: number) => http(id === chain.id ? process.env.NEXT_PUBLIC_MONAD
 // Browser wallets always; phone wallets over WalletConnect once a project id is set (free at cloud.reown.com).
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
 export const walletConnectReady = Boolean(projectId);
+// Sign-in only. RainbowKit signs only on a chain listed here, and a phone wallet over WalletConnect that has no Monad yet
+// connects on its own network and, when it cannot add Monad, stays there: the Sign button then did nothing and no request
+// reached the wallet (2026-10-12). The message is the same on any network (Monad's chain id is inside it, and the server
+// checks that), and nothing is ever sent or read on these.
+const signIn = [mainnet, baseChain, arbitrum, bsc, polygon, optimism] as const;
 const wagmiConfig = createConfig({
-  chains: [monadTestnet, monad],
+  // The app's chain first: a phone wallet over WalletConnect is offered it before any other.
+  chains: chain.id === monad.id ? [monad, monadTestnet, ...signIn] : [monadTestnet, monad, ...signIn],
   connectors: connectorsForWallets(
     // A named wallet that is not installed falls back to WalletConnect, which hangs without a project id. Without one,
     // only the browser's own wallet is offered; installed extensions still show by name through EIP-6963.
     [{ groupName: 'Wallets', wallets: projectId ? [injectedWallet, rabbyWallet, metaMaskWallet, okxWallet, coinbaseWallet, walletConnectWallet] : [injectedWallet] }],
     { appName: 'Monday', projectId: projectId || 'unset' },
   ),
-  transports: { [monadTestnet.id]: rpc(monadTestnet.id), [monad.id]: rpc(monad.id) },
+  transports: {
+    [monadTestnet.id]: rpc(monadTestnet.id), [monad.id]: rpc(monad.id),
+    [mainnet.id]: http(), [baseChain.id]: http(), [arbitrum.id]: http(), [bsc.id]: http(), [polygon.id]: http(), [optimism.id]: http(),
+  },
   ssr: true,
 });
 export const registryAbi = parseAbi(REGISTRY_ABI);
@@ -82,8 +91,9 @@ function Auth({ children }: { children: React.ReactNode }) {
       window.removeEventListener(ACCOUNT_CHANGED, reset);
     };
   }, [qc]);
-  const { address } = useAccount();
+  const { address, chainId, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const { switchChain } = useSwitchChain();
   const adapter = useMemo(() => createAuthenticationAdapter({
     getNonce: async () => (await api<{ nonce: string }>('/auth/nonce', { method: 'POST' })).nonce,
     // Always Monad's chain id: the server checks it, and signing a message works on any network.
@@ -108,6 +118,11 @@ function Auth({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (wallet && address && address.toLowerCase() !== wallet) void adapter.signOut().then(() => disconnect());
   }, [wallet, address, adapter, disconnect]);
+  // Connected elsewhere (see signIn above): ask the wallet once more to switch to Monad, adding it if it does not know it.
+  // Signing in works on either; Monad is where the rest of the app expects the wallet.
+  useEffect(() => {
+    if (isConnected && !wallet && chainId !== undefined && chainId !== chain.id) switchChain({ chainId: chain.id });
+  }, [isConnected, wallet, chainId, switchChain]);
   return (
     <RainbowKitAuthenticationProvider adapter={adapter} status={me.isLoading ? 'loading' : wallet ? 'authenticated' : 'unauthenticated'}>
       <RainbowKitProvider theme={theme} initialChain={chain} modalSize="compact" appInfo={{ appName: 'Monday' }}>

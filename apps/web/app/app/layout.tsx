@@ -3,6 +3,7 @@
 import { SignOutIcon } from '@phosphor-icons/react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAccount } from 'wagmi';
 import { AppHeader } from '@/components/app-header';
 import { Button, Notice, Skeleton, Tag, cx } from '@/components/ui';
 import { shortAddr } from '@/lib/format';
@@ -118,6 +119,9 @@ function NoWallet({ here }: { here: string }) {
 function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
   const session = useSession();
   const noWallet = useNoWallet();
+  const account = useAccount();
+  // Connected on another network: the wallet has been asked to switch (lib/wallet.tsx). On a phone that request waits in the wallet app.
+  const wrongChain = account.isConnected && account.chainId !== undefined && account.chainId !== chain.id;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,6 +151,7 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
           {sim && <Button size="lg" variant="ghost" onClick={demo} disabled={busy}>{busy ? 'Opening' : 'Use a demo account'}</Button>}
         </div>
         {error && <p role="alert" className="mt-3 text-[12.5px] text-ask-fg">{error}</p>}
+        {wrongChain && <div className="mt-4"><Notice tone="warn">Your wallet is on another network. If your wallet app asks to switch to {chain.name}, approve it; signing in works either way, so you can also just sign the message.</Notice></div>}
         {noWallet && <NoWallet here={noWallet} />}
       </div>
       <dl className="panel divide-y divide-line text-[13px]">
