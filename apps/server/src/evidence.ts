@@ -19,6 +19,9 @@ const POLICY = PRESETS.balanced;
 
 let current: Evidence | null = null;
 export const evidence = () => current;
+let missed = 0; // markets whose prices could not be fetched in the last run
+/** The last run kept an older study (or none) for a market whose prices Perpl would not serve: worth another try soon. */
+export const evidenceIncomplete = () => missed > 0;
 /** PRD 19.1 decision rule: lean with the flow only when the 15-minute correlation is positive with its interval above zero. */
 export const nansenK = (sym: MarketSym) => (current?.studies[sym]?.skewEnabled ? DEFAULT_CONFIG.k : 0);
 
@@ -161,10 +164,22 @@ export async function computeEvidence(driver: VenueDriver, collector: Collector)
     at: Date.now(), synthetic: collector.kind === 'sim' || driver.kind === 'sim', smartMoneySource: collector.kind === 'nansen' ? 'Smart Trader perp trades on Hyperliquid' : 'Simulated Smart Trader trades',
     priceSource: driver.kind === 'sim' ? 'Simulated 1-minute candles' : 'Perpl 1-minute candles', lagMs: lag, policy: POLICY, studies: {}, replays: {},
   };
+  missed = 0;
   for (const sym of MARKETS) {
     const spec = driver.feed.specs()[sym];
     if (!spec) continue;
-    const raw = await driver.feed.candles(sym, from, end);
+    // A week of minutes is ten requests a market. Perpl rate-limits bursts (429 after a restart, 2026-10-12): one market it
+    // refuses keeps its last study rather than costing every market theirs, and the run is retried soon (index.ts).
+    let raw: Candle[];
+    try {
+      raw = await driver.feed.candles(sym, from, end);
+    } catch (e) {
+      missed++;
+      console.error(JSON.stringify({ service: 'evidence', event: 'candles_failed', market: sym, error: String(e) }));
+      if (current?.studies[sym]) out.studies[sym] = current.studies[sym];
+      if (current?.replays[sym]) out.replays[sym] = current.replays[sym];
+      continue;
+    }
     if (raw.length < 2 * DAY_MIN) continue; // under two days of prices is not a study
     // Align candles to a dense minute grid; gaps carry the previous close forward.
     const byMin = new Map(raw.map((c) => [Math.floor(c.t / MIN), c]));

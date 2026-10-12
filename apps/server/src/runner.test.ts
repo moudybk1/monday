@@ -247,6 +247,8 @@ it('dropping a market from the policy keeps its position in view and works its e
   const w = paperWorld();
   const wallet = '0x00000000000000000000000000000000000000b2';
   simStore.save(wallet, 1_000, { BTC: { size: 0.002, entryPrice: 99_000 } }); // long $200, $2 up
+  // Monday's own fill opened it: the exit is Monday's to work.
+  db.prepare('insert into fills (id, user_id, sym, side, price, size, fee, is_maker, ts) values (?,?,?,?,?,?,?,?,?)').run('own-b2', upsertUser(wallet), 'BTC', 'bid', 99_000, 0.002, 0, 1, Date.now());
   const r = runnerOn(w.driver as never, wallet);
   await r.start();
   r.setPolicy({ ...POLICY, markets: ['ETH'] });
@@ -259,6 +261,17 @@ it('dropping a market from the policy keeps its position in view and works its e
   expect(btc.quotes.bid).toBeNull(); // no new inventory
   expect(btc.quotes.ask!.size).toBeLessThanOrEqual(0.002); // only the exit, never a flip
   r.dispose();
+
+  // The same position opened by hand, in a market Monday has not traded: the user's, left alone (2026-10-12).
+  const hand = '0x00000000000000000000000000000000000000b4';
+  simStore.save(hand, 1_000, { BTC: { size: 0.002, entryPrice: 99_000 } });
+  const r2 = runnerOn(w.driver as never, hand, { ...POLICY, markets: ['ETH'] });
+  await r2.start();
+  r2.tick();
+  await settle();
+  expect(r2.state().markets.BTC!.quotes).toEqual({ bid: null, ask: null });
+  expect(r2.state().pnl.unrealizedUsd).toBeCloseTo(2); // still in view and in the account's equity
+  r2.dispose();
 });
 
 it('never adds to a position: with one open, only its exit is quoted (2026-10-12)', async () => {
@@ -312,6 +325,44 @@ it('cash that moves while Monday is stopped is not PnL: a deposit during a resta
   expect(after.state().status).toBe('quoting'); // not a $50 loss against a $50 limit
   expect(after.state().pnl.lossLimitUsedPct).toBe(0);
   after.dispose();
+});
+
+it('a Stop during a boot resume is saved, and cash withdrawn while stopped is not a loss at the next Start (2026-10-12)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const v = {
+    balance: 1_000,
+    connect: async () => v.account(), close() {}, on() {}, connected: () => true, quote: () => null, setQuote: async () => {}, cancelAll: async () => {}, flatten: async () => {},
+    account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: 0, entryPrice: 0 }),
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const deps = { driver, collector: new Collector(null), k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xb00', accountId: 1, token: 't', secret: 's' }) };
+  const uid = upsertUser('0xb00');
+  const status = () => (db.prepare('select status from agents where user_id = ?').get(uid) as { status: string }).status;
+  const ticks = (r: InstanceType<typeof Runner>, n: number) => {
+    for (let i = 0; i < n; i++) {
+      vi.setSystemTime(Date.now() + 1_000);
+      r.tick();
+    }
+  };
+  const a = new Runner(uid, '0xb00', 1, POLICY, deps);
+  await a.start();
+  ticks(a, 2);
+  await a.shutdown(); // a deploy while quoting
+
+  const b = new Runner(uid, '0xb00', 1, POLICY, deps); // boot is resuming it
+  await b.pause(); // Stop pressed before the resume landed
+  expect(status()).toBe('paused');
+  b.dispose(); // and another restart while stopped
+
+  v.balance -= 500; // withdrawn while stopped and flat
+  const c = new Runner(uid, '0xb00', 1, POLICY, deps);
+  ticks(c, 2);
+  expect(c.state().status).toBe('paused'); // not resumed
+  await c.start();
+  ticks(c, 20);
+  expect(c.state()).toMatchObject({ status: 'quoting', killReason: null }); // not a $500 loss against a $50 limit
+  expect(c.state().pnl.lossLimitUsedPct).toBe(0);
+  c.dispose();
 });
 
 /** A scripted Perpl account for the lifecycle tests: one market, a position, and every cleanup call recorded. */

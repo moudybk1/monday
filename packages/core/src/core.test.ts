@@ -648,6 +648,12 @@ describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', ()
     const short = { ...wide, positionUsd: -300, positionBase: -300 / 85_000, entryPrice: 84_900, stage: 'reduce' as const };
     expect(computeQuotes({ ...short, positionAgeMs: 10 * 60_000 }).bid!.price).toBe(84_892.3); // 84,900 x (1 - 0.9 bps)
   });
+  it('never sizes the exit down to nothing: a governor size of 0 or a quiet market cap entries only (2026-10-12)', () => {
+    const long = { ...wide, positionUsd: 300, positionBase: 300 / 85_000, stage: 'reduce' as const, gov: { ...base.gov, size_mult: 0 } };
+    expect(computeQuotes(long).ask!.size).toBeCloseTo(100 / computeQuotes(long).ask!.price, 4); // one quote of the exit
+    expect(computeQuotes({ ...long, gov: base.gov, hourlyVolumeUsd: 10 }).ask!.size).toBeGreaterThan(0);
+    expect(computeQuotes({ ...wide, gov: { ...base.gov, size_mult: 0 } }).bid).toBeNull(); // flat: no entry at size 0
+  });
   it('keeps every entry 3 bps on the safe side of Hyperliquid, never the exit (on trial, 2026-10-12)', () => {
     const up = computeQuotes({ ...wide, hlMid: 85_010 });
     expect(up.bid!.price).toBe(84_984.4); // 85,010 x (1 - 3 bps)

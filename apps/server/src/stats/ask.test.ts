@@ -8,3 +8,8 @@ it('keeps the menu spelling of keys and presets, and turns one preset into a lis
   expect(normalise({ kind: 'screen', preset: 'Makers' })).toEqual({ kind: 'screen', presets: ['makers'] });
   expect(normalise({ kind: 'screen', preset: 'all' })).toEqual({ kind: 'screen' }); // everyone is no filter at all
 });
+
+it('keeps an account number a string, so the wallet action still parses', () => {
+  expect(normalise({ kind: 'wallet', q: '12345' })).toEqual({ kind: 'wallet', q: '12345' });
+  expect(normalise({ kind: 'top', days: '7', sort: 'net', n: '3' })).toEqual({ kind: 'top', days: 7, sort: 'net', n: 3 });
+});

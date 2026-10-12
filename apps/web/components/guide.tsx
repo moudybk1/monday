@@ -7,9 +7,9 @@ const Swatch = ({ tone }: { tone: 'bid' | 'ask' }) => <span aria-hidden classNam
 
 // One line per area, named as it appears on screen, in words a non-trader can act on.
 const AREAS: [string, ReactNode][] = [
-  ['Market strip', <>Pick a market. Beside it: price, 24-hour change and volume, the spread (Monday needs a few bps of it to earn anything), and the regime Monday is in.</>],
+  ['Market strip', <>Pick a market. Beside it: price, 24-hour change and volume, and the regime Monday is in.</>],
   ['Chart', <>Candles show the market price. The dashed <Swatch tone="bid" /> line is Monday&apos;s offer to buy, <Swatch tone="ask" /> its offer to sell. Arrows mark its trades. Scroll to zoom, drag to move.</>],
-  ['Order book', <>Every open offer on Perpl. Monday&apos;s own are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
+  ['Order book', <>Every open offer on Perpl. The middle row is the spread, the gap Monday needs a few bps of to earn anything. Monday&apos;s own offers are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
   ['Agent', <>Your money and the controls. <b>Stop</b> cancels Monday&apos;s offers and stops the bot; any position stays open and is yours to manage. <b>Kill and flatten</b> cancels everything and closes positions. While quoting, Monday kills itself when the stop loss you set for the day is reached.</>],
   ['Open orders', <>Where each of Monday&apos;s offers sits: at the best price or behind it, and what has to trade before it fills.</>],
   ['Smart Traders', <>Big trades by wallets with a record of consistent profit on Hyperliquid. When they rush one way, Monday steps aside on that side.</>],
@@ -33,7 +33,7 @@ export function Guide({ dialog, sim, paper }: { dialog: RefObject<HTMLDialogElem
         ))}
       </dl>
       <p className="mt-4 border-t border-line pt-4 text-[13px] text-fg-2">
-        Change your limits on the <b>Policy</b> tab. Your funds stay in your own Perpl account, and you can withdraw there at any time.
+        Change your limits under <b>Bot settings</b>. Your funds stay in your own Perpl account, and you can withdraw there at any time.
       </p>
       {paper && (
         <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[13px]">

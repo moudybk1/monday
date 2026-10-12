@@ -290,7 +290,8 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   const sizeCapUsd = i.hourlyVolumeUsd ? cfg.participation * i.hourlyVolumeUsd : null;
   const size = (side: Side, px: number): number => {
     const grows = (side === 'bid' && q > 0) || (side === 'ask' && q < 0);
-    const usd = Math.min(sizeCapUsd ?? Infinity, i.policy.quoteSizeUsd * i.gov.size_mult * (grows ? 1 - Math.abs(q) : 1));
+    // The governor's size and a quiet market's cap shrink entries, never the exit: a size of 0 would remove the way out.
+    const usd = side === exit ? i.policy.quoteSizeUsd : Math.min(sizeCapUsd ?? Infinity, i.policy.quoteSizeUsd * i.gov.size_mult * (grows ? 1 - Math.abs(q) : 1));
     const sz = floorTo(usd / px, i.spec.sizeStep);
     return side === exit && i.positionBase != null ? Math.min(sz, floorTo(Math.abs(i.positionBase), i.spec.sizeStep)) : sz;
   };

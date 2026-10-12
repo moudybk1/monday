@@ -30,3 +30,6 @@ export function ago(t: number, now = Date.now()): string {
 
 export const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
+
+/** How far a Hyperliquid blend weight (quotingFor) pulls the fair price from Perpl toward Hyperliquid, in words. */
+export const towardHl = (w: number) => (w === 0.5 ? 'halfway' : w === 1 ? 'all the way' : `${Math.round(w * 100)}% of the way`);
