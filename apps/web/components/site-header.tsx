@@ -9,7 +9,6 @@ const LINKS = [
   { href: at('/#how'), label: 'How it works' },
   { href: at('/#custody'), label: 'Custody' },
   { href: at('/analytics'), label: 'Analytics' },
-  { href: at('/evidence'), label: 'Evidence' },
 ];
 
 /** Header for the public pages. One line, 48px and full width like the app header, so nothing jumps between them. */

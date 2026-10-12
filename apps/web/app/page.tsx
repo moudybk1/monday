@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, ArrowsLeftRightIcon, CaretDownIcon, HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
 import type { AppConfig } from '@monday/core';
-import { EvidenceTeaser, LiveMarket, Reveal, Story } from '@/components/landing';
+import { LiveMarket, Reveal, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ButtonLink, Mark, Tag, cx } from '@/components/ui';
 import { at } from '@/lib/hosts';
@@ -161,7 +161,7 @@ export default async function Landing() {
           <div className={`${WRAP} py-20 md:py-28`}>
             <Reveal>
               <h2 className={`${H2} max-w-[18ch]`}>You set the limits. Monday stops when one is hit.</h2>
-              <p className={LEAD}>Pick a margin and a leverage in Bot settings and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
+              <p className={LEAD}>Pick a margin and a leverage in Setup and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
             </Reveal>
             <dl className="mt-12 grid gap-8 md:grid-cols-3 md:gap-10">
               {CONTROLS.map((c) => (
@@ -171,21 +171,6 @@ export default async function Landing() {
                 </div>
               ))}
             </dl>
-          </div>
-        </section>
-
-        {/* Evidence: figures first, chart under them. */}
-        <section className="border-t border-line">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <Reveal>
-              <h2 className={`${H2} max-w-[20ch]`}>The edge is measured, not claimed.</h2>
-              <p className={LEAD}>
-                An event study checks whether Smart Trader flow leads price. A replay runs a naive maker and Monday over the same minutes. Both publish their assumptions next to the numbers.
-              </p>
-            </Reveal>
-            <div className="mt-10">
-              <EvidenceTeaser />
-            </div>
           </div>
         </section>
 

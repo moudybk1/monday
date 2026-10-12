@@ -93,7 +93,7 @@ Things specific to mainnet:
 ## How it is built
 
 ```
-apps/web        Next.js 16: landing, onboarding, dashboard, policy, evidence, decision records
+apps/web        Next.js 16: landing, onboarding, dashboard, setup, decision records
 apps/server     One Node process: REST + WebSocket API, Nansen collector, per-user runners, governor, chain log
   src/venue     The seam. sim.ts is the simulator; perpl/ is the live adapter. Nothing above it knows which.
 packages/core   Pure strategy math and shared types: quoting model, reflex, regimes, signal, statistics
@@ -135,7 +135,7 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 | Area | Status |
 | --- | --- |
 | Strategy math, signal engine, statistics | Unit tested. |
-| Full flow on the simulator: onboarding, quoting, fills, markouts, reflex, pause, kill, policy change, evidence | Run end to end in a browser. |
+| Full flow on the simulator: onboarding, quoting, fills, markouts, reflex, pause, kill, policy change | Run end to end in a browser. |
 | Paper mode on mainnet data: best-price quoting, queue position, fills | Run live (2026-10-09): 12 fills in two minutes across BTC, ETH and SOL with no Nansen key. |
 | `MondayRegistry` | 25 Foundry tests pass. Not deployed. |
 | Perpl market data, candles, account lookup | Run against live testnet. Market data and specs also loaded read-only from mainnet. |
@@ -184,7 +184,6 @@ Mondays on the same Perpl account.
 - Simulated or testnet by default, with no real funds. On mainnet it trades real funds and the app says so on every screen.
 - Market making can lose money. Monday reports results and does not promise profit.
 - Smart-money signals can be wrong or late.
-- The evidence page runs on simulated data until Nansen and Perpl are configured, and says so.
 - The Perpl adapter was written from Perpl's public API docs; no Perpl example code or PerplBot code was copied.
 - AI assistance: the code, tests and docs were written with Claude Code (Anthropic's Claude Opus), directed and reviewed by the author. Commits it helped with carry a `Co-Authored-By: Claude` trailer. At runtime the governor itself is an LLM (see above).
 

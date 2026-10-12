@@ -33,7 +33,7 @@ export function Guide({ dialog, sim, paper }: { dialog: RefObject<HTMLDialogElem
         ))}
       </dl>
       <p className="mt-4 border-t border-line pt-4 text-[13px] text-fg-2">
-        Change your limits under <b>Bot settings</b>. Your funds stay in your own Perpl account, and you can withdraw there at any time.
+        Change your limits under <b>Setup</b>. Your funds stay in your own Perpl account, and you can withdraw there at any time.
       </p>
       {paper && (
         <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[13px]">
