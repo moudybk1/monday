@@ -3,12 +3,12 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { PxOverview } from '@monday/core';
 import { AppHeader } from '@/components/app-header';
 import { AskChat } from '@/components/ask-chat';
-import { Tag, cx } from '@/components/ui';
+import { INPUT, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { at } from '@/lib/hosts';
 
@@ -73,7 +73,34 @@ function SubNav() {
           </Link>
         ))}
       </div>
+      <WalletSearch />
     </div>
+  );
+}
+
+const WALLET = /^(0x[0-9a-f]{40}|\d{1,8})$/;
+
+/** Any address or account number, straight to its profile. Ask Monday takes sentences; this takes only a wallet. */
+function WalletSearch() {
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  const [bad, setBad] = useState(false);
+  const go = (e: React.FormEvent) => {
+    e.preventDefault();
+    const v = q.trim().toLowerCase().replace(/^#/, '');
+    if (!WALLET.test(v)) return setBad(true);
+    setQ('');
+    router.push(at(`/analytics/wallet/${v}`));
+  };
+  return (
+    <form role="search" onSubmit={go} className="flex items-center px-1.5 py-1 max-sm:w-full">
+      <label htmlFor="wallet-search" className="sr-only">Find a wallet</label>
+      <input
+        id="wallet-search" value={q} onChange={(e) => { setQ(e.target.value); setBad(false); }} spellCheck={false} autoComplete="off"
+        placeholder="Wallet address or account #" aria-invalid={bad} title={bad ? 'An address (0x and 40 characters) or an account number' : undefined}
+        className={cx(INPUT, 'num h-7 text-[12px] sm:w-72', bad && 'border-ask focus:border-ask')}
+      />
+    </form>
   );
 }
 

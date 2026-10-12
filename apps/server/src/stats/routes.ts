@@ -9,7 +9,7 @@ import {
   type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
 import { Intent, explainWallet, resolveAsk, walletFacts } from './ask';
-import { chat } from './answer';
+import { chat, quotesOnly } from './answer';
 import { history, positionSignals } from './history';
 import { historyComplete, indexerStatus, KINDS, scanHoles, sdb } from './indexer';
 import { accountOf, accounts, addressOf, allPositions, cached, client, dailyVolume, funding, fundingHistory, hyperliquidVolume, meta, positionsOf, statsNet, ticker, tvl } from './perpl';
@@ -214,7 +214,9 @@ async function resolve(q: string): Promise<{ account: number; address: Address |
   return a ? { account: Number(a.accountId), address: getAddress(q) } : null;
 }
 
-const TRADE_CAP = 100_000; // performance is computed over at most the newest 100k fills of a wallet
+// Performance is computed over at most the newest 20k fills of a wallet. 100k held the stats thread for up to 10 s on the
+// VPS for each busy wallet, and every other visitor waited (2026-10-13).
+const TRADE_CAP = 20_000;
 
 async function wallet(q: string): Promise<PxWallet | null> {
   const r = await resolve(q);
@@ -242,7 +244,8 @@ async function wallet(q: string): Promise<PxWallet | null> {
   const pct = (f: (a: AggRow) => number) => (mine ? peers.filter((a) => f(a) > f(mine)).length / peers.length : null);
   const rank = { days: RANK_DAYS, accounts: peers.length, volumePct: pct((a) => a.volume), pnlPct: pct((a) => a.net) };
   // Performance reads at most TRADE_CAP fills; say how many there are, so a busy wallet is never shown as complete.
-  const total = rows.length < TRADE_CAP ? rows.length : one<{ n: number }>('select count(*) n from px_trades where account = ?', r.account).n;
+  // From the daily totals: a count(*) over a market maker's millions of fills took seconds on the stats thread.
+  const total = rows.length < TRADE_CAP ? rows.length : one<{ n: number }>('select sum(trades) n from px_day where account = ?', r.account).n;
   return {
     network: statsNet.network, address: r.address ?? '', account: r.account, balanceUsd: balance, lockedUsd: Number(info.lockedBalanceCNS) / m.usd, frozen: info.frozen !== 0,
     equityUsd: balance + positions.reduce((s, p) => s + p.deposit + p.upnl, 0), positions,
@@ -256,7 +259,7 @@ async function wallet(q: string): Promise<PxWallet | null> {
   };
 }
 
-/** A profile is polled every 15 s by each viewer; reading up to 100k fills and the chain once per 10 s per wallet is enough. */
+/** A profile is polled every 15 s by each viewer; reading up to 20k fills and the chain once per 10 s per wallet is enough. */
 const wallets = new Map<string, { at: number; data: Promise<PxWallet | null> }>();
 function walletCached(q: string): Promise<PxWallet | null> {
   const hit = wallets.get(q);
@@ -394,18 +397,35 @@ function leaderboard(days: number, sort: 'net' | 'volume' | 'loss') {
 }
 
 const ACTIVITY_DAYS = 7;
-/**
- * When Perpl trades: taker fills by UTC weekday and hour over the last week. Every fill has a taker row and a maker row,
- * so taker rows alone count each trade once. ponytail: one 7-day scan of px_trades (about a second) every 10 minutes,
- * on this process's thread; an hourly rollup table if it ever shows in the API's latency.
- */
+const HOUR = 3_600_000;
+// Taker fills per UTC hour, topped up from the last block read. Re-reading the whole week every 10 minutes took 14 s on
+// the VPS (a million rows from disk) and stalled every stats request meanwhile (2026-10-13). A hole filled in the history
+// changes what the week holds, so the hours start over then. Batches hold whole blocks, so nothing lands behind `hoursFrom`.
+const hours = new Map<number, { trades: number; usd: number }>();
+let hoursFrom = 0;
+let hoursHoles = '';
+/** When Perpl trades: taker fills by UTC weekday and hour over the last 168 hours. Taker rows count each trade once. */
 const activity = cached(10 * 60_000, async (): Promise<PxActivity> => {
-  const now = Date.now();
-  const since = now - ACTIVITY_DAYS * DAY;
-  const cells = all<{ dow: number; hour: number; trades: number; usd: number }>(
-    'select (ts / 86400000 + 4) % 7 dow, (ts / 3600000) % 24 hour, count(*) trades, sum(price * size) usd from px_trades where block >= ? and taker = 1 group by dow, hour',
-    blockAt(since),
+  const first = Math.floor(Date.now() / HOUR) - ACTIVITY_DAYS * 24 + 1;
+  const since = first * HOUR;
+  const holes = JSON.stringify(scanHoles());
+  if (holes !== hoursHoles) {
+    hoursHoles = holes;
+    hoursFrom = 0;
+    hours.clear();
+  }
+  const rows = all<{ h: number; trades: number; usd: number; last: number }>(
+    'select ts / 3600000 h, count(*) trades, sum(price * size) usd, max(block) last from px_trades where block >= ? and taker = 1 group by h',
+    Math.max(hoursFrom, blockAt(since)),
   );
+  for (const r of rows) {
+    const c = hours.get(r.h) ?? { trades: 0, usd: 0 };
+    hours.set(r.h, { trades: c.trades + r.trades, usd: c.usd + r.usd });
+    hoursFrom = Math.max(hoursFrom, r.last + 1);
+  }
+  for (const h of hours.keys()) if (h < first) hours.delete(h);
+  // 168 hours map onto the 168 weekday-hour cells one to one.
+  const cells = [...hours].map(([h, c]) => ({ dow: (Math.floor(h / 24) + 4) % 7, hour: h % 24, ...c }));
   return { days: ACTIVITY_DAYS, since, cells, trades: cells.reduce((s, c) => s + c.trades, 0), usd: cells.reduce((s, c) => s + c.usd, 0) };
 });
 
@@ -434,6 +454,7 @@ export function registerStats(app: FastifyInstance) {
   // Load once at boot, so the first visitor gets numbers at once (every later refresh happens in the background).
   void overview().catch(() => {});
   void risk().catch(() => {});
+  void activity().catch(() => {}); // the one full week's read, before the port opens rather than on a visitor's click
   app.get('/api/stats/overview', () => overview());
   app.get('/api/stats/risk', () => risk());
   app.get('/api/stats/liquidations', async (req): Promise<PxLiquidation[]> => {
@@ -487,7 +508,10 @@ export function registerStats(app: FastifyInstance) {
     if (!text) return { available: false, facts: walletFacts(w) };
     const facts = walletFacts(w);
     try {
-      return { available: true, text: await text, source: 'model', facts, at: Date.now() };
+      const t = await text;
+      // A figure the facts do not hold is the model's own: the facts go out instead.
+      if (!quotesOnly(t, facts.join('\n'))) throw new Error(`unquoted figure: ${t.slice(0, 200)}`);
+      return { available: true, text: t, source: 'model', facts, at: Date.now() };
     } catch (e) {
       // A slow or failing model must not leave the reader with nothing: the same figures, as written, in its place.
       console.warn(JSON.stringify({ service: 'stats', event: 'explain_failed', error: e instanceof Error ? e.message : String(e) }));

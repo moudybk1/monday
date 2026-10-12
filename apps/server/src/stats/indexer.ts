@@ -14,7 +14,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { decodeEventLog, toEventSelector, toHex, type Hex } from 'viem';
+import { createPublicClient, decodeEventLog, http, toEventSelector, toHex, type Hex } from 'viem';
 import { holesOf, type BlockRange } from '@monday/core';
 import { config } from '../config';
 import { EXCHANGE_ABI } from './exchange-abi';
@@ -89,6 +89,23 @@ const selRanges = sdb.prepare('select lo, hi from px_ranges order by lo');
 const selTouching = sdb.prepare('select lo, hi from px_ranges where lo <= ? and hi >= ?');
 const delRange = sdb.prepare('delete from px_ranges where lo = ?');
 const insRange = sdb.prepare('insert into px_ranges (lo, hi) values (?, ?)');
+
+// Liquidations stored before 2026-10-13 never reached px_trades or px_day (see the PositionLiquidated case in ingest).
+// Book them once, the way ingest now does, in one transaction: the daily totals first, for the rows not booked yet.
+if (getMeta('liqs_booked') == null) {
+  sdb.exec(`
+begin;
+insert into px_day (day, account, volume, net, fees, trades, closes, wins, gross_win, gross_loss, maker)
+select l.ts / 86400000, l.account, sum(l.mark * l.size), sum(l.pnl), 0, count(*), count(*), sum(l.pnl > 0),
+  sum(case when l.pnl > 0 then l.pnl else 0 end), sum(case when l.pnl <= 0 then -l.pnl else 0 end), 0
+from px_liqs l where not exists (select 1 from px_trades t where t.block = l.block and t.idx = l.idx) group by 1, 2
+on conflict (day, account) do update set volume = volume + excluded.volume, net = net + excluded.net, trades = trades + excluded.trades,
+  closes = closes + excluded.closes, wins = wins + excluded.wins, gross_win = gross_win + excluded.gross_win, gross_loss = gross_loss + excluded.gross_loss;
+insert or ignore into px_trades (block, idx, ts, perp, account, taker, kind, long, price, size, fee, pnl, funding)
+select block, idx, ts, perp, account, 1, ${kindId('liquidation')}, long, mark, size, 0, pnl, 0 from px_liqs;
+insert into px_meta (key, value) values ('liqs_booked', '1');
+commit;`);
+}
 
 /** Mark blocks [lo, hi) as scanned, merged with every range it touches. Runs inside the caller's transaction. */
 function cover(lo: number, hi: number) {
@@ -169,8 +186,16 @@ function ingest(logs: RawLog[], m: Meta, lo: number, hi: number) {
           const mk = m.markets.get(Number(a.perpId));
           if (!mk) break;
           const long = a.positionType === 0;
-          insLiq.run(l.block, l.idx, l.ts, mk.id, Number(a.posAccountId), long ? 1 : 0, Number(a.liqLotLNS) / mk.sz, Number(a.markPricePNS) / mk.px, usd(a.deltaPnlCNS) + usd(a.fundingCNS));
-          pending = { perp: mk.id, account: Number(a.posAccountId), kind: 'liquidation', long, pnl: usd(a.deltaPnlCNS), funding: usd(a.fundingCNS) };
+          const account = Number(a.posAccountId), size = Number(a.liqLotLNS) / mk.sz, mark = Number(a.markPricePNS) / mk.px;
+          const pnl = usd(a.deltaPnlCNS), fund = usd(a.fundingCNS);
+          insLiq.run(l.block, l.idx, l.ts, mk.id, account, long ? 1 : 0, size, mark, pnl + fund);
+          // Perpl logs a liquidation after its taker fill, so that fill has no position event to name its account and is
+          // kept under account 0. The loss is booked here instead, as a taker close at mark under the liquidation's own
+          // log index: until 2026-10-13 it reached no wallet's net, win rate or drawdown.
+          if (insTrade.run(l.block, l.idx, l.ts, mk.id, account, 1, kindId('liquidation'), long ? 1 : 0, mark, size, 0, pnl, fund).changes) {
+            const net = pnl + fund;
+            upDay.run(Math.floor(l.ts / 86_400_000), account, mark * size, net, 0, 1, net > 0 ? 1 : 0, net > 0 ? net : 0, net <= 0 ? -net : 0, 0);
+          }
           break;
         }
         case 'MakerOrderFilled': case 'MakerOrderFilledV2':
@@ -311,41 +336,78 @@ async function hypersync(token: string) {
       logError('hypersync_failed', error, { retryInS: wait / 1000 });
       status.error = error;
       saveStatus(false);
-      await sleep(wait);
+      from = await followOverRpc(from, Date.now() + wait);
       wait = Math.min(wait * 2, 300_000); // a 429 is Envio's quota: retrying every 5 s only keeps it exhausted
     }
   }
 }
 
+/**
+ * While HyperSync backs off, the head is followed over RPC, so the live panels do not freeze for minutes on a 429.
+ * Only from close behind: a long way back stays HyperSync's, so this never leaves a hole. Returns the cursor.
+ */
+async function followOverRpc(from: number, until: number): Promise<number> {
+  while (Date.now() < until) {
+    try {
+      const head = Number(await logsRpc.getBlockNumber());
+      status.head = head;
+      if (from <= head && head - from <= 5 * RPC_START_BLOCKS) {
+        from = await rpcStep(from, Math.min(head, from + RPC_LOG_BLOCKS - 1));
+        status.at = Date.now(); // progress, with HyperSync's error still on show
+        saveStatus(false);
+      } else await sleep(1_000);
+    } catch (e) {
+      logError('rpc_failed', e instanceof Error ? e.message.slice(0, 200) : String(e));
+      await sleep(3_000);
+    }
+  }
+  return from;
+}
+
 const RPC_START_BLOCKS = 30_000; // about three hours of Monad blocks
+const RPC_LOG_BLOCKS = Math.max(1, config.stats.rpcLogBlocks);
+/** Logs and the head over the indexer's own RPC (STATS_RPC_URL), else the one the contract reads use. */
+const logsRpc = config.stats.rpcUrl ? createPublicClient({ transport: http(config.stats.rpcUrl, { retryCount: 2 }) }) : client;
+
+/** The Exchange's logs in blocks [from, to], both included, over plain RPC. */
+async function rpcLogs(from: number, to: number): Promise<RawLog[]> {
+  const raw = (await logsRpc.request({
+    method: 'eth_getLogs',
+    params: [{ address: statsNet.exchange, fromBlock: toHex(from), toBlock: toHex(to), topics: [TOPICS] }],
+  })) as { blockNumber: Hex; logIndex: Hex; blockTimestamp?: Hex; data: Hex; topics: Hex[] }[];
+  return raw.map((l) => {
+    if (!l.blockTimestamp) throw new Error('eth_getLogs returned a log without blockTimestamp'); // never store a fill at 1970
+    return { block: Number(l.blockNumber), idx: Number(l.logIndex), ts: Number(l.blockTimestamp) * 1000, data: l.data, topics: l.topics };
+  });
+}
+
+/** Store blocks [from, to] at the head and move the cursor past them. Returns the new cursor. */
+async function rpcStep(from: number, to: number): Promise<number> {
+  ingest(await rpcLogs(from, to), await meta(), from, to + 1);
+  setMeta.run('cursor', String(to + 1));
+  status.block = to + 1;
+  return to + 1;
+}
 
 async function rpc() {
   status.source = 'rpc';
   let from = Number(getMeta('cursor') ?? 0);
   for (;;) {
     try {
-      const head = Number(await client.getBlockNumber());
-      // Too far behind to catch up over RPC: jump near the head. What it skips stays a hole for HyperSync to fill.
+      const head = Number(await logsRpc.getBlockNumber());
+      // Too far behind to catch up at the head: jump near it. What it skips stays a hole, filled below or by HyperSync.
       if (!from || head - from > 5 * RPC_START_BLOCKS) from = head - RPC_START_BLOCKS;
       status.head = head;
-      if (from > head) {
-        saveStatus(true); // caught up: still a heartbeat
-        await sleep(1_000);
-        continue;
+      if (from <= head) from = await rpcStep(from, Math.min(head, from + RPC_LOG_BLOCKS - 1));
+      else {
+        // Caught up. With an RPC of its own (STATS_RPC_URL) the newest hole is filled next, the way HyperSync does;
+        // Monad's public RPC is left alone: a hole there is thousands of calls.
+        const hole = config.stats.rpcUrl ? scanHoles().at(-1) : undefined;
+        if (hole) {
+          const lo = Math.max(hole.lo, hole.hi - RPC_LOG_BLOCKS);
+          ingest(await rpcLogs(lo, hole.hi - 1), await meta(), lo, hole.hi);
+        } else await sleep(1_000);
       }
-      const to = Math.min(head, from + 99);
-      const raw = (await client.request({
-        method: 'eth_getLogs',
-        params: [{ address: statsNet.exchange, fromBlock: toHex(from), toBlock: toHex(to), topics: [TOPICS] }],
-      })) as { blockNumber: Hex; logIndex: Hex; blockTimestamp?: Hex; data: Hex; topics: Hex[] }[];
-      const logs = raw.map((l) => {
-        if (!l.blockTimestamp) throw new Error('eth_getLogs returned a log without blockTimestamp'); // never store a fill at 1970
-        return { block: Number(l.blockNumber), idx: Number(l.logIndex), ts: Number(l.blockTimestamp) * 1000, data: l.data, topics: l.topics };
-      });
-      ingest(logs, await meta(), from, to + 1);
-      from = to + 1;
-      setMeta.run('cursor', String(from));
-      status.block = from;
       saveStatus(true);
     } catch (e) {
       status.error = e instanceof Error ? e.message.slice(0, 200) : String(e);

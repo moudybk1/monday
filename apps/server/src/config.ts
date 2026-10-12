@@ -98,6 +98,11 @@ export const config = {
     // Envio HyperSync (app.envio.dev/api-tokens): full event history in minutes. Without it the indexer follows the chain
     // from a few hours back over plain RPC.
     envioToken: env('ENVIO_API_TOKEN'),
+    // The indexer's own RPC (BlockVision, say): it follows the head while HyperSync is rate-limited and, without an Envio
+    // token, fills the history's holes. Contract reads stay on MONAD_RPC_URL: about 35k a day, too many for a free plan.
+    rpcUrl: env('STATS_RPC_URL'),
+    // Blocks per eth_getLogs call: Monad's public RPC allows 100.
+    rpcLogBlocks: num('STATS_RPC_LOG_BLOCKS', 100),
   },
 };
 

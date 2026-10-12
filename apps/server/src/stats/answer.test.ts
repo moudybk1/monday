@@ -21,8 +21,8 @@ const data = {
 
 it('answers with the figures, follows up on the window, defines words, and declines predictions', async () => {
   const whales = await chat('whales liquidated this month', {}, data);
-  expect(whales.text).toMatch(/^2 of 3 active wallets match whales \+ liquidated over the last 30 days\. First: #1, -\$500/);
-  expect(whales.table?.rows.map((r) => r.cells[0])).toEqual(['#1', '#3']); // by volume, the whales sort
+  expect(whales.text).toMatch(/^1 of 3 active wallets match whales \+ liquidated over the last 30 days\. First: #1, -\$500/);
+  expect(whales.table?.rows.map((r) => r.cells[0])).toEqual(['#1']); // #3 was liquidated but traded $1k: no whale
   expect(whales.actions[0].href).toBe('/analytics/screener?preset=whales%2Cliquidated&days=30');
 
   const later = await chat('and this week?', { last: whales.intent }, data);
@@ -32,7 +32,7 @@ it('answers with the figures, follows up on the window, defines words, and decli
   expect(oi.text).toMatch(/^Open interest is the size of all open positions.*Open interest on Perpl is \$1\.5M.*BTC holds 67%/);
 
   const funding = await chat('BTC funding', {}, data);
-  expect(funding.text).toMatch(/^BTC funding is 0\.0010% per hour \(8\.8% a year\): longs pay shorts\.$/);
+  expect(funding.text).toMatch(/^BTC funding is 0\.0010% per hour on average over the last 8 hours \(8\.8% a year\): longs pay shorts\.$/);
 
   expect((await chat('will BTC go up tomorrow?', {}, data)).text).toMatch(/does not predict prices/);
   expect((await chat('show me SOL', {}, data)).text).toMatch(/^SOL is at 100 .*5 accounts long against 15 short\.$/);
@@ -41,7 +41,7 @@ it('answers with the figures, follows up on the window, defines words, and decli
 it('answers the figure a definition question asks for, and the window the data has', async () => {
   expect((await chat('what is SOL funding', {}, data)).text).toMatch(/^SOL funding is .*shorts pay longs\.$/);
   expect((await chat('what is the volume this month', {}, data)).text).toBe('Perpl traded $200M over the last 30 days.');
-  expect((await chat('what are the whales liquidated this month', {}, data)).text).toMatch(/^2 of 3 active wallets match whales \+ liquidated/);
+  expect((await chat('what are the whales liquidated this month', {}, data)).text).toMatch(/^1 of 3 active wallets match whales \+ liquidated/);
   const fees = { ...overview, headline: { ...overview.headline, fees30dUsd: 9000 } };
   expect((await chat('fees this quarter', {}, { ...data, overview: async () => fees })).text).toBe('Perpl collected $9,000.00 in fees over the last 30 days (no 90-day figure is kept).');
   const y = await chat('and yesterday?', { last: { kind: 'metric', metric: 'volume', range: 30 } }, data);
