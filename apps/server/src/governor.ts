@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { keccak256, toHex } from 'viem';
 import { z } from 'zod';
 import {
-  canonicalJson, clampParams, fallbackParams, regimeOf, usdCompact,
+  MARKETS, canonicalJson, clampParams, fallbackParams, regimeOf, usdCompact,
   type GovernorParams, type MarketSignal, type MarketSym, type PolicyLimits, type SmartTrade,
 } from '@monday/core';
 import { config } from './config';
@@ -56,7 +56,7 @@ export interface GovernorResult {
 }
 
 const Output = z.object({
-  market: z.enum(['BTC', 'ETH', 'SOL']),
+  market: z.enum(MARKETS),
   enabled: z.boolean(),
   spread_mult: z.number(),
   skew_bias_bps: z.number(),
@@ -73,7 +73,7 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
   required: ['market', 'enabled', 'spread_mult', 'skew_bias_bps', 'size_mult', 'max_inventory_usd', 'ttl_min', 'regime', 'reason'],
   properties: {
-    market: { type: 'string', enum: ['BTC', 'ETH', 'SOL'] },
+    market: { type: 'string', enum: [...MARKETS] },
     enabled: { type: 'boolean' },
     spread_mult: { type: 'number' },
     skew_bias_bps: { type: 'number' },
