@@ -69,6 +69,12 @@ function progress(now: number) {
   return { latest, ix, live, cov: coverage(now, live, latest?.ts ?? null) };
 }
 
+/**
+ * Refresh the headline numbers in the background. The cache answers with its last value while it refreshes, so after a
+ * quiet spell the first visitor saw a stale overview, and after a restart one taken before coverage had loaded ("partial
+ * history" everywhere) until the page polled again (2026-10-12).
+ */
+export const warmOverview = () => void overview().catch(() => {});
 const overview = cached(10_000, async (): Promise<PxOverview> => {
   const now = Date.now();
   const [m, t, dv, f, tvlUsd, accts, hl, positions] = await Promise.all([
