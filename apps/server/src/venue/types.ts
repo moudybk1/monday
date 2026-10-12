@@ -34,7 +34,7 @@ export interface MarketFeed {
   specs(): Partial<Record<MarketSym, MarketSpec>>;
   snapshot(sym: MarketSym): MarketSnapshot | null;
   /**
-   * Candles, oldest first: 1-minute by default (volatility warm-up, the volume cap, the evidence page). `resSec` asks
+   * Candles, oldest first: 1-minute by default (volatility warm-up, the volume cap, the Smart Trader study). `resSec` asks
    * for wider ones (the chart's 5m to 1D); a feed that only has minutes may return those, and the API aggregates them.
    */
   candles(sym: MarketSym, fromMs: number, toMs: number, resSec?: number): Promise<Candle[]>;
@@ -129,6 +129,11 @@ export interface Venue {
   persist?(): void;
   /** Requests this venue has sent on its own count since connect: retries, keep-alives, sweeps. They spend the same rate limit. */
   requests?(): number;
+  /**
+   * A fill's position update has not arrived yet (Perpl sends them apart): until it does, the account's balance is off
+   * by that position's margin and a position may exist that `flatten` cannot see. Venues that update both at once omit it.
+   */
+  settling?(): boolean;
 }
 
 export interface VenueCredentials {

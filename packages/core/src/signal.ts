@@ -1,4 +1,4 @@
-// Signal engine (PRD 10.1) and the statistics behind the evidence page (PRD 19.1).
+// Signal engine (PRD 10.1) and the statistics of the Smart Trader study that decides the lean (PRD 19.1).
 
 import type { MarketSignal, MarketSym, SmartTrade, WindowSignal } from './types';
 
@@ -88,17 +88,6 @@ export function computeSignal(sym: MarketSym, trades: SmartTrade[], buckets: num
   // PRD 10.1 stale rule: no successful poll for 15 minutes sets S = 0.
   const S = stale ? 0 : compositeS(w5.z, w15.z, w60.z);
   return { sym, at: now, stale, S, w5, w15, w60 };
-}
-
-/** Net flow per 5-minute bucket for [fromMs, toMs), oldest first. */
-export function bucketFlows(trades: SmartTrade[], fromMs: number, toMs: number): number[] {
-  const n = Math.max(0, Math.floor((toMs - fromMs) / BUCKET_MS));
-  const out = new Array<number>(n).fill(0);
-  for (const t of trades) {
-    const i = Math.floor((t.ts - fromMs) / BUCKET_MS);
-    if (i >= 0 && i < n) out[i] += tradeSign(t) * t.valueUsd;
-  }
-  return out;
 }
 
 // ---- statistics for the event study ----

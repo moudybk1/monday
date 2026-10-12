@@ -47,4 +47,4 @@ registerStats(app);
 startIndexer();
 startSnapshots();
 await app.listen({ port, host: '0.0.0.0' });
-console.log(JSON.stringify({ service: 'stats', event: 'listening', port, network: config.network }));
+console.log(JSON.stringify({ service: 'stats', event: 'listening', port, network: config.stats.network }));

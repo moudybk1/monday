@@ -1,6 +1,6 @@
 'use client';
 
-import { quotingFor, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Policy, type Side } from '@monday/core';
+import { quotingFor, usd, usdCompact, type DashboardState, type MarketState, type Policy, type Side } from '@monday/core';
 import { ago, fmtBps, fmtPrice, fmtSigned, fmtSize, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { quoteStanding, tone } from './agent';
 import { cx } from './ui';

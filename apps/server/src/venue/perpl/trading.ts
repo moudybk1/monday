@@ -4,7 +4,7 @@
 
 import { createPrivateKey, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { MARKETS, type MarketSym, type QuoteTarget, type Side } from '@monday/core';
-import { VenueError, type OwnOrders, type Venue, type VenueAccount, type VenueCredentials, type VenueEvents, type VenueFill, type VenuePosition } from '../types';
+import { VenueError, type OwnOrders, type Venue, type VenueAccount, type VenueCredentials, type VenueEvents, type VenuePosition } from '../types';
 import type { PerplConfig } from './index';
 import type { PerplContext, PerplMarket } from './rest';
 import { openLink, type Link } from './socket';
@@ -185,8 +185,8 @@ export class PerplVenue implements Venue {
     if (m) {
       // A fill whose position message has not landed yet: the fills' basis is the position. It moves with the realised
       // PnL the fill reported, so equity never counts a close twice (once realised, once still open) in between.
-      const b = this.basis[sym], filled = this.fillAt.get(m.id) ?? 0;
-      if (b && filled > (this.posAt.get(m.id) ?? 0) && Date.now() - filled < POSITION_LAG_MS) return { ...b };
+      const b = this.basis[sym];
+      if (b && this.pendingPosition(m.id)) return { ...b };
       for (const p of this.positions.values()) {
         // `epr` is the Q16 fractional residue of the entry price.
         if (p.mkt === m.id) return { size: ((p.sd === 1 ? 1 : -1) * p.s) / m.sz, entryPrice: (p.ep + (p.epr ?? 0) / 65536) / m.px };
@@ -219,6 +219,15 @@ export class PerplVenue implements Venue {
     await allOrThrow([...this.orders.keys()].filter((key) => !onlyOwn || own.has(key)).map((key) => this.cancel(key)));
   }
 
+  settling(): boolean {
+    return [...this.fillAt.keys()].some((mkt) => this.pendingPosition(mkt));
+  }
+
+  private pendingPosition(mkt: number): boolean {
+    const filled = this.fillAt.get(mkt) ?? 0;
+    return filled > (this.posAt.get(mkt) ?? 0) && Date.now() - filled < POSITION_LAG_MS;
+  }
+
   async flatten(): Promise<void> {
     this.requireReady();
     // Close* orders are reduce-only and clamped to the position size. p: 0 + IOC is a market order, bounded by the
@@ -230,6 +239,9 @@ export class PerplVenue implements Venue {
     for (let i = 0; i < 20 && this.openPositions().length; i++) await new Promise((r) => setTimeout(r, 100));
     const left = this.openPositions().length;
     if (left) throw new VenueError('rejected', `${left} position(s) still open after the IOC close`);
+    // A fill whose position update has not arrived can be a position this pass could not see (it has no id to close
+    // yet). Not flat until it lands: the caller keeps the flatten owed and tries again.
+    if (this.settling()) throw new VenueError('rejected', 'a fill is still settling on Perpl; closing again in a moment');
   }
 
   on<E extends keyof VenueEvents>(event: E, cb: VenueEvents[E]): void {
@@ -345,6 +357,8 @@ export class PerplVenue implements Venue {
       case 24: for (const o of m.d ?? []) this.onOrder(o, false); break;
       case 25: for (const f of m.d ?? []) this.onFill(f); break;
       case 26:
+        // A fresh snapshot is the whole truth, including markets now flat: no fill is pending against it.
+        this.fillAt.clear();
         this.resetPositions();
         for (const p of m.d ?? []) this.onPosition(p, true);
         this.reseedBasis();
@@ -371,7 +385,7 @@ export class PerplVenue implements Venue {
     this.snapGrace = setTimeout(() => {
       if (this.ready || !this.link || !(this.snaps & 1)) return;
       if (!(this.snaps & 2)) this.resetOrders();
-      if (!(this.snaps & 4)) (this.resetPositions(), this.reseedBasis());
+      if (!(this.snaps & 4)) (this.fillAt.clear(), this.resetPositions(), this.reseedBasis());
       this.snaps = 7;
       this.onReady();
     }, SNAPSHOT_GRACE_MS);

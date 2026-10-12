@@ -7,16 +7,6 @@ import type { BookLevel, GovernorParams, MarketSpec, MarketSym, Participation, P
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
 export const STRATEGY_VERSION = '2026-10-12.2';
 
-/** What each version changed, in a user's words, for the live track record. Add a line with every bump. */
-export const STRATEGY_NOTES: Record<string, string> = {
-  '2026-10-12.2': 'One entry per position, breakeven exit after 10 minutes, entries 3 bps clear of Hyperliquid (trial)',
-  '2026-10-12.1': 'No fixed stop per trade: the stop loss is the one the user sets',
-  '2026-10-11.1': 'Exit in profit in every mode; step aside after a fill or while Hyperliquid leads',
-  '2026-10-10.1': 'Close in profit; no quote at the best price on the side Hyperliquid has passed',
-  '2026-10-09.2': 'Quote at the best price; lean with trends',
-  '2026-10-07.2': 'First mainnet rules: risk gate and request scheduler',
-};
-
 export interface StrategyConfig {
   a: number; // volatility multiplier
   gamma: number; // inventory skew
@@ -130,8 +120,8 @@ export const PARTICIPATION: Record<Participation, number> = { aggressive: 0.1, n
 /**
  * A user's quoting choices, Tread style, on top of DEFAULT_CONFIG. The modes only pick the reference price:
  * mid is Perpl's own mid, grid blends Hyperliquid in at half (the default, and what policies saved before had), blend
- * uses the chosen Hyperliquid weight. The exit in profit (7c), the Hyperliquid touch guard (7b) and the stop loss apply
- * in every mode: until 2026-10-11 Mid and Blend priced exits off the market, and live that closed 20 of 27 round trips
+ * uses the chosen Hyperliquid weight. The exit in profit (7c), the Hyperliquid guards (7b, 7d) and the user's stop loss
+ * apply in every mode: until 2026-10-11 Mid and Blend priced exits off the market, and live that closed 20 of 27 round trips
  * at a loss (-5 bps each) where Grid, the same day, closed 3 of 16.
  */
 export function quotingFor(p: Pick<Policy, 'refMode' | 'blendWeight' | 'participation'>): { cfg: Pick<StrategyConfig, 'blend' | 'participation'> } {

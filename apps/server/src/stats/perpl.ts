@@ -127,8 +127,10 @@ export const dailyVolume = cached(10 * 60_000, async (): Promise<Map<number, { t
   return out;
 });
 
+// No catch here: a failed read (a 429 after the retries) must not be cached as "no funding" for a minute. The last good
+// rates stay; with none yet, the caller sees the error.
 export const funding = cached(60_000, async (): Promise<Map<number, number>> => {
-  const [m, r] = await Promise.all([meta(), getJson<{ d?: Record<string, { rate: number }[]> }>(`/v1/market-data/funding/${Date.now() - 6 * 3_600_000}-${Date.now()}`).catch(() => ({ d: {} as Record<string, { rate: number }[]> }))]);
+  const [m, r] = await Promise.all([meta(), getJson<{ d?: Record<string, { rate: number }[]> }>(`/v1/market-data/funding/${Date.now() - 6 * 3_600_000}-${Date.now()}`)]);
   const out = new Map<number, number>();
   for (const [id, evs] of Object.entries(r.d ?? {})) if (m.markets.has(Number(id)) && evs.length) out.set(Number(id), evs[evs.length - 1].rate / 1e6);
   return out;
