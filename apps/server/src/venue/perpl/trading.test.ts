@@ -66,6 +66,8 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
   v.onFrame({ mt: 25, d: [fill] });
   v.onFrame({ mt: 25, d: [fill] }); // duplicate delivery
   assert.deepEqual(fills, [{ id: 'perpl:7:ab:4:9', sym: 'BTC', side: 'ask', price: 85000, size: 0.2, feeUsd: 0.765, realizedUsd: 200, isMaker: true, ts: 1_700_000_000_000, external: true }]); // oid 9 was never Monday's
+  // Its position message has not landed: the position is what the fills say, so the 200 is not also still open.
+  assert.deepEqual(v.position('BTC'), { size: 0.3, entryPrice: 84000 });
 
   // The bid fills completely (r: true) -> slot empties; target null with nothing resting sends nothing.
   v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 5, rq: 43, st: 4, sr: 22, r: true }] });

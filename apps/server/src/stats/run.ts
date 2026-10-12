@@ -11,6 +11,8 @@ import { indexerStatus, startIndexer } from './indexer';
 import { registerStats } from './routes';
 
 const port = Number(process.env.STATS_PORT ?? 3002);
+// A stray rejection (a Perpl read, a model call) is logged, not a reason to take the stats down.
+process.on('unhandledRejection', (e) => console.error(JSON.stringify({ service: 'stats', event: 'unhandled_rejection', error: e instanceof Error ? e.stack : String(e) })));
 // Behind Caddy or the web app's proxy every visitor arrives from a private address: trust the forwarded one from those only.
 const app = Fastify({ trustProxy: ['loopback', 'uniquelocal'], logger: { level: config.prod ? 'info' : 'warn' } });
 app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, _req, reply) => {
@@ -24,17 +26,20 @@ app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, _req, 
 // ponytail: in-memory fixed window in this one process; pruned when it grows, no shared store needed.
 const hits = new Map<string, { n: number; at: number }>();
 app.addHook('onRequest', async (req, reply) => {
-  // Questions and summaries call a model: ten a minute per address; chat answers (mostly no model) twenty; wallets sixty.
-  const model = req.url.startsWith('/api/stats/ask') || /^\/api\/stats\/wallet\/[^/?]+\/explain/.test(req.url);
-  const chat = req.url.startsWith('/api/stats/chat');
-  if (!model && !chat && !req.url.startsWith('/api/stats/wallet/')) return;
+  // Questions and summaries call a model: ten a minute per address. A chat answer can call it twice (the intent, then an
+  // open answer): ten. Wallets sixty. By the route matched, not the raw URL: the router decodes %xx, so "/api/stats/%61sk"
+  // reached /ask uncounted (2026-10-12).
+  const route = req.routeOptions.url ?? '';
+  const model = route === '/api/stats/ask' || route === '/api/stats/wallet/:q/explain';
+  const chat = route === '/api/stats/chat';
+  if (!model && !chat && route !== '/api/stats/wallet/:q') return;
   const now = Date.now();
   if (hits.size > 10_000) for (const [k, v] of hits) if (now - v.at > 60_000) hits.delete(k);
   const kind = model ? 'model' : chat ? 'chat' : 'wallet';
   const key = `${req.ip}:${kind}`;
   const h = hits.get(key);
   if (!h || now - h.at > 60_000) hits.set(key, { n: 1, at: now });
-  else if (++h.n > (kind === 'model' ? 10 : kind === 'chat' ? 20 : 60)) return reply.status(429).send({ error: 'rate_limited', message: 'Too many requests. Try again in a minute.' });
+  else if (++h.n > (kind === 'wallet' ? 60 : 10)) return reply.status(429).send({ error: 'rate_limited', message: 'Too many requests. Try again in a minute.' });
 });
 app.get('/api/stats/health', async () => ({ ok: true, at: Date.now(), indexer: indexerStatus() }));
 registerStats(app);

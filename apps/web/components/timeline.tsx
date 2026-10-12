@@ -4,6 +4,7 @@ import { ArrowUpRightIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import type { Decision } from '@monday/core';
 import { fmtTime } from '@/lib/format';
+import { at } from '@/lib/hosts';
 import { Tag, cx } from './ui';
 
 const SOURCE: Record<Decision['source'], string> = { governor: 'Governor', fallback: 'Rules', reflex: 'Reflex', kill: 'Kill' };
@@ -57,7 +58,7 @@ export function DecisionLog({ decisions, explorerUrl, chainOn, limit = 40 }: { d
             </span>
             <span className="num col-span-2 flex items-start gap-2.5 pt-px text-[11px] text-fg-3 sm:col-span-1">
               <Chain d={d} explorerUrl={explorerUrl} chainOn={chainOn} />
-              <Link href={`/decisions/${d.id}`} className="text-fg-2 underline decoration-line-2 underline-offset-2 hover:text-fg">record</Link>
+              <Link href={at(`/decisions/${d.id}`)} className="text-fg-2 underline decoration-line-2 underline-offset-2 hover:text-fg">record</Link>
             </span>
           </li>
         );

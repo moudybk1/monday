@@ -7,7 +7,7 @@ import { chainEnabled, queueDepth, resumeChainLog, verifyRpc } from './chain';
 import { Collector } from './collector';
 import { config } from './config';
 import { db, simStore, unseal, upsertUser } from './db';
-import { computeEvidence, evidence, nansenK } from './evidence';
+import { computeEvidence, evidence, evidenceIncomplete, nansenK } from './evidence';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { hlAgeMs, startHyperliquid } from './hyperliquid';
 import { llmEnabled } from './governor';
@@ -141,7 +141,13 @@ setInterval(() => {
   for (const [uid, r] of runners) if (Date.now() - r.lastSeenAt > 3_600_000) dropRunner(uid);
 }, 60_000).unref();
 
-const refreshEvidence = () => void computeEvidence(driver, collector).catch((e) => console.error(JSON.stringify({ service: 'evidence', event: 'failed', error: String(e) })));
+// Hourly; five minutes after a run that failed or had to keep an older study for a market.
+const refreshEvidence = (): void => void computeEvidence(driver, collector)
+  .then(() => evidenceIncomplete() && setTimeout(refreshEvidence, 5 * 60_000).unref())
+  .catch((e) => {
+    console.error(JSON.stringify({ service: 'evidence', event: 'failed', error: String(e) }));
+    setTimeout(refreshEvidence, 5 * 60_000).unref();
+  });
 setTimeout(refreshEvidence, world ? 50 : 20_000);
 setInterval(refreshEvidence, 3_600_000).unref();
 

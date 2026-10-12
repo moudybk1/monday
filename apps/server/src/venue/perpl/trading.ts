@@ -32,6 +32,9 @@ const FR_NAMES: Record<number, string> = {
 const SIGN_IN_TIMEOUT_MS = 15_000;
 const SNAPSHOT_GRACE_MS = 2_000;
 const PING_MS = 30_000;
+// Perpl's position message trails the fill message by seconds (seen 3 to 15 s on mainnet, 2026-10-12), in no documented
+// order. Up to this long after a fill with no position message since, the position is what the fills say.
+const POSITION_LAG_MS = 20_000;
 const PROBE_OID = 0xffff_ffff; // an order id that does not exist; the probe is refused on `lb` before it matters
 
 // ---- signing ----
@@ -101,6 +104,8 @@ export class PerplVenue implements Venue {
   private strays: string[] = [];
   private positions = new Map<number, any>(); // pid -> wire Position (all markets: their collateral is part of the balance)
   private basis: Partial<Record<MarketSym, VenuePosition>> = {}; // average-cost basis for per-fill realised PnL
+  private fillAt = new Map<number, number>(); // market id -> when its last fill arrived
+  private posAt = new Map<number, number>(); // market id -> when its last position message arrived
   private pending = new Map<number, Pending>(); // by rq
   private acks = new Map<number, Pending>(); // by sn, until the mt 3 arrives
   private queue = new Map<string, Promise<void>>(); // one quote request in flight per slot
@@ -178,6 +183,10 @@ export class PerplVenue implements Venue {
   position(sym: MarketSym): VenuePosition {
     const m = this.ctx?.markets[sym];
     if (m) {
+      // A fill whose position message has not landed yet: the fills' basis is the position. It moves with the realised
+      // PnL the fill reported, so equity never counts a close twice (once realised, once still open) in between.
+      const b = this.basis[sym], filled = this.fillAt.get(m.id) ?? 0;
+      if (b && filled > (this.posAt.get(m.id) ?? 0) && Date.now() - filled < POSITION_LAG_MS) return { ...b };
       for (const p of this.positions.values()) {
         // `epr` is the Q16 fractional residue of the entry price.
         if (p.mkt === m.id) return { size: ((p.sd === 1 ? 1 : -1) * p.s) / m.sz, entryPrice: (p.ep + (p.epr ?? 0) / 65536) / m.px };
@@ -508,6 +517,7 @@ export class PerplVenue implements Venue {
     if (this.seenFills.has(id)) return;
     if (this.seenFills.size > 10_000) this.seenFills.clear(); // Coarse bound; a replay would have to span 10k fills to slip through
     this.seenFills.add(id);
+    this.fillAt.set(f.mkt, Date.now());
     const price = (f.p ?? 0) / m.px;
     const size = f.s / m.sz;
     this.emit('fill', {
@@ -544,6 +554,7 @@ export class PerplVenue implements Venue {
 
   private onPosition(p: any, snapshot: boolean): void {
     if (p.acc !== this.creds.accountId) return;
+    this.posAt.set(p.mkt, Date.now());
     // Keyed by position id: an inversion closes one id and opens another in the same update, in either order.
     if (p.s > 0 && (snapshot || p.st === 1)) this.positions.set(p.pid, p);
     else this.positions.delete(p.pid);

@@ -8,8 +8,8 @@ import { Suspense, useEffect, useState } from 'react';
 import type { PxWallet } from '@monday/core';
 import { LineChart, Share, type Tone } from '@/components/charts';
 import { money, profitText, sameWallet, shortAddress, signedMoney, tone, useStatsNetwork, useWatchlist, walletKey } from '@/components/stats-ui';
-import { INPUT, Notice, Panel, Skeleton, cx } from '@/components/ui';
-import { api } from '@/lib/api';
+import { Button, INPUT, Notice, Panel, Skeleton, cx } from '@/components/ui';
+import { ApiError, api } from '@/lib/api';
 
 // Up to four wallets side by side: the same numbers in one table and their realised PnL on one chart.
 
@@ -35,6 +35,9 @@ function Compare() {
   }, []);
 
   const loaded = ws.map((q, i) => ({ q, w: qs[i]?.data, err: qs[i]?.error, loading: qs[i]?.isLoading }));
+  // Only a 404 means no such account. Anything else (server down, network) is worth another try.
+  const missing = (e: unknown) => e instanceof ApiError && e.status === 404;
+  const failed = qs.filter((x, i) => !loaded[i].w && x.error && !missing(x.error));
   // One wallet is one column, whether it was added as an account number or an address in any letter case.
   const listed = (q: string) => ws.some((x) => x.toLowerCase() === q.toLowerCase()) || loaded.some(({ w }) => w && sameWallet(q, w));
   const add = (raw: string) => {
@@ -100,6 +103,11 @@ function Compare() {
         <Notice>Add up to four wallets to compare them: type an address or account number in the Add to comparison box above, use the Watch button on any wallet, or pick an account from the leaderboard.</Notice>
       ) : (
         <>
+          {failed.length > 0 && (
+            <Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={() => failed.forEach((x) => void x.refetch())}>Retry</Button>}>
+              Could not load {failed.length === 1 ? 'one wallet' : `${failed.length} wallets`}. {failed[0].error?.message}
+            </Notice>
+          )}
           <Panel title="Side by side" className="rise">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-[12px]">
@@ -122,7 +130,7 @@ function Compare() {
                         const v = w && val ? val(w) ?? 0 : null;
                         return (
                           <td key={q} className={cx('px-2.5 text-right', v != null ? tone(v) : '')}>
-                            {loading ? <Skeleton className="ml-auto h-3 w-16" /> : err ? <span className="font-sans text-ask-fg">not found</span> : w ? (
+                            {loading ? <Skeleton className="ml-auto h-3 w-16" /> : err ? <span className="font-sans text-ask-fg">{missing(err) ? 'not found' : 'could not load'}</span> : w ? (
                               <span className="inline-flex items-center justify-end gap-2">
                                 {v != null && <Share value={Math.abs(v) / max} tone={v >= 0 ? 'bid' : 'ask'} className="w-14" />}
                                 {fmt(w)}

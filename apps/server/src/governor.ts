@@ -174,7 +174,8 @@ async function askOpenAiCompatible(user: string): Promise<Answer> {
     // LATE_DECISION_MS (120 s) after asking, so wait just short of that; the rules hold the book meanwhile.
     signal: AbortSignal.timeout(110_000),
   });
-  if (!res.ok) throw new Error(`LLM ${res.status}`);
+  // The provider's own words ("credit insufficient balance" on 2026-10-12): a bare status hid that for hours.
+  if (!res.ok) throw new Error(`LLM ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
   const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   return { text: body.choices?.[0]?.message?.content ?? '', costUsd: null };
 }

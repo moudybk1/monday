@@ -37,3 +37,25 @@ it('answers with the figures, follows up on the window, defines words, and decli
   expect((await chat('will BTC go up tomorrow?', {}, data)).text).toMatch(/does not predict prices/);
   expect((await chat('show me SOL', {}, data)).text).toMatch(/^SOL is at 100 .*5 accounts long against 15 short\.$/);
 });
+
+it('answers the figure a definition question asks for, and the window the data has', async () => {
+  expect((await chat('what is SOL funding', {}, data)).text).toMatch(/^SOL funding is .*shorts pay longs\.$/);
+  expect((await chat('what is the volume this month', {}, data)).text).toBe('Perpl traded $200M over the last 30 days.');
+  expect((await chat('what are the whales liquidated this month', {}, data)).text).toMatch(/^2 of 3 active wallets match whales \+ liquidated/);
+  const fees = { ...overview, headline: { ...overview.headline, fees30dUsd: 9000 } };
+  expect((await chat('fees this quarter', {}, { ...data, overview: async () => fees })).text).toBe('Perpl collected $9,000.00 in fees over the last 30 days (no 90-day figure is kept).');
+  const y = await chat('and yesterday?', { last: { kind: 'metric', metric: 'volume', range: 30 } }, data);
+  expect(y.text).toMatch(/in the last 24 hours/);
+  expect(y.dropped).toMatch(/yesterday/);
+  const flat = { ...overview, markets: overview.markets.map((m) => ({ ...m, longs: 0, shorts: 0, fundingRate: -0.00001 })) };
+  expect((await chat('long short skew', {}, { ...data, overview: async () => flat })).text).toMatch(/no open positions/);
+  expect((await chat('funding', {}, { ...data, overview: async () => flat })).text).toMatch(/shorts pay\./);
+});
+
+it('lets the model quote only the figures it was given', async () => {
+  const { quotesOnly } = await import('./answer');
+  const sheet = '24h volume $1.5M, all time $1.0B. BTC: price 64123.4, 24h -1.20%, funding 8.8% a year.';
+  expect(quotesOnly('Volume was $1,500,000 (or $1.50M), BTC at $64,123, down 1.2%, funding 8.8%.', sheet)).toBe(true);
+  expect(quotesOnly('Volume was $2.3M.', sheet)).toBe(false);
+  expect(quotesOnly('BTC holds 67% of it.', sheet)).toBe(false);
+});

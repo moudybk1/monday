@@ -25,13 +25,14 @@ const pctOf = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '
 
 export default function WalletPage() {
   const { q } = useParams<{ q: string }>();
-  const w = useQuery({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${q}`), refetchInterval: 15_000 });
+  // An unknown wallet is an answer, not a failure: no retry, which a background tab would pause with nothing to show.
+  const w = useQuery({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${q}`), refetchInterval: 15_000, retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1 });
   useEffect(() => {
     document.title = `${q.startsWith('0x') ? shortAddress(q) : `#${q}`} on Perpl - Monday`;
   }, [q]);
 
-  if (w.isLoading) return <div className="grid gap-1 pt-1"><Skeleton className="h-14" /><Skeleton className="h-[74px]" /><Skeleton className="h-64" /></div>;
-  if (w.error instanceof ApiError && w.error.status === 404) return <div className="pt-2"><Notice>No Perpl account for <span className="num">{q}</span>. Search a wallet address (0x…) or an account number.</Notice></div>;
+  if (w.isPending) return <div className="grid gap-1 pt-1"><Skeleton className="h-14" /><Skeleton className="h-[74px]" /><Skeleton className="h-64" /></div>;
+  if (w.error instanceof ApiError && (w.error.status === 404 || w.error.code === 'not_found')) return <div className="pt-2"><Notice>No Perpl account for <span className="num">{q}</span>. Search a wallet address (0x…) or an account number.</Notice></div>;
   if (w.isError || !w.data) return <div className="pt-2"><Notice tone="warn">Could not load this wallet. {w.error instanceof Error ? w.error.message : ''}</Notice></div>;
   const d = w.data;
   const p = d.performance;

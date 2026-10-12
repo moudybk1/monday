@@ -98,7 +98,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function useNoWallet(): string | null {
   const [here, setHere] = useState<string | null>(null);
   useEffect(() => {
-    if (!walletConnectReady && !(window as { ethereum?: unknown }).ethereum) setHere(`${location.host}${location.pathname}`);
+    if (!walletConnectReady && !(window as { ethereum?: unknown }).ethereum) setHere(`${location.host}${location.pathname}${location.search}`);
   }, []);
   return here;
 }

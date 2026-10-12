@@ -77,7 +77,8 @@ export default async function Landing() {
   return (
     <>
       <SiteHeader />
-      <main>
+      {/* Clip, not hidden: the hero glow reaches past the edges without scrolling the page sideways, and nothing becomes a scroll container. */}
+      <main className="overflow-x-clip">
         {/* Hero: the claim, then the product itself on the live market. */}
         <section className={`${WRAP} pt-14 md:pt-20`}>
           <h1 className="display rise text-[2.6rem] sm:text-5xl lg:text-6xl xl:text-[5rem]">

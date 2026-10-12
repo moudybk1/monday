@@ -1,7 +1,7 @@
 'use client';
 
-import { usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
-import { ago, fmtBps, fmtPrice, fmtSigned, fmtSize, fmtTime, fmtUsd } from '@/lib/format';
+import { quotingFor, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Policy, type Side } from '@monday/core';
+import { ago, fmtBps, fmtPrice, fmtSigned, fmtSize, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { quoteStanding, tone } from './agent';
 import { cx } from './ui';
 
@@ -131,18 +131,21 @@ export function Fills({ state }: { state: DashboardState }) {
 }
 
 /** Why the quotes sit where they do: the model's terms for the selected market, each with a one-line reading. */
-export function Model({ m, quoting, quoteSizeUsd }: { m: MarketState; quoting: boolean; quoteSizeUsd: number }) {
+export function Model({ m, quoting, policy }: { m: MarketState; quoting: boolean; policy: Policy }) {
   if (!quoting || !m.model) return <p className="px-2.5 py-4 text-[12px] text-fg-3">Monday is not quoting, so there is nothing to explain yet.</p>;
   const g = m.params;
+  const { quoteSizeUsd } = policy;
+  // The reference mode and participation the engine uses for this policy, not the Grid and Normal defaults.
+  const { blend, participation } = quotingFor(policy).cfg;
   const rows: [string, string, string][] = [
-    ['Fair price', fmtPrice(m.model.ref, m.spec), m.hlMid != null ? `Perpl, pulled ${fmtBps(m.model.blendBps, 1)} bps halfway to Hyperliquid` : 'Perpl mark, or the book mid when it agrees'],
+    ['Fair price', fmtPrice(m.model.ref, m.spec), m.hlMid != null && blend > 0 ? `Perpl, pulled ${fmtBps(m.model.blendBps, 1)} bps ${towardHl(blend)} to Hyperliquid` : 'Perpl mark, or the book mid when it agrees'],
     ['Half-spread', `${m.model.halfBps.toFixed(2)} bps`, `volatility ${m.sigma1mBps.toFixed(1)} bps a minute, widened ${g.spread_mult}x by the ${g.regime} regime. In a calm market the quote moves up to the best price instead.`],
     ['Inventory skew', `${fmtBps(m.model.skewInvBps, 2)} bps`, m.model.q === 0 ? 'flat, no skew' : `leans to shed the ${m.model.q > 0 ? 'long' : 'short'}`],
     ['Smart Trader skew', `${fmtBps(m.model.skewNanBps + g.skew_bias_bps, 2)} bps`, m.model.skewNanBps === 0 && g.skew_bias_bps === 0 ? 'off or neutral' : 'leans with the flow'],
     ['Order-book skew', `${fmtBps(m.model.skewBookBps, 2)} bps`, `top 5 levels are ${Math.round(50 + Math.abs(m.book) * 50)}% ${m.book >= 0 ? 'bids' : 'asks'}`],
     ['Trend skew', `${fmtBps(m.model.skewTrendBps, 2)} bps`, Math.abs(m.trend5mBps) <= 4 ? `price moved ${fmtBps(m.trend5mBps, 1)} bps in 5 min: no trend` : `price moved ${fmtBps(m.trend5mBps, 1)} bps in 5 min: the ${m.trend5mBps < 0 ? 'bid' : 'ask'} waits off the touch`],
     ['Quote size', `${Math.round(g.size_mult * 100)}%`, m.model.sizeCapUsd != null && m.model.sizeCapUsd < quoteSizeUsd * g.size_mult
-      ? `capped at ${usd(m.model.sizeCapUsd)}, 5% of an average hour's volume`
+      ? `capped at ${usd(m.model.sizeCapUsd)}, ${Math.round(participation * 100)}% of an average hour's volume`
       : `of your ${usd(quoteSizeUsd)} per side`],
   ];
   return (

@@ -22,21 +22,29 @@ const compact = (n: number) => (Math.abs(n) >= 1e9 ? `$${(n / 1e9).toFixed(2)}B`
 
 export default function MyMondayPage() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(30);
-  const q = useQuery({ queryKey: ['analytics', days], queryFn: () => api<Analytics>(`/analytics?days=${days}`), refetchInterval: 60_000, retry: false });
+  // Whose numbers these are, fetched with the numbers: this layout has no Auth listener, so after a wallet switch in
+  // another tab a separate `me` would keep naming the old account over the new one's fills. Together they always agree.
+  const q = useQuery({
+    queryKey: ['analytics', days],
+    queryFn: async () => {
+      const [me, a] = await Promise.all([api<Me>('/me'), api<Analytics>(`/analytics?days=${days}`)]);
+      return { me, a };
+    },
+    refetchInterval: 60_000, refetchOnWindowFocus: true, retry: false,
+  });
   useEffect(() => {
     document.title = 'My Monday - Analytics';
   }, []);
   const signedOut = q.error instanceof ApiError && q.error.status === 401;
-  // Whose numbers these are and what money was at stake: the session and the trading server, not the public stats.
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false, enabled: !signedOut });
+  const me = q.isError ? undefined : q.data?.me; // a failed refresh hides the numbers, so it hides their owner too
   const cfg = useQuery({ queryKey: ['config'], queryFn: () => api<AppConfig>('/config'), staleTime: 60_000 });
 
   return (
     <div className="grid gap-1 pt-1">
-      {me.data && cfg.data && (
+      {me && cfg.data && (
         <div className="panel flex-row flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1.5 text-[12px] text-fg-2" aria-label="Account">
-          <span className="font-semibold text-fg">{me.data.accountId ? `Perpl account #${me.data.accountId}` : 'No Perpl account yet'}</span>
-          <span className="num">{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
+          <span className="font-semibold text-fg">{me.accountId ? `Perpl account #${me.accountId}` : 'No Perpl account yet'}</span>
+          <span className="num">{me.demo ? 'Demo account' : shortAddr(me.wallet)}</span>
           <Tag tone={cfg.data.realFunds ? 'bid' : cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>
             {cfg.data.realFunds ? cfg.data.networkName : cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}
           </Tag>
@@ -55,10 +63,10 @@ export default function MyMondayPage() {
         <Notice action={<ButtonLink href={at('/app?next=/analytics/monday')} size="sm">Sign in</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
       ) : q.isError || !q.data ? (
         <Notice tone="warn">Could not load your analytics. {q.error instanceof Error ? q.error.message : ''}</Notice>
-      ) : q.data.summary.fills === 0 ? (
+      ) : q.data.a.summary.fills === 0 ? (
         <Notice>No fills in the last {days} days. Numbers appear here as takers trade against Monday&apos;s quotes.</Notice>
       ) : (
-        <Body a={q.data} />
+        <Body a={q.data.a} />
       )}
     </div>
   );

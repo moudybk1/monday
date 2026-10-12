@@ -4,7 +4,7 @@ import { CaretDownIcon, QuestionIcon } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_CONFIG, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
+import { DEFAULT_CONFIG, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
 import { AgentConsole, sessionUsd, statusText, type SessionDraft } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
@@ -17,7 +17,7 @@ import { Tape } from '@/components/tape';
 import { DecisionLog } from '@/components/timeline';
 import { Button, Mark, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
-import { fmtPrice, fmtTime, fmtUsd } from '@/lib/format';
+import { fmtPrice, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { useLive } from '@/lib/live';
 import { useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
 
@@ -123,7 +123,7 @@ export default function Terminal() {
       <div className="panel flex-none flex-row flex-wrap items-stretch overflow-visible">
         <MarketPicker state={state} sym={sym} onPick={setPicked} />
         {m && <Ticker m={m} />}
-        {m && <Stats m={m} quoting={quoting} />}
+        {m && <Stats m={m} quoting={quoting} blend={quotingFor(state.policy).cfg.blend} />}
         <div className="order-3 ml-auto flex items-center gap-2 px-2.5 py-2 xl:order-4">
           {/* The last market cannot be dropped: a policy always trades one. Stop ends trading altogether. */}
           {!(trading && state.policy.markets.length === 1) && (
@@ -194,7 +194,7 @@ export default function Terminal() {
                 {tab === 'positions' && <Positions state={state} />}
                 {tab === 'fills' && <Fills state={state} />}
                 {tab === 'decisions' && <DecisionLog decisions={state.decisions} explorerUrl={cfg?.explorerUrl} chainOn={state.health.chain} />}
-                {tab === 'model' && <Model m={m} quoting={quoting} quoteSizeUsd={state.policy.quoteSizeUsd} />}
+                {tab === 'model' && <Model m={m} quoting={quoting} policy={state.policy} />}
                 {tab === 'equity' && (
                   <LineChart
                     label="Account equity over time" format={(v) => fmtUsd(v)} empty="Equity appears after the first few seconds of running"
@@ -257,7 +257,7 @@ export default function Terminal() {
       <dialog ref={killDialog} className="m-auto w-[min(92vw,26rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg">
         <h2 className="text-[17px] font-semibold tracking-tight">Kill and flatten?</h2>
         <p className="mt-2 text-[13px] text-fg-2">
-          Monday cancels every open order on this account&apos;s BTC, ETH and SOL markets, then closes every open position there with reduce-only market orders, including orders and positions you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
+          Monday cancels every open order on this Perpl account, in every market, then closes every open position on it with reduce-only market orders, including orders and positions you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
         </p>
         <form method="dialog" className="mt-5 flex justify-end gap-2">
           <Button type="submit" variant="ghost">Keep running</Button>
@@ -370,7 +370,7 @@ function Cell({ k, hint, children, className }: { k: string; hint: string; child
  * reads from it (behind the mark, in Monday's amber). The spread is in the order book's middle row, so it is not here.
  * Below 1280px the groups take a second row of their own, which scrolls sideways if it must.
  */
-function Stats({ m, quoting }: { m: MarketState; quoting: boolean }) {
+function Stats({ m, quoting, blend }: { m: MarketState; quoting: boolean; blend: number }) {
   const { high, low } = m.day;
   const at = high != null && low != null && high > low ? Math.min(1, Math.max(0, (m.mark - low) / (high - low))) : null;
   const gapBps = m.hlMid ? ((m.mark - m.hlMid) / m.hlMid) * 1e4 : null;
@@ -413,7 +413,7 @@ function Stats({ m, quoting }: { m: MarketState; quoting: boolean }) {
             )}
           </Cell>
           <Cell k="Vol 1m" hint="How much the price typically moves in a minute. 1 bp is 0.01%.">{m.sigma1mBps ? `${m.sigma1mBps.toFixed(1)} bps` : '-'}</Cell>
-          <Cell k="vs Hyperliquid" hint={m.hlMid ? `Hyperliquid mid ${fmtPrice(m.hlMid, m.spec)}. How far Perpl's mark sits from it; Monday centres its quotes halfway between the two.` : 'Hyperliquid is off, stale or too far from Perpl to trust, so Monday uses Perpl alone.'}>
+          <Cell k="vs Hyperliquid" hint={m.hlMid ? `Hyperliquid mid ${fmtPrice(m.hlMid, m.spec)}. How far Perpl's mark sits from it; ${blend > 0 ? `Monday centres its quotes ${towardHl(blend)} from Perpl to Hyperliquid` : 'in Mid mode Monday quotes off Perpl alone'}.` : 'Hyperliquid is off, stale or too far from Perpl to trust, so Monday uses Perpl alone.'}>
             {gapBps == null ? <span className="text-fg-3">off</span> : `${gapBps >= 0 ? '+' : ''}${gapBps.toFixed(1)} bps`}
           </Cell>
           </dl>

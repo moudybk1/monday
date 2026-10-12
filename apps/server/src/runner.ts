@@ -207,6 +207,8 @@ export class Runner {
    * CASH_SETTLE_MS is booked: $1 or more as a deposit or withdrawal, less as funding.
    */
   private cash = { expected: null as number | null, drift: 0, since: 0 };
+  /** Markets Monday itself traded (in the day before boot, or since): outside the policy, only there can a position be its to close. */
+  private ownSyms = new Set<MarketSym>();
   /** dayOutIdle: withdrawals made while stopped and flat, the only ones the loss limit is sure are not losses. */
   private flows = { dayIn: 0, dayOut: 0, dayOutIdle: 0, dayFunding: 0, sessionIn: 0, sessionOut: 0 };
   /** Positions as Monday's own records have them, compared with Perpl's after every reconnect. */
@@ -274,6 +276,7 @@ export class Runner {
       dayOutIdle: (db.prepare("select coalesce(sum(amount), 0) s from journal where user_id = ? and kind = 'withdrawal' and at >= ? and json_extract(detail, '$.idle') = 1").get(userId, dayStart) as { s: number }).s,
       sessionIn: this.session ? sum('deposit', this.session.startedAt) : 0, sessionOut: this.session ? sum('withdrawal', this.session.startedAt) : 0,
     };
+    for (const r of db.prepare('select distinct sym from fills where user_id = ? and coalesce(external, 0) = 0 and ts >= ?').all(userId, Date.now() - 86_400_000) as { sym: MarketSym }[]) this.ownSyms.add(r.sym);
     tapeOf(deps.driver.feed);
   }
 
@@ -289,6 +292,9 @@ export class Runner {
         },
         save: (keys) => db.prepare("insert into agents (user_id, status, own_orders) values (?, 'idle', ?) on conflict(user_id) do update set own_orders = excluded.own_orders").run(this.userId, JSON.stringify(keys)),
       });
+      // Before connecting: a quote resting since before a restart can fill during sign-in, and the venue reports each fill
+      // once. Recorded late is better than lost (it would show up as a deposit or withdrawal instead of a trade).
+      v.on('fill', (f) => this.onFill(f));
       try {
         await v.connect(); // throws VenueError: the API surfaces the exact reason
         // Disposed while connecting (key replaced or removed): a socket kept now would live on with nobody ticking it.
@@ -297,7 +303,6 @@ export class Runner {
         v.close();
         throw e;
       }
-      v.on('fill', (f) => this.onFill(f));
       v.on('error', (e) => this.onVenueError(e));
       this.venue = v;
       this.seenRequests = { venue: v.requests?.() ?? 0, own: this.ownRequests };
@@ -316,6 +321,7 @@ export class Runner {
     // (The status is read again: TypeScript's narrowing from the first line does not survive the await.)
     if (epoch !== this.epoch || (this.status as AgentStatus) === 'quoting') return;
     this.resumeAt = 0;
+    this.trackCash(Date.now(), true);
     this.killReason = null;
     this.failures = 0;
     this.owed = null; // quoting again: the runner manages its own orders (a cancel owed by a pause is moot)
@@ -347,8 +353,18 @@ export class Runner {
 
   async pause() {
     this.epoch++; // also cancels a Start still connecting
+    const resuming = this.resumeAt > 0;
     this.resumeAt = 0;
-    if (this.status !== 'quoting') return;
+    if (this.status !== 'quoting') {
+      // Boot was still resuming a quoting agent: the stored status says quoting, so without this the next restart
+      // would start it again. Its quotes from before the restart may still rest: cancel them (tick retries until it lands).
+      if (resuming) {
+        this.status = 'paused';
+        this.persist();
+        await this.cleanup('cancel');
+      }
+      return;
+    }
     this.status = 'paused';
     this.endSession('pause');
     this.persist();
@@ -488,10 +504,14 @@ export class Runner {
   private spec(sym: MarketSym): MarketSpec {
     return this.deps.driver.feed.specs()[sym]!;
   }
-  /** Markets Monday looks after: the policy's, plus any other that still holds a position or a resting quote. */
+  /**
+   * Markets Monday looks after: the policy's, plus any other where its own quote still rests or where it traded in the
+   * last day and a position is left (a market dropped from the policy: Monday works that exit). A position the user
+   * opened by hand in a market Monday has not traded is theirs, and left alone.
+   */
   private managed(): MarketSym[] {
     const v = this.venue;
-    return MARKETS.filter((s) => this.policy.markets.includes(s) || (v && (v.position(s).size !== 0 || v.quote(s, 'bid') || v.quote(s, 'ask'))));
+    return MARKETS.filter((s) => this.policy.markets.includes(s) || (v && (v.quote(s, 'bid') || v.quote(s, 'ask') || (v.position(s).size !== 0 && this.ownSyms.has(s)))));
   }
   private day(sym: MarketSym, now: number): Day {
     const hit = volume.get(sym);
@@ -1065,6 +1085,7 @@ export class Runner {
     });
     if (!inserted) return;
     this.expectedPos[f.sym] = (this.expectedPos[f.sym] ?? 0) + (f.side === 'bid' ? f.size : -f.size);
+    if (!f.external) this.ownSyms.add(f.sym);
     if (this.cash.expected != null) this.cash.expected += f.realizedUsd - f.feeUsd;
     if (f.external) {
       this.alert('info', `A ${f.sym} trade placed outside Monday filled. It counts toward your limits but not toward Monday's results.`);
@@ -1099,8 +1120,12 @@ export class Runner {
     }
   }
 
-  /** Book cash that moved without a fill: deposits and withdrawals are not trading results; small moves are funding. */
-  private trackCash(now: number) {
+  /**
+   * Book cash that moved without a fill: deposits and withdrawals are not trading results; small moves are funding.
+   * `stopped`: called at Start, for cash that moved while Monday was not trading (or not running). It is booked at once,
+   * so the loss limit of the new session never sees a withdrawal made while stopped as a loss.
+   */
+  private trackCash(now: number, stopped = false) {
     const bal = this.venue!.account().balanceUsd;
     if (this.cash.expected == null) {
       if (bal > 0) this.cash.expected = bal;
@@ -1111,14 +1136,14 @@ export class Runner {
       this.cash.since = 0;
       return;
     }
-    if (!this.cash.since || Math.abs(d - this.cash.drift) > 0.005) {
+    if (!stopped && (!this.cash.since || Math.abs(d - this.cash.drift) > 0.005)) {
       Object.assign(this.cash, { drift: d, since: now }); // still moving
       return;
     }
-    if (now - this.cash.since < CASH_SETTLE_MS) return;
+    if (!stopped && now - this.cash.since < CASH_SETTLE_MS) return;
     const kind = Math.abs(d) < DEPOSIT_MIN_USD ? 'funding' : d > 0 ? 'deposit' : 'withdrawal';
     // Stopped with no position, a drop in cash can only be a withdrawal (no fill, no liquidation, no funding).
-    const idle = kind === 'withdrawal' && this.status !== 'quoting' && MARKETS.every((s) => !this.venue!.position(s).size);
+    const idle = kind === 'withdrawal' && (stopped || this.status !== 'quoting') && MARKETS.every((s) => !this.venue!.position(s).size);
     journal(this.userId, kind, null, d, { balance: bal, expected: this.cash.expected, ...(idle && { idle: true }) });
     if (idle) this.flows.dayOutIdle += d;
     if (kind === 'funding') this.flows.dayFunding += d;

@@ -66,7 +66,8 @@ function Body({ ev, sym, setSym }: { ev: Evidence; sym: MarketSym; setSym: (s: M
           </Notice>
         )}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <div role="tablist" aria-label="Market" className="flex rounded-sm border border-line-2">
+          {/* Wraps: eleven markets in one row are wider than a phone. */}
+          <div role="tablist" aria-label="Market" className="flex flex-wrap rounded-sm border border-line-2">
             {MARKETS.filter((m) => ev.studies[m]).map((m) => (
               <button key={m} role="tab" aria-selected={m === sym} onClick={() => setSym(m)} className={cx('h-9 px-4 text-sm font-medium', m === sym ? 'bg-fg text-canvas' : 'text-fg-2 hover:bg-raised')}>{m}</button>
             ))}

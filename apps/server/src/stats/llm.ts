@@ -39,6 +39,9 @@ export async function ask(system: string, user: string, { maxTokens = 300, timeo
   return body.choices?.[0]?.message?.content ?? '';
 }
 
+/** The model was late (our timeout or an abort), as against refusing or failing (a 400 when the account is out of credit). */
+export const timedOut = (e: unknown) => e instanceof Anthropic.APIConnectionTimeoutError || (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError'));
+
 /** The first JSON object in a reply, however the model wrapped it. */
 export function firstJsonObject(text: string): Record<string, unknown> {
   const start = text.indexOf('{');

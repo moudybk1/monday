@@ -102,7 +102,7 @@ function Stats() {
 
       <div className="min-w-0 rise grid gap-1 xl:h-[460px] xl:grid-cols-[minmax(0,1fr)_400px]" style={{ '--i': 2 } as React.CSSProperties}>
         <History o={o} sym={sym} onSym={setSym} />
-        <LiquidationMap risk={risk.data} sym={sym === ALL ? undefined : sym} onSym={setSym} />
+        <LiquidationMap risk={risk.data} error={risk.isError} sym={sym === ALL ? undefined : sym} onSym={setSym} />
       </div>
 
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Spotlight liqs={liqs.data} now={now} /></div>
@@ -123,18 +123,18 @@ function Stats() {
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 6 } as React.CSSProperties}>
         <Panel title="Closest to liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
-          {risk.data ? <PositionList rows={risk.data.nearest} /> : <Skeleton className="m-2 h-60" />}
+          {risk.data ? <PositionList rows={risk.data.nearest} /> : <Pending error={risk.isError} className="m-2 h-60" />}
         </Panel>
         <Panel title="Latest liquidations" aside={<span>{o.indexer.source === 'off' ? 'indexer off' : o.indexer.live ? 'live' : 'catching up'}</span>} className="h-[420px]">
-          <LiquidationFeed rows={liqs.data} since={since} />
+          <LiquidationFeed rows={liqs.data} error={liqs.isError} since={since} />
         </Panel>
         <Panel title="Largest positions" aside={<span>open now, at mark</span>} className="h-[420px]">
-          {risk.data ? <PositionList rows={risk.data.largest} /> : <Skeleton className="m-2 h-60" />}
+          {risk.data ? <PositionList rows={risk.data.largest} /> : <Pending error={risk.isError} className="m-2 h-60" />}
         </Panel>
       </div>
 
       <div className="min-w-0 rise" style={{ '--i': 7 } as React.CSSProperties}>
-        <Traders complete={(days) => (days === 1 ? o.daily.at(-1)?.coverage === 'full' : days === 7 ? h.complete['7d'] : h.complete['30d'])} />
+        <Traders complete={(days) => (days === 1 ? o.daily.at(-1)?.coverage === 'full' : days === 7 ? h.complete['7d'] : days === 30 ? h.complete['30d'] : h.complete.all)} />
       </div>
     </div>
   );
@@ -210,7 +210,7 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
         : [{ name: 'Long accounts', tone: 'bid', points: mk.map((p) => ({ t: p.t, v: p.longs })) }, { name: 'Short accounts', tone: 'ask', points: mk.map((p) => ({ t: p.t, v: p.shorts })) }]
       : [{ name: title, tone: 'accent', points: pts }];
     const n = series[0]?.points.length ?? 0;
-    body = !hd ? <Skeleton className="h-[360px]" /> : n < 3
+    body = !hd ? <Pending error={hist.isError} className="h-[360px]" /> : n < 3
       ? <p className="flex h-[360px] items-center justify-center px-6 text-center text-[12px] text-fg-3">Sampling every five minutes{hd.since ? ` since ${shortTime(hd.since)}` : ''}. The line appears after a few samples.</p>
       : <div style={{ height: H }}><LineChart label={`${title}${marketLabel} over time`} format={metric === 'skew' ? (sym === ALL ? (v) => `${v.toFixed(0)}% long` : int) : money} timeFormat={sampledDays === 7 ? shortTime : shortDay} series={series} area={metric !== 'skew'} /></div>;
     note = <>{metric === 'skew' ? (sym === ALL ? 'Share of open accounts that are long, the four largest markets by open interest. ' : 'Accounts long and short. Notional is always equal on both sides of a perp, so the count is the skew. ') : ''}Read from the Exchange every five minutes{hd?.since ? `, since ${shortTime(hd.since)}` : ''}.</>;
@@ -225,7 +225,7 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
       byDay.set(k, [...(byDay.get(k) ?? []), apr(p.rate, fm!.intervalMin)]);
     }
     const days = [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([t, rs]) => ({ t, v: rs.reduce((a, b) => a + b, 0) / rs.length, n: rs.length }));
-    body = !fd ? <Skeleton className="h-[360px]" /> : !days.length ? <p className="flex h-[360px] items-center justify-center text-[12px] text-fg-3">No funding history for {fsym}.</p>
+    body = !fd ? <Pending error={fund.isError} className="h-[360px]" /> : !days.length ? <p className="flex h-[360px] items-center justify-center text-[12px] text-fg-3">No funding history for {fsym}.</p>
       : <SignedBars height={H} label={`Average funding on ${fsym} per day, annualised`} format={(v) => `${v.toFixed(1)}%`} lowLabel={shortDay(days[0].t)} highLabel={shortDay(days.at(-1)!.t)} data={days.map((d) => ({ key: day(d.t), v: d.v, tip: `${shortDay(d.t)}: ${pct(d.v, 1)} a year on average over ${d.n} intervals, ${d.v >= 0 ? 'longs paid shorts' : 'shorts paid longs'}` }))} />;
     note = <>{fsym}: each day&apos;s average rate, annualised. Teal days longs paid shorts, vermilion days the reverse. From Perpl&apos;s funding history{sym === ALL ? '; pick a market above for another' : ''}.</>;
   }
@@ -261,11 +261,11 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
   );
 }
 
-function LiquidationMap({ risk, sym, onSym }: { risk?: Risk; sym?: string; onSym: (s: string) => void }) {
+function LiquidationMap({ risk, error, sym, onSym }: { risk?: Risk; error: boolean; sym?: string; onSym: (s: string) => void }) {
   const reduce = useReducedMotion();
   const [move, setMove] = useState(-3); // what if the price moves this many percent
   const m = risk?.markets.find((x) => x.sym === sym) ?? risk?.markets[0];
-  if (!risk || !m) return <Panel title="Liquidation map" className="min-h-[330px] xl:h-full"><Skeleton className="m-2 h-64" /></Panel>;
+  if (!risk || !m) return <Panel title="Liquidation map" className="min-h-[330px] xl:h-full"><Pending error={error} className="m-2 h-64" /></Panel>;
   const map = m.map.slice(0, 12); // 12% either side keeps the ladder beside the chart; the rest is far from mark
   const max = Math.max(1, ...map.flatMap((b) => [b.longUsd, b.shortUsd]));
   type Row = { pct: number; side: 'long' | 'short'; usd: number; px: number };
@@ -427,7 +427,7 @@ function Activity() {
   const peak = a ? a.cells.reduce((b, c) => (c.usd > b.usd ? c : b), a.cells[0]) : null;
   return (
     <Panel title="When Perpl trades" aside={<span className="hidden sm:inline">taker volume by hour, UTC, 7 days</span>} bodyClassName="p-2.5" className="min-h-[260px]">
-      {!a ? <Skeleton className="h-44" /> : (
+      {!a ? <Pending error={q.isError} className="h-44" /> : (
         <>
           <HeatGrid label="Volume by weekday and hour" rows={DAYS} cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))} colLabelEvery={3} cell={18}
             cells={a.cells.map((c) => ({ r: c.dow, c: c.hour, v: c.usd, tip: `${DAYS[c.dow]} ${String(c.hour).padStart(2, '0')}:00 UTC: ${money(c.usd)} over ${int(c.trades)} trades` }))} />
@@ -474,7 +474,7 @@ function Flows({ win }: { win: PxWindow }) {
   const max = Math.max(1, ...rows.map((r) => r.usd));
   return (
     <Panel title={`Collateral flows ${days === 1 ? '24h' : `${days}D`}`} aside={<Segments label="Side" value={side} onChange={setSide} options={[['deposits', 'In'], ['withdrawals', 'Out']] as const} />} className="min-h-[260px] max-h-[360px]">
-      {!f ? <Skeleton className="m-2 h-44" /> : (
+      {!f ? <Pending error={q.isError} className="m-2 h-44" /> : (
         <>
           <div className="grid grid-cols-2 gap-px border-b border-line bg-line text-[11px]">
             <div className="bg-canvas px-2.5 py-1.5"><span className="label">Deposited</span><p className="num mt-1 text-[13px] text-bid-fg">{money(f.depositsUsd)} <span className="text-fg-3">by {f.depositors}</span></p></div>
@@ -510,7 +510,7 @@ function WhoWins({ win }: { win: PxWindow }) {
   const label = days === 1 ? 'today' : `last ${days} days`;
   return (
     <Panel title="Who makes money" aside={<span className="hidden sm:inline">realised, after fees, {label}</span>} bodyClassName="p-2.5" className="min-h-[260px]">
-      {!s ? <Skeleton className="h-48" /> : (
+      {!s ? <Pending error={q.isError} className="h-48" /> : (
         <>
           <div className="grid grid-cols-2 gap-px bg-line text-[11px]">
             <div className="bg-canvas px-2 py-1.5"><span className="label">Profitable</span><p className="num mt-1 text-[13px] text-bid-fg">{share(s.profitable)}</p><p className="truncate text-fg-3">{int(s.profitable)} of {int(decided)} with a result</p></div>
@@ -542,7 +542,7 @@ function Retention() {
   const cell = (v: number | null) => (v == null ? undefined : { background: `color-mix(in oklab, var(--bid) ${Math.round(10 + v * 70)}%, var(--raised))` });
   return (
     <Panel title="Retention" aside={<span className="hidden xl:inline">share of a week&apos;s new traders active again later</span>} className="min-h-[260px]">
-      {!c ? <Skeleton className="m-2 h-48" /> : (
+      {!c ? <Pending error={q.isError} className="m-2 h-48" /> : (
         <>
           <table className="w-full text-[11.5px]">
             <thead>
@@ -587,7 +587,7 @@ function Signals() {
   }
   return (
     <Panel title="Signals" aside={<span className="hidden sm:inline">largest flows and liquidations this week; positions over $50k as they open</span>} className="h-[360px]">
-      {!q.data ? <Skeleton className="m-2 h-48" /> : !q.data.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">Nothing large this week.</p> : (
+      {!q.data ? <Pending error={q.isError} className="m-2 h-48" /> : !q.data.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">Nothing large this week.</p> : (
         <ul className="text-[11.5px]">
           {q.data.map((x) => {
             const { Icon, cls, verb } = SIGNAL[x.kind];
@@ -633,7 +633,7 @@ function PositionList({ rows }: { rows: PxPosition[] }) {
 }
 
 /** New liquidations slide in at the top with a tint in the side's colour. */
-function LiquidationFeed({ rows, since }: { rows?: PxLiquidation[]; since: number | null }) {
+function LiquidationFeed({ rows, error, since }: { rows?: PxLiquidation[]; error: boolean; since: number | null }) {
   const seen = useRef<Set<string> | null>(null);
   const reduce = useReducedMotion();
   const key = (l: PxLiquidation) => `${l.ts}${l.account}${l.sym}`;
@@ -642,7 +642,7 @@ function LiquidationFeed({ rows, since }: { rows?: PxLiquidation[]; since: numbe
     if (seen.current) for (const l of rows) if (!seen.current.has(key(l))) fresh.add(key(l));
     seen.current = new Set(rows.map(key));
   }
-  if (!rows) return <Skeleton className="m-2 h-60" />;
+  if (!rows) return <Pending error={error} className="m-2 h-60" />;
   if (!rows.length) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No liquidations{since ? ` since ${shortDay(since)}` : ''}. New ones appear here within seconds.</p>;
   return (
     <table className="w-full text-[11.5px]">
@@ -686,7 +686,7 @@ function Traders({ complete }: { complete: (days: 1 | 7 | 30 | 90) => boolean })
       className="h-[460px]"
     >
       {!complete(days) && <p className="border-b border-line px-2.5 py-1 text-[11px] text-warn">Partial history: some of these days are still being indexed.</p>}
-      {!q.data ? <Skeleton className="m-2 h-60" /> : !rows.length ? <p className="px-2.5 py-4 text-[12px] text-fg-3">No indexed fills in this window.</p> : (
+      {!q.data ? <Pending error={q.isError} className="m-2 h-60" /> : !rows.length ? <p className="px-2.5 py-4 text-[12px] text-fg-3">No indexed fills in this window.</p> : (
         <table className="w-full text-[11.5px]">
           <thead>
             <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal">
@@ -709,6 +709,11 @@ function Traders({ complete }: { complete: (days: 1 | 7 | 30 | 90) => boolean })
       )}
     </Panel>
   );
+}
+
+/** A panel still waiting for its first answer. A failed request says so instead of pulsing forever; polling retries it. */
+function Pending({ error, className }: { error: boolean; className?: string }) {
+  return error ? <p className="px-2.5 py-3 text-[12px] text-warn">Could not load this. It tries again on its own.</p> : <Skeleton className={className} />;
 }
 
 function Loading() {

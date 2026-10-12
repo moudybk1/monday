@@ -198,6 +198,7 @@ const risk = cached(30_000, async () => {
 async function resolve(q: string): Promise<{ account: number; address: Address | null } | null> {
   if (/^\d+$/.test(q)) {
     const id = Number(q);
+    if (id === 0) return null; // taker fills no account could be matched to are kept under 0: not a wallet
     const address = (addressById(id) as Address | null) ?? (await addressOf(id));
     return address || one<{ n: number }>('select count(*) n from px_trades where account = ?', id).n ? { account: id, address } : null;
   }
@@ -375,8 +376,9 @@ function leaderboard(days: number, sort: 'net' | 'volume' | 'loss') {
   let board = boards.get(key);
   if (!board) {
     const order = sort === 'volume' ? 'volume desc' : sort === 'loss' ? 'net asc' : 'net desc';
+    // Losers lost: on a quiet day the bottom 25 by PnL would otherwise include accounts in profit.
     board = cached(30_000, async () => all<{ account: number; volume: number; net: number; trades: number }>(
-      `select account, sum(volume) volume, sum(net) net, sum(trades) trades from px_day where day >= ? and account != 0 group by account order by ${order} limit 25`,
+      `select account, sum(volume) volume, sum(net) net, sum(trades) trades from px_day where day >= ? and account != 0 group by account ${sort === 'loss' ? 'having net < 0 ' : ''}order by ${order} limit 25`,
       windowStartDay(Date.now(), days),
     ).map((t) => ({ account: t.account, address: addressById(t.account), volumeUsd: t.volume, netUsd: t.net, trades: t.trades })));
     boards.set(key, board);
