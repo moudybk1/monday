@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
     resolveAlias: { '@coinbase/cdp-sdk': './lib/cdp-sdk-stub.js' },
   },
   outputFileTracingRoot: root,
+  // The evidence page is gone (2026-10-12); links to it, shared before, land on the home page.
+  async redirects() {
+    return [{ source: '/evidence', destination: '/', permanent: false }];
+  },
   // The browser only ever talks to this origin, so the session cookie stays first-party and SameSite=Strict.
   async rewrites() {
     // Public stats come from their own process (npm run indexer), everything else from the trading server.

@@ -17,7 +17,7 @@ it('puts each page on the host that serves it, and stays relative when no hosts 
   expect(at('/analytics')).toBe('https://analytics.m.xyz/analytics');
   expect(at('/analytics/wallet/42')).toBe('https://analytics.m.xyz/analytics/wallet/42');
   expect(at('/analyticsx')).toBe('https://m.xyz/analyticsx');
-  expect(at('/evidence')).toBe('https://m.xyz/evidence');
+  expect(at('/decisions/7')).toBe('https://m.xyz/decisions/7');
   expect(at('/#how')).toBe('https://m.xyz/#how');
 
   vi.unstubAllEnvs();

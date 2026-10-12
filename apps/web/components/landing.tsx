@@ -2,14 +2,11 @@
 
 import { PauseIcon, PlayIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
 import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
-import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MARKETS, type Decision, type Evidence, type MarketState, type MarketSym } from '@monday/core';
-import { api } from '@/lib/api';
+import type { Decision, MarketState, MarketSym } from '@monday/core';
 import { fmtPrice, fmtTime } from '@/lib/format';
 import { useLive } from '@/lib/live';
 import { OrderBook } from './book';
-import { SignedBars } from './charts';
 import { PriceChart } from './price-chart';
 import { FlowBars, SmartTape } from './smart-money';
 import { Panel, Skeleton, Tag, cx } from './ui';
@@ -246,68 +243,6 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           </Panel>
         </div>
       </div>
-    </div>
-  );
-}
-
-export function EvidenceTeaser() {
-  const [ev, setEv] = useState<Evidence | 'pending' | 'error' | null>(null);
-  const load = () => void api<Evidence & { pending?: boolean }>('/evidence').then((e) => setEv(e.pending ? 'pending' : e)).catch(() => setEv('error'));
-  useEffect(load, []);
-  if (ev === null) return <Skeleton className="h-72" />;
-  if (ev === 'error') {
-    return (
-      <p className="panel px-4 py-10 text-fg-3">
-        The evidence could not be loaded right now.{' '}
-        <button type="button" onClick={() => { setEv(null); load(); }} className="font-medium text-fg underline underline-offset-2 hover:text-accent">Try again</button>
-      </p>
-    );
-  }
-  const sym = ev === 'pending' ? undefined : MARKETS.find((m) => ev.studies[m]); // BTC first when it has one
-  const s = sym && ev !== 'pending' ? ev.studies[sym] : undefined;
-  if (ev === 'pending' || !sym || !s) return <p className="panel px-4 py-10 text-fg-3">The event study is still collecting data. It needs two days of prices and Smart Trader trades before it reports anything.</p>;
-  const head = s.grid.find((g) => g.window === 15 && g.horizon === 15 && [g.rho, g.lo, g.hi].every(Number.isFinite) && g.n > 0);
-  if (!head) return <p className="panel px-4 py-10 text-fg-3">The study has no 15-minute result yet. The full tables are on the evidence page.</p>;
-  const stats = [
-    { k: 'Rank correlation, 15 min flow vs next 15 min', v: head.rho.toFixed(2), sub: `95% interval ${head.lo.toFixed(2)} to ${head.hi.toFixed(2)}` },
-    { k: 'Independent samples', v: String(head.n), sub: `${sym}, non-overlapping 15-minute windows` },
-    { k: 'Price moved the same way after a burst', v: s.hit.n > 0 && s.hit.rate >= 0 && s.hit.rate <= 1 ? `${Math.round(s.hit.rate * 100)}%` : 'n/a', sub: `${s.hit.n} bursts past z 2.5. Not a trading win rate.` },
-  ];
-  // What the interval says, in one sentence. A correlation is never a profit claim.
-  const reading = head.lo > 0
-    ? `In this sample, ${sym} tended to move the way Smart Traders traded over the next 15 minutes. That is a correlation, not a profit.`
-    : head.hi < 0
-      ? `In this sample, ${sym} tended to move against Smart Trader flow over the next 15 minutes.`
-      : `This sample does not show a clear link between Smart Trader flow and where ${sym} went next.`;
-  const computed = Number.isFinite(ev.at) ? new Date(ev.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : null;
-  // Simulated data says so before the numbers, not under them.
-  const synthetic = ev.synthetic && <p className="mb-2 text-[12px] text-warn">Simulated data. The simulator makes flow move price, so this shows the method working, not a proven edge.</p>;
-  return (
-    <div>
-      {synthetic}
-      <p className="mb-3 max-w-[70ch] text-[15px]">{reading}</p>
-      <div className="flex flex-col gap-1 rounded-lg border border-line bg-void p-1">
-        <dl className="grid gap-1 sm:grid-cols-3">
-          {stats.map((x) => (
-            <div key={x.k} className="panel px-3.5 py-3">
-              <dt className="text-[12px] text-fg-3">{x.k}</dt>
-              <dd className="num mt-1.5 text-[28px] font-medium leading-none tracking-tight">{x.v}</dd>
-              <dd className="num mt-2 text-[11.5px] text-fg-3">{x.sub}</dd>
-            </div>
-          ))}
-        </dl>
-        <Panel title={`Mean ${sym} return over the next 15 minutes, by strength of Smart Trader flow`} aside={<span>bps</span>} bodyClassName="p-2 !overflow-hidden">
-          <SignedBars
-            height={230} format={(v) => v.toFixed(1)} label={`Mean forward 15-minute ${sym} return in basis points for each decile of the 15-minute Smart Trader z-score`}
-            lowLabel="strongest selling" highLabel="strongest buying"
-            data={s.deciles.filter((d) => Number.isFinite(d.meanRetBps) && Number.isFinite(d.meanZ)).map((d) => ({ key: `Decile ${d.decile}`, v: d.meanRetBps, tip: `Decile ${d.decile}: mean z ${d.meanZ.toFixed(1)}, next 15 min ${d.meanRetBps >= 0 ? '+' : ''}${d.meanRetBps.toFixed(2)} bps, ${d.n} samples` }))}
-          />
-        </Panel>
-      </div>
-      <p className="mt-3 text-[12px] text-fg-3">
-        {computed && <>Computed {computed}. </>}Sources: {ev.smartMoneySource}; {ev.priceSource}.{' '}
-        <Link href="/evidence" className="font-medium text-fg underline underline-offset-2 hover:text-accent">Read the evidence</Link>
-      </p>
     </div>
   );
 }

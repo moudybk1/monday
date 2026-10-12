@@ -12,7 +12,6 @@ const NAV = [
   { href: '/app/policy', label: 'Setup' },
   { href: '/app', label: 'Terminal' },
   { href: '/analytics', label: 'Analytics' },
-  { href: '/evidence', label: 'Evidence' },
 ];
 const isOn = (href: string, path: string) => (href === '/analytics' ? path.startsWith('/analytics') : path === href);
 

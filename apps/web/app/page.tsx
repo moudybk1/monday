@@ -1,6 +1,6 @@
 import { ArrowLeftIcon, ArrowsLeftRightIcon, CaretDownIcon, HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
 import type { AppConfig } from '@monday/core';
-import { EvidenceTeaser, LiveMarket, Reveal, Story } from '@/components/landing';
+import { LiveMarket, Reveal, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ButtonLink, Mark, Tag, cx } from '@/components/ui';
 import { at } from '@/lib/hosts';
@@ -171,21 +171,6 @@ export default async function Landing() {
                 </div>
               ))}
             </dl>
-          </div>
-        </section>
-
-        {/* Evidence: figures first, chart under them. */}
-        <section className="border-t border-line">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <Reveal>
-              <h2 className={`${H2} max-w-[20ch]`}>The edge is measured, not claimed.</h2>
-              <p className={LEAD}>
-                An event study checks whether Smart Trader flow leads price. A replay runs a naive maker and Monday over the same minutes. Both publish their assumptions next to the numbers.
-              </p>
-            </Reveal>
-            <div className="mt-10">
-              <EvidenceTeaser />
-            </div>
           </div>
         </section>
 
