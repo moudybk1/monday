@@ -46,7 +46,7 @@ const REF_MODES: { id: RefMode; label: string; note: string }[] = [
   { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's and Hyperliquid's mid with the weight you choose." },
 ];
 /** The same in every mode since 2026-10-11: before that Mid and Blend exited at the market, and most of those exits lost. */
-const EXIT_NOTE = `In every mode an exit rests at the entry plus fees and 1 bp, never below what it bought nor above what it sold, or closes at the best price once its open loss reaches ${STAGE.urgentLossFrac * 100}% of your stop loss or it has been open an hour.`;
+const EXIT_NOTE = `In every mode Monday holds one entry at a time and never adds to it. The exit rests at the entry plus fees and 1 bp, plus fees alone after 10 minutes, and closes at the best price once the open loss reaches ${STAGE.urgentLossFrac * 100}% of your stop loss or the position is an hour old. New entries stay 3 bps on the safe side of Hyperliquid's price.`;
 const PARTICIPATIONS: { id: Participation; label: string }[] = [{ id: 'aggressive', label: 'Aggressive' }, { id: 'normal', label: 'Normal' }, { id: 'passive', label: 'Passive' }];
 const EPS = 1e-9;
 

@@ -5,7 +5,7 @@ import type { InventoryStage } from './execution';
 import type { BookLevel, GovernorParams, MarketSpec, MarketSym, Participation, Policy, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
-export const STRATEGY_VERSION = '2026-10-12.1';
+export const STRATEGY_VERSION = '2026-10-12.2';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
@@ -36,6 +36,8 @@ export interface StrategyConfig {
   kTrend: number; // centre shift per bps of trend beyond that
   trendMaxBps: number; // and at most this (also at most half the half-spread, so the near side keeps clear of the fee)
   exitMinProfitBps: number; // below the urgent stage, an exit rests at least this far past the entry, after both fees
+  breakevenAfterMs: number; // from this position age, the exit rests at the entry plus both fees: out flat rather than wait
+  hlGuardBps: number | null; // an entry rests at least this far on the safe side of Hyperliquid's price; null: off
   fillHoldMs: number; // a fill that grew the position widens that side for this long: the taker who hit it is often still working
   burstWindowMs: number; // two such fills inside this window are a sweep: the side is pulled (fillTrigger)
 }
@@ -96,6 +98,13 @@ export const DEFAULT_CONFIG: StrategyConfig = {
   // that guard it is worse than nothing: a quarter never got there and lost -28 bps on the way out. Keep the two together.
   // The urgent stage (an hour old, a quarter of the daily loss, far past the cap) and a kill still get out at the market.
   exitMinProfitBps: 1,
+  // Exits that reach that target mostly do within about 4 minutes. A position still open at 10 minutes is usually one
+  // turning against Monday: its exit drops to the entry plus both fees, and Monday gets out flat.
+  breakevenAfterMs: 10 * 60_000,
+  // Perpl follows Hyperliquid. On the real fills of 8 to 12 Oct, entries with Hyperliquid 3 bps or more in Monday's
+  // favour averaged +0.53 bps at five minutes (72 fills), those with it 3 bps or more against -5.64 (36). Paper fills did
+  // not confirm it, so it is on trial from 2026-10-12: compare the fills of strategy 2026-10-12.2 before keeping it.
+  hlGuardBps: 3,
   // A fill is the strongest sign of a sweep on that side. Live on mainnet (2026-10-08 to 10) a fill with another on the
   // same side inside the minute ran -4.9 bps at five minutes against -2.0 for a lone fill, and seven asks in 18 seconds
   // (each quote under a second old, re-joining the touch as it rose) built the short that lost the most.
@@ -160,6 +169,8 @@ export interface QuoteInput {
   trendBps?: number;
   /** Average entry price of the position. Omitted: exits are priced off the market alone. */
   entryPrice?: number;
+  /** How long the position has been open. Omitted: never long enough for the breakeven exit. */
+  positionAgeMs?: number;
 }
 
 export interface QuoteOutput {
@@ -244,10 +255,20 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
 
   // 7c. Exit in profit: below the urgent stage, the side that shrinks the position rests no better for the taker than
   // the entry plus both fees and exitMinProfitBps, so a round trip closes in profit or waits (see exitMinProfitBps).
+  // From breakevenAfterMs the profit is dropped: the exit rests at the entry plus both fees.
   if (stage !== 'urgent' && i.entryPrice && i.entryPrice > 0 && i.positionBase) {
-    const need = (2 * i.spec.makerFeeBps + cfg.exitMinProfitBps) / 1e4;
+    const profit = (i.positionAgeMs ?? 0) >= cfg.breakevenAfterMs ? 0 : cfg.exitMinProfitBps;
+    const need = (2 * i.spec.makerFeeBps + profit) / 1e4;
     if (i.positionBase > 0) askPx = Math.max(askPx, ceilTo(i.entryPrice * (1 + need), tick));
     else bidPx = Math.min(bidPx, floorTo(i.entryPrice * (1 - need), tick));
+  }
+
+  // 7d. An entry never rests on the wrong side of Hyperliquid, nor within hlGuardBps of it (see hlGuardBps): that is
+  // the quote taken just before Perpl catches up. The exit is never held back.
+  if (cfg.hlGuardBps != null && hl != null) {
+    const g = cfg.hlGuardBps / 1e4;
+    if (exit !== 'bid') bidPx = Math.min(bidPx, floorTo(hl * (1 - g), tick));
+    if (exit !== 'ask') askPx = Math.max(askPx, ceilTo(hl * (1 + g), tick));
   }
 
   // 8. PostOnly safety: never cross the book, sit one tick behind the opposite best.
