@@ -127,12 +127,15 @@ export const dailyVolume = cached(10 * 60_000, async (): Promise<Map<number, { t
   return out;
 });
 
-// No catch here: a failed read (a 429 after the retries) must not be cached as "no funding" for a minute. The last good
-// rates stay; with none yet, the caller sees the error.
+const FUNDING_AVG_MS = 8 * 3_600_000;
+// Each market's funding per interval, the mean of the last 8 hours. Perpl sets every interval's rate in whole steps of
+// 0.001% (at most 0.004%), so a single interval jumps in steps of about 12% a year; the mean moves smoothly and still
+// turns within hours. No catch here: a failed read (a 429 after the retries) must not be cached as "no funding" for a
+// minute. The last good rates stay; with none yet, the caller sees the error.
 export const funding = cached(60_000, async (): Promise<Map<number, number>> => {
-  const [m, r] = await Promise.all([meta(), getJson<{ d?: Record<string, { rate: number }[]> }>(`/v1/market-data/funding/${Date.now() - 6 * 3_600_000}-${Date.now()}`)]);
+  const [m, r] = await Promise.all([meta(), getJson<{ d?: Record<string, { rate: number }[]> }>(`/v1/market-data/funding/${Date.now() - FUNDING_AVG_MS}-${Date.now()}`)]);
   const out = new Map<number, number>();
-  for (const [id, evs] of Object.entries(r.d ?? {})) if (m.markets.has(Number(id)) && evs.length) out.set(Number(id), evs[evs.length - 1].rate / 1e6);
+  for (const [id, evs] of Object.entries(r.d ?? {})) if (m.markets.has(Number(id)) && evs.length) out.set(Number(id), evs.reduce((s, e) => s + e.rate, 0) / evs.length / 1e6);
   return out;
 });
 

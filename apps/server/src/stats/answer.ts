@@ -147,7 +147,7 @@ async function metricAnswer(i: Extract<AskIntent, { kind: 'metric' }>, o: PxOver
       return out(t == null ? 'Fills are still being indexed.' : `${t.toLocaleString('en-US')} fills on Perpl so far today (UTC).${only("today's")}`);
     }
     case 'funding': {
-      const f = (m: PxMarketRow) => `${(m.fundingRate * 100).toFixed(4)}% per ${every(m.fundingIntervalMin)} (${(fundingYear(m) * 100).toFixed(1)}% a year)`;
+      const f = (m: PxMarketRow) => `${(m.fundingRate * 100).toFixed(4)}% per ${every(m.fundingIntervalMin)} on average over the last 8 hours (${(fundingYear(m) * 100).toFixed(1)}% a year)`;
       if (row) return out(row.fundingUnknown ? `${row.sym} funding is unavailable right now.` : `${row.sym} funding is ${f(row)}: ${row.fundingRate > 0 ? 'longs pay shorts' : row.fundingRate < 0 ? 'shorts pay longs' : 'nobody pays'}.`);
       const s = ms.filter((m) => !m.fundingUnknown).sort((a, b) => fundingYear(b) - fundingYear(a));
       if (!s.length) return out('Funding is unavailable right now.');
@@ -184,7 +184,7 @@ async function screenAnswer(i: Extract<AskIntent, { kind: 'screen' }>, data: Cha
   const key = i.sort ?? kinds[0].sort;
   const dir = i.dir ?? (i.sort ? 'desc' : kinds[0].dir);
   const v = (r: (typeof rows)[number]) => (r[key] == null ? (dir === 'desc' ? -Infinity : Infinity) : (r[key] as number));
-  const kept = rows.filter((r) => kinds.every((p) => p.keep(r)) && r.volumeUsd >= (i.minVolume ?? 0) && r.closes >= (i.minCloses ?? 0))
+  const kept = rows.filter((r) => kinds.every((p) => p.keep(r, days)) && r.volumeUsd >= (i.minVolume ?? 0) && r.closes >= (i.minCloses ?? 0))
     .sort((a, b) => (dir === 'desc' ? v(b) - v(a) : v(a) - v(b)));
   const what = `${kinds.map((p) => p.label.toLowerCase()).join(' + ')}${i.minVolume ? `, ${money(i.minVolume)}+ volume` : ''}${i.minCloses ? `, ${i.minCloses}+ closes` : ''}`;
   const top = kept[0];

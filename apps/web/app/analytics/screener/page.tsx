@@ -68,7 +68,7 @@ function Screener() {
   const rows = useMemo<Row[]>(() => (q.data?.rows ?? []).map(screenStats), [q.data]);
   const pick = (next: Preset) => set({ preset: next.id === 'all' ? null : next.id, sort: null, dir: null });
   const visible = useMemo(() => {
-    const kept = rows.filter((r) => presets.every((x) => x.keep(r)) && r.volumeUsd >= minVolume && r.closes >= minCloses);
+    const kept = rows.filter((r) => presets.every((x) => x.keep(r, days)) && r.volumeUsd >= minVolume && r.closes >= minCloses);
     const v = (r: Row) => {
       const x = r[sort.key];
       return x == null ? (sort.dir === 'desc' ? -Infinity : Infinity) : x;

@@ -93,22 +93,9 @@ export default function WalletPage() {
         <Kpi k="Avg hold" v={hold(p.avgHoldMin)} sub="open to flat, per market" />
       </dl>
 
-      <div className="min-w-0 rise grid gap-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" style={style(2)}>
-        <Curve p={p} />
-        <Insights w={d} />
-      </div>
-
-      <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={style(3)}>
-        <Calendar p={p} />
-        <Edge p={p} deposits={deposits} equity={d.equityUsd} partial={d.flows.length >= 200} />
-        <Panel title="When this wallet trades" aside={<span>fills by UTC hour</span>} bodyClassName="p-2.5">
-          <HeatGrid label="Fills by hour of day" rows={['']} cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))} colLabelEvery={3} cell={26} cells={p.hours.map((n, h) => ({ r: 0, c: h, v: n, tip: `${String(h).padStart(2, '0')}:00 UTC: ${int(n)} fills` }))} />
-          <Sides p={p} />
-        </Panel>
-      </div>
-
-      <Panel title="Open positions" aside={<span>live from the Exchange</span>} className="min-w-0 rise" >
-        {!d.positions.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">No open positions.</p> : (
+      <Panel title="Open positions" aside={<span>live from the Exchange</span>} className="min-w-0 rise">
+        {!d.positions.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">No open positions.</p> : (<>
+          <Margin d={d} />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-[11.5px]">
               <thead>
@@ -135,8 +122,22 @@ export default function WalletPage() {
               </tbody>
             </table>
           </div>
-        )}
+        </>)}
       </Panel>
+
+      <div className="min-w-0 rise grid gap-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" style={style(2)}>
+        <Curve p={p} />
+        <Insights w={d} />
+      </div>
+
+      <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={style(3)}>
+        <Calendar p={p} />
+        <Edge p={p} deposits={deposits} equity={d.equityUsd} partial={d.flows.length >= 200} />
+        <Panel title="When this wallet trades" aside={<span>fills by UTC hour</span>} bodyClassName="p-2.5">
+          <HeatGrid label="Fills by hour of day" rows={['']} cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))} colLabelEvery={3} cell={26} cells={p.hours.map((n, h) => ({ r: 0, c: h, v: n, tip: `${String(h).padStart(2, '0')}:00 UTC: ${int(n)} fills` }))} />
+          <Sides p={p} />
+        </Panel>
+      </div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]" style={style(4)}>
         <Panel title="By market" aside={<span>best first</span>} className="h-[440px]">
@@ -219,6 +220,31 @@ export default function WalletPage() {
 }
 
 /** Cumulative realised PnL with the drawdown from its running peak shaded underneath. */
+/** The account as a margin book: what it controls, on how much of its own money, and how close the nearest liquidation is. */
+function Margin({ d }: { d: PxWallet }) {
+  const notional = d.positions.reduce((s, x) => s + x.usd, 0);
+  const margin = d.positions.reduce((s, x) => s + x.deposit, 0);
+  const near = d.positions.filter((x) => x.liqDistancePct != null).sort((a, b) => a.liqDistancePct! - b.liqDistancePct!)[0];
+  const ofEquity = (v: number) => (d.equityUsd > 0 ? ` (${Math.round((v / d.equityUsd) * 100)}%)` : '');
+  const cells: [string, string, string, string?][] = [
+    ['Notional', money(notional), 'Every open position at mark'],
+    ['Account leverage', d.equityUsd > 0 ? `${(notional / d.equityUsd).toFixed(1)}x` : 'n/a', 'Notional over equity'],
+    ['Margin in positions', money(margin), 'Collateral the open positions hold'],
+    ['Free collateral', `${money(d.balanceUsd)}${ofEquity(d.balanceUsd)}`, 'Cash not tied to a position'],
+    ['Nearest liquidation', near ? `${near.sym} ${liqText(near.liqDistancePct, 1)}` : 'none', 'How far mark must move to liquidate the closest position', near ? liqTone(near.liqDistancePct) : undefined],
+  ];
+  return (
+    <dl className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-5">
+      {cells.map(([k, v, title, cls]) => (
+        <div key={k} className="bg-canvas px-2.5 py-1.5" title={title}>
+          <dt className="label">{k}</dt>
+          <dd className={cx('num mt-0.5 text-[13px]', cls)}>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Curve({ p }: { p: PxWallet['performance'] }) {
   const [range, setRange] = useState<7 | 30 | 0>(0);
   const now = Date.now();
@@ -252,7 +278,7 @@ function Insights({ w }: { w: PxWallet }) {
         {ex.data?.text && (
           <motion.div key="explain" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-3 rounded-sm border border-accent/30 bg-accent/6 px-2.5 py-2 text-[12.5px] leading-snug text-fg">
             <p>{ex.data.text}</p>
-            <p className="mt-1.5 text-[10.5px] text-fg-3">{ex.data.source === 'facts' ? 'The model did not answer in time, so these are the page\'s own figures, unchanged.' : 'Written by a model from the figures on this page only.'}</p>
+            <p className="mt-1.5 text-[10.5px] text-fg-3">{ex.data.source === 'facts' ? 'The model is unavailable or did not answer in time, so these are the page\'s own figures, unchanged.' : 'Written by a model from the figures on this page only.'}</p>
           </motion.div>
         )}
       </AnimatePresence>

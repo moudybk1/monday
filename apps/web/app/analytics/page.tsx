@@ -68,11 +68,13 @@ function Stats() {
   const feesDone = h.complete[win];
   const tradersDone = h.complete[win === 'all' ? '30d' : win];
 
-  // The window before this one, for the deltas: whole UTC days, like the 7D and 30D figures themselves.
+  // The deltas compare whole UTC days: the last 7 (or 30) finished days against the 7 (or 30) before them. Today is
+  // still running, so counting it would make every window look a little worse than the last.
   const sum = (from: number, to: number, f: (d: PxOverview['daily'][number]) => number | null) => o.daily.filter((d) => d.t >= from && d.t < to).reduce((s, d) => s + (f(d) ?? 0), 0);
   const today = Math.floor(now / DAY) * DAY;
-  const cur = (f: (d: PxOverview['daily'][number]) => number | null) => (win === '24h' || win === 'all' ? null : sum(today - (winDays - 1) * DAY, today + DAY, f));
-  const prev = (f: (d: PxOverview['daily'][number]) => number | null) => (win === '24h' ? o.daily.find((d) => d.t === today - DAY)?.volumeUsd ?? null : win === 'all' ? null : sum(today - (2 * winDays - 1) * DAY, today - (winDays - 1) * DAY, f));
+  const yesterday = o.daily.find((d) => d.t === today - DAY);
+  const cur = (f: (d: PxOverview['daily'][number]) => number | null) => (win === '24h' || win === 'all' ? null : sum(today - winDays * DAY, today, f));
+  const prev = (f: (d: PxOverview['daily'][number]) => number | null) => (win === '24h' ? (yesterday ? f(yesterday) : null) : win === 'all' ? null : sum(today - 2 * winDays * DAY, today - winDays * DAY, f));
   const vsLabel = win === '24h' ? 'vs yesterday' : win === '7d' ? 'vs prior 7D' : win === '30d' ? 'vs prior 30D' : undefined;
   const spark = (f: (d: PxOverview['daily'][number]) => number | null) => o.daily.slice(-21).map(f);
   const total = hist7.data?.total ?? [];
@@ -110,18 +112,6 @@ function Stats() {
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} risk={risk.data} hist={hist7.data} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 4 } as React.CSSProperties}>
-        <Activity />
-        <FundingNow o={o} />
-        <Signals />
-      </div>
-
-      <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 5 } as React.CSSProperties}>
-        <WhoWins win={win} />
-        <Retention />
-        <Flows win={win} />
-      </div>
-
-      <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 6 } as React.CSSProperties}>
         <Panel title="Closest to liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
           {risk.data ? <PositionList rows={risk.data.nearest} /> : <Pending error={risk.isError} className="m-2 h-60" />}
         </Panel>
@@ -131,6 +121,18 @@ function Stats() {
         <Panel title="Largest positions" aside={<span>open now, at mark</span>} className="h-[420px]">
           {risk.data ? <PositionList rows={risk.data.largest} /> : <Pending error={risk.isError} className="m-2 h-60" />}
         </Panel>
+      </div>
+
+      <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 5 } as React.CSSProperties}>
+        <Activity />
+        <FundingNow o={o} />
+        <Signals />
+      </div>
+
+      <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 6 } as React.CSSProperties}>
+        <WhoWins win={win} />
+        <Retention />
+        <Flows win={win} />
       </div>
 
       <div className="min-w-0 rise" style={{ '--i': 7 } as React.CSSProperties}>
@@ -331,7 +333,7 @@ function setups(m: PxOverview['markets'][number], o: PxOverview, risk?: Risk): {
   const a = apr(m.fundingRate, m.fundingIntervalMin);
   if (n >= 10 && skew >= 0.7) out.push({ text: 'Crowded long', tone: 'warn', title: `${(skew * 100).toFixed(0)}% of ${n} open accounts are long` });
   if (n >= 10 && skew <= 0.3) out.push({ text: 'Crowded short', tone: 'warn', title: `${((1 - skew) * 100).toFixed(0)}% of ${n} open accounts are short` });
-  if (Math.abs(a) >= 30) out.push({ text: `Funding ${pct(a, 0)}`, tone: a > 0 ? 'ask' : 'accent', title: `${a > 0 ? 'Longs pay shorts' : 'Shorts pay longs'} ${Math.abs(a).toFixed(0)}% a year at the current rate` });
+  if (Math.abs(a) >= 30) out.push({ text: `Funding ${pct(a, 0)}`, tone: a > 0 ? 'ask' : 'accent', title: `${a > 0 ? 'Longs pay shorts' : 'Shorts pay longs'} ${Math.abs(a).toFixed(0)}% a year at the last 8 hours' average rate` });
   const prev = o.daily.slice(-8, -1).map((d) => d.byMarket[m.sym] ?? 0);
   const avg = prev.length ? prev.reduce((x, y) => x + y, 0) / prev.length : 0;
   if (avg > 0 && m.volume24hUsd >= 2 * avg) out.push({ text: `Volume ${(m.volume24hUsd / avg).toFixed(1)}x`, tone: 'accent', title: `${money(m.volume24hUsd)} in 24h against ${money(avg)} a day over the previous week` });
@@ -356,7 +358,7 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
               <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 days</th>
-              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right">Funding</th><th className="text-right">Long / short</th><th className="text-right">vs Hyperliquid</th><th className="pr-2.5 pl-3">Setups</th>
+              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right" title="The mean of the last 8 hours' funding intervals, annualised">Funding 8h</th><th className="text-right">Long / short</th><th className="text-right">vs Hyperliquid</th><th className="pr-2.5 pl-3">Setups</th>
             </tr>
           </thead>
           <tbody className="num">
@@ -380,7 +382,7 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
                   <td className="pl-3"><span className="flex items-center gap-2"><Share value={m.openInterestUsd / oiTotal} className="w-16" /><span className="w-9 text-fg-3">{((m.openInterestUsd / oiTotal) * 100).toFixed(0)}%</span></span></td>
                   {m.fundingUnknown
                     ? <td className="text-right text-fg-3" title="Perpl did not return this market's funding just now">-</td>
-                    : <td className="text-right" title={`${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 1)}</span><span className="text-fg-3"> /yr</span></td>}
+                    : <td className="text-right" title={`8-hour average: ${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 1)}</span><span className="text-fg-3"> /yr</span></td>}
                   <td className="text-right"><Skew longs={m.longs} shorts={m.shorts} /></td>
                   <td className="text-right text-fg-2">{m.hlVolume24hUsd ? `${((m.volume24hUsd / m.hlVolume24hUsd) * 100).toFixed(m.volume24hUsd / m.hlVolume24hUsd < 0.01 ? 2 : 1)}%` : 'n/a'}</td>
                   <td className="pr-2.5 pl-3"><span className="flex flex-wrap gap-1">{flags.map((f) => <span key={f.text} title={f.title}><Tag tone={f.tone}>{f.text}</Tag></span>)}</span></td>
@@ -449,7 +451,7 @@ function FundingNow({ o }: { o: PxOverview }) {
   const rows = o.markets.filter((m) => !m.fundingUnknown).map((m) => ({ sym: m.sym, apr: apr(m.fundingRate, m.fundingIntervalMin), oi: m.openInterestUsd })).sort((a, b) => b.apr - a.apr);
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.apr)));
   return (
-    <Panel title="Funding now" aside={<span className="hidden sm:inline">annualised, positive: longs pay shorts</span>} bodyClassName="px-2.5 py-2" className="min-h-[260px]">
+    <Panel title="Funding" aside={<span className="hidden sm:inline">8h average, annualised, positive: longs pay shorts</span>} bodyClassName="px-2.5 py-2" className="min-h-[260px]">
       <div className="num grid gap-1 text-[11px]">
         {rows.map((r, i) => (
           <div key={r.sym} className="grid grid-cols-[2.5rem_1fr_4rem] items-center gap-2">
@@ -462,7 +464,7 @@ function FundingNow({ o }: { o: PxOverview }) {
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[11.5px] text-fg-3">A crowded side pays the other every funding interval. The chart&apos;s Funding tab shows how each rate moved.</p>
+      <p className="mt-2 text-[11.5px] text-fg-3">A crowded side pays the other every funding interval. Perpl sets each interval&apos;s rate in steps of 0.001%, so the last 8 hours are averaged. The chart&apos;s Funding tab shows how each rate moved.</p>
     </Panel>
   );
 }
@@ -530,7 +532,7 @@ function WhoWins({ win }: { win: PxWindow }) {
             {([['Top 10 accounts', s.top10Share], ['Top 50 accounts', s.top50Share]] as const).map(([k, v]) => (
               <div key={k} className="grid grid-cols-[7rem_1fr_3rem] items-center gap-2"><span className="font-sans text-fg-3">{k}</span><Share value={v} tone="muted" /><span className="text-right text-fg">{(v * 100).toFixed(0)}%</span></div>
             ))}
-            <p className="font-sans text-fg-3">of {money(s.volumeUsd)} traded by {int(s.accounts)} accounts.</p>
+            <p className="font-sans text-fg-3">of {money(s.volumeUsd)} account volume, {int(s.accounts)} accounts. Every trade counts for its buyer and its seller, so this is about twice the market volume.</p>
           </div>
         </>
       )}
@@ -563,7 +565,7 @@ function Retention() {
               ))}
             </tbody>
           </table>
-          <p className="px-2.5 py-1.5 text-[11px] text-fg-3">A trader joins the week of their first fill (weeks start Monday, UTC) and counts as back if they filled in that later week. Faded weeks are not fully indexed yet.</p>
+          <p className="px-2.5 py-1.5 text-[11px] text-fg-3">A trader joins the week of their first fill (weeks start Monday, UTC) and counts as back if they filled in that later week. A blank cell is a week that has not ended yet; faded weeks are not fully indexed yet.</p>
         </>
       )}
     </Panel>

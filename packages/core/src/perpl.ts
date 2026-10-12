@@ -59,7 +59,7 @@ export interface PxMarketRow {
   change24hPct: number | null;
   volume24hUsd: number;
   openInterestUsd: number;
-  fundingRate: number; // per interval, fraction
+  fundingRate: number; // per interval, fraction: the mean of the last 8 hours' intervals
   /** Perpl's funding could not be read: fundingRate is then 0 as a placeholder, not a rate. */
   fundingUnknown?: true;
   fundingIntervalMin: number;
@@ -314,7 +314,7 @@ const REALISING: PxTradeKind[] = ['decrease', 'close', 'invert', 'liquidation'];
 export function walletPerformance(trades: PxTrade[]): WalletPerformance {
   const ts = [...trades].sort((a, b) => a.ts - b.ts || a.block - b.block);
   let cum = 0, peak = 0, dd = 0, gross = 0, grossLoss = 0, wins = 0, closes = 0, run = 0, longestWin = 0, longestLoss = 0;
-  let largestWin = 0, largestLoss = 0, makerVolume = 0;
+  let largestWin = 0, largestLoss = 0, makerVolume = 0, openNet = 0;
   const curve: WalletPerformance['curve'] = [];
   const opened = new Map<string, number>();
   const holds: number[] = [];
@@ -365,7 +365,7 @@ export function walletPerformance(trades: PxTrade[]): WalletPerformance {
       }
       longestWin = Math.max(longestWin, run);
       longestLoss = Math.max(longestLoss, -run);
-    }
+    } else openNet += net;
     // Hold time: from the trade that opened a position to the one that took it to zero (an invert does both).
     const open = opened.get(t.sym);
     if ((t.kind === 'close' || t.kind === 'liquidation' || t.kind === 'invert') && open != null) {
@@ -375,6 +375,9 @@ export function walletPerformance(trades: PxTrade[]): WalletPerformance {
     if (t.kind === 'open' || t.kind === 'invert') opened.set(t.sym, t.ts);
   }
   const losses = closes - wins;
+  // Fees paid opening positions are part of the net, so they count as lost: won minus lost is then the net, and a wallet
+  // in the red never shows a profit factor above 1. The average loss stays per losing close.
+  const lost = grossLoss + Math.max(0, -openNet);
   return {
     trades: ts.length,
     closes,
@@ -385,9 +388,9 @@ export function walletPerformance(trades: PxTrade[]): WalletPerformance {
     pnlUsd: ts.reduce((s, t) => s + t.pnl, 0),
     netUsd: cum,
     winRate: closes ? wins / closes : null,
-    profitFactor: grossLoss > 0 ? gross / grossLoss : null, // Infinity would not survive JSON
+    profitFactor: lost > 0 ? gross / lost : null, // Infinity would not survive JSON
     grossWinUsd: gross,
-    grossLossUsd: grossLoss,
+    grossLossUsd: lost,
     avgWinUsd: wins ? gross / wins : null,
     avgLossUsd: losses ? grossLoss / losses : null,
     largestWinUsd: largestWin,
@@ -436,7 +439,7 @@ export const weekStart = (week: number) => (week * 7 - 3) * DAY;
 
 /**
  * Weekly cohorts: accounts by the week of their first fill, and the share active again `offsets` weeks later. A week
- * that has not arrived yet is null. Newest cohort first.
+ * that has not ended yet is null: two days into a week is not a week's retention. Newest cohort first.
  */
 export function retentionCohorts(firstDay: Map<number, number>, activeWeeks: Map<number, Set<number>>, thisWeek: number, count = 12, offsets = [1, 2, 4]): Omit<PxCohort, 'coverage'>[] {
   const members = new Map<number, number[]>();
@@ -449,7 +452,7 @@ export function retentionCohorts(firstDay: Map<number, number>, activeWeeks: Map
     const m = members.get(w) ?? [];
     out.push({
       week: weekStart(w), size: m.length,
-      retained: offsets.map((k) => (w + k > thisWeek ? null : m.length ? m.filter((a) => activeWeeks.get(a)?.has(w + k)).length / m.length : 0)),
+      retained: offsets.map((k) => (w + k >= thisWeek ? null : m.length ? m.filter((a) => activeWeeks.get(a)?.has(w + k)).length / m.length : 0)),
     });
   }
   return out;
@@ -463,16 +466,20 @@ export const ASK_PRESETS = ['all', 'winners', 'streaks', 'whales', 'makers', 'ta
 export const ASK_SORTS = ['netUsd', 'winRate', 'profitFactor', 'volumeUsd', 'trades', 'makerShare', 'activeDays', 'streak', 'liquidatedUsd', 'avgTradeUsd'] as const;
 /** A screener row with the ratios the presets, columns and the chat read. */
 export type ScreenStats = PxScreenRow & { winRate: number | null; profitFactor: number | null; makerShare: number; avgTradeUsd: number };
+/** Gross loss with the costs of opening fills, as in walletPerformance: won minus lost is the net. */
+const lostOf = (r: PxScreenRow) => r.grossLossUsd + Math.max(0, r.grossWinUsd - r.grossLossUsd - r.netUsd);
 export const screenStats = (r: PxScreenRow): ScreenStats => ({
-  ...r, winRate: r.closes ? r.wins / r.closes : null, profitFactor: r.grossLossUsd > 0 ? r.grossWinUsd / r.grossLossUsd : r.grossWinUsd > 0 ? Infinity : null,
+  ...r, winRate: r.closes ? r.wins / r.closes : null, profitFactor: lostOf(r) > 0 ? r.grossWinUsd / lostOf(r) : r.grossWinUsd > 0 ? Infinity : null,
   makerShare: r.volumeUsd ? r.makerVolumeUsd / r.volumeUsd : 0, avgTradeUsd: r.trades ? r.volumeUsd / r.trades : 0,
 });
-/** The screener's kinds of trader, shared by the page and Ask Monday so both count the same wallets. */
-export const SCREEN_PRESETS: { id: (typeof ASK_PRESETS)[number]; label: string; hint: string; keep: (r: ScreenStats) => boolean; sort: (typeof ASK_SORTS)[number]; dir: 'asc' | 'desc' }[] = [
+/** A whale trades at least this much per day of the window: about 30 to 40 wallets in any window up to 30 days (Oct 2026). */
+export const WHALE_USD_PER_DAY = 100_000;
+/** The screener's kinds of trader, shared by the page and Ask Monday so both count the same wallets. `days` is the window. */
+export const SCREEN_PRESETS: { id: (typeof ASK_PRESETS)[number]; label: string; hint: string; keep: (r: ScreenStats, days: number) => boolean; sort: (typeof ASK_SORTS)[number]; dir: 'asc' | 'desc' }[] = [
   { id: 'all', label: 'Everyone', hint: 'every account with a fill in the window, by net PnL', keep: () => true, sort: 'netUsd', dir: 'desc' },
   { id: 'winners', label: 'Consistent winners', hint: 'at least 30 closes, profit factor 1.5 or better, in the money', keep: (r) => r.closes >= 30 && (r.profitFactor ?? Infinity) >= 1.5 && r.netUsd > 0, sort: 'netUsd', dir: 'desc' },
   { id: 'streaks', label: 'On a streak', hint: 'three or more profitable days in a row', keep: (r) => r.streak >= 3, sort: 'streak', dir: 'desc' },
-  { id: 'whales', label: 'Whales', hint: 'the most volume', keep: () => true, sort: 'volumeUsd', dir: 'desc' },
+  { id: 'whales', label: 'Whales', hint: 'at least $100k traded per day of the window, the most first', keep: (r, days) => r.volumeUsd >= WHALE_USD_PER_DAY * days, sort: 'volumeUsd', dir: 'desc' },
   { id: 'makers', label: 'Market makers', hint: 'at least 70% of volume made, not taken, and $100k traded', keep: (r) => r.makerShare >= 0.7 && r.volumeUsd >= 100_000, sort: 'volumeUsd', dir: 'desc' },
   { id: 'takers', label: 'Takers', hint: 'at most 20% made, at least 10 closes, by net PnL', keep: (r) => r.makerShare <= 0.2 && r.closes >= 10, sort: 'netUsd', dir: 'desc' },
   { id: 'liquidated', label: 'Liquidated', hint: 'closed by the Exchange at least once in the window', keep: (r) => r.liquidations > 0, sort: 'liquidatedUsd', dir: 'desc' },

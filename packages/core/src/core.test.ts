@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
+  PRESETS, analyticsOf, candleScale, safeReturnPath, holesOf, liquidationPrice, spanCoverage, thin, walletPerformance, windowStartDay, screenStats, type PxScreenRow, type PxTrade, balanceNeededUsd, canonicalJson, limitsFromMargin, marginFloorUsd, clampParams, fitLimits, computeQuotes, computeSignal, decileMeans, fallbackParams, markoutBps, nextReflex,
   riskGate, inventoryStage, orderJobs, quotingFor, PARTICIPATION, refTrigger, reflexTrigger, bookImbalance, bookTrigger, DEFAULT_CONFIG, depthAhead, fillTrigger, regimeOf, robustZ, shouldRequote, spearman, touchRequote, tradeSign, windowSums,
   type QuoteInput, type SmartTrade, quickAsk, retentionCohorts, streakOf, traderDistribution,
 } from './index';
@@ -490,7 +490,7 @@ describe('Perpl stats', () => {
     ]);
     expect(p.closes).toBe(4);
     expect(p.winRate).toBe(0.5);
-    expect(p.profitFactor).toBeCloseTo(25 / 20);
+    expect(p.profitFactor).toBeCloseTo(25 / 23); // the 3 paid in opening fees count as lost
     expect(p.netUsd).toBe(2); // 21 - 9 - 9 + 6 = 9 price PnL, minus 7 fees
     expect(p.longestLoss).toBe(2);
     expect(p.longestWin).toBe(1);
@@ -498,7 +498,8 @@ describe('Perpl stats', () => {
     expect(p.avgHoldMin).toBeCloseTo((1 + 2 + 2) / 3);
     expect(p.byMarket.map((m) => m.sym)).toEqual(['ETH', 'BTC']);
     expect(p.byMarket.map((m) => [m.closes, m.wins])).toEqual([[1, 1], [3, 1]]);
-    expect([p.grossWinUsd, p.grossLossUsd, p.avgWinUsd, p.avgLossUsd, p.largestWinUsd, p.largestLossUsd]).toEqual([25, 20, 12.5, 10, 20, 10]);
+    expect([p.grossWinUsd, p.grossLossUsd, p.avgWinUsd, p.avgLossUsd, p.largestWinUsd, p.largestLossUsd]).toEqual([25, 23, 12.5, 10, 20, 10]);
+    expect(p.grossWinUsd - p.grossLossUsd).toBe(p.netUsd); // so a wallet in the red never shows a profit factor above 1
     expect(p.sides.long).toEqual({ closes: 4, wins: 2, netUsd: 2, volumeUsd: 700 }); // every test trade is long
     expect(p.sides.short).toEqual({ closes: 0, wins: 0, netUsd: 0, volumeUsd: 0 });
     expect(p.daily).toEqual([{ day: 0, trades: 7, closes: 4, wins: 2, volumeUsd: 700, netUsd: 2 }]);
@@ -507,6 +508,9 @@ describe('Perpl stats', () => {
     // No losing close: no finite profit factor, and it must survive JSON as null rather than Infinity.
     const clean = walletPerformance([t(0, 'open', 0, 0), t(60_000, 'close', 5, 0)]);
     expect([clean.profitFactor, clean.winRate]).toEqual([null, 1]);
+    // The screener's rows: 10 won and 8 lost on closes, but 3 of opening fees put the net at -1.
+    const row = { closes: 2, wins: 1, grossWinUsd: 10, grossLossUsd: 8, netUsd: -1, volumeUsd: 100, makerVolumeUsd: 0, trades: 4 } as PxScreenRow;
+    expect(screenStats(row).profitFactor).toBeCloseTo(10 / 11);
   });
 
   it('splits active accounts by result and measures how concentrated volume is', () => {
@@ -532,8 +536,8 @@ describe('Perpl stats', () => {
     const active = new Map([[1, new Set([100, 101, 102])], [2, new Set([100, 101])], [3, new Set([100])], [4, new Set([101])]]);
     const c = retentionCohorts(first, active, 102, 3, [1, 2, 4]);
     expect(c.map((x) => x.size)).toEqual([0, 1, 3]);
-    expect(c[2].retained).toEqual([2 / 3, 1 / 3, null]);
-    expect(c[1].retained).toEqual([0, null, null]);
+    expect(c[2].retained).toEqual([2 / 3, null, null]); // week 102 is this week: not over yet
+    expect(c[1].retained).toEqual([null, null, null]);
     expect(c[2].week).toBe(697 * 86_400_000); // Monday 1971-11-29: weeks start on Monday
     expect(new Date(c[2].week).getUTCDay()).toBe(1);
   });
