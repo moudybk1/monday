@@ -5,7 +5,7 @@ import type { InventoryStage } from './execution';
 import type { BookLevel, GovernorParams, MarketSpec, MarketSym, Participation, Policy, PolicyLimits, QuoteTarget, ReflexState, Regime, Side } from './types';
 
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
-export const STRATEGY_VERSION = '2026-10-11.1';
+export const STRATEGY_VERSION = '2026-10-12.1';
 
 export interface StrategyConfig {
   a: number; // volatility multiplier
