@@ -20,7 +20,7 @@ const LOOPS = [
   },
   {
     name: 'Governor', cadence: 'every 15 minutes', marks: 'sparse',
-    text: 'An LLM picks a regime inside hard bounds and explains it. If it fails or answers out of range, rules take over.',
+    text: 'Kimi picks a regime inside hard bounds and explains it. If it fails or answers out of range, rules take over.',
   },
 ] as const;
 
@@ -127,6 +127,9 @@ export default async function Landing() {
                   </li>
                 ))}
               </ol>
+              <p className="mt-6 text-[14px] text-fg-2">
+                Every part in detail, and what Kimi decided on mainnet: <a href={at('/system')} className="font-medium text-fg underline underline-offset-2 hover:text-accent">System</a>.
+              </p>
             </Reveal>
           </div>
         </section>
