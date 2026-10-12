@@ -7,7 +7,6 @@ import { ButtonLink, Wordmark } from './ui';
 
 const LINKS = [
   { href: at('/#how'), label: 'How it works' },
-  { href: at('/#custody'), label: 'Custody' },
   { href: at('/system'), label: 'System' },
   { href: at('/analytics'), label: 'Analytics' },
 ];
