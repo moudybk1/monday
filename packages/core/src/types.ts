@@ -236,7 +236,6 @@ export interface MarketState {
   reflex: ReflexState | null;
   signal: MarketSignal | null;
   trades: SmartTrade[];
-  priceSeries: { t: number; p: number; bid: number | null; ask: number | null }[];
   /** False for a market dropped from the policy that still holds a position: Monday only works the exit there. */
   inPolicy: boolean;
   stage: 'normal' | 'reduce' | 'urgent';
