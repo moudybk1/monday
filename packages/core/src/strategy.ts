@@ -7,6 +7,16 @@ import type { BookLevel, GovernorParams, MarketSpec, MarketSym, Participation, P
 /** Anchored with every decision, so a record says which rules produced it. Bump it when quoting or risk rules change. */
 export const STRATEGY_VERSION = '2026-10-12.2';
 
+/** What each version changed, in a user's words, for the live track record. Add a line with every bump. */
+export const STRATEGY_NOTES: Record<string, string> = {
+  '2026-10-12.2': 'One entry per position, breakeven exit after 10 minutes, entries 3 bps clear of Hyperliquid (trial)',
+  '2026-10-12.1': 'No fixed stop per trade: the stop loss is the one the user sets',
+  '2026-10-11.1': 'Exit in profit in every mode; step aside after a fill or while Hyperliquid leads',
+  '2026-10-10.1': 'Close in profit; no quote at the best price on the side Hyperliquid has passed',
+  '2026-10-09.2': 'Quote at the best price; lean with trends',
+  '2026-10-07.2': 'First mainnet rules: risk gate and request scheduler',
+};
+
 export interface StrategyConfig {
   a: number; // volatility multiplier
   gamma: number; // inventory skew
