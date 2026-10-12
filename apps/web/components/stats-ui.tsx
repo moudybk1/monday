@@ -217,7 +217,7 @@ export function Segments<T extends string | number>({ value, options, onChange, 
   return (
     <div role="tablist" aria-label={label} className="flex rounded-sm border border-line-2 p-px">
       {options.map(([v, text]) => (
-        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)} className={cx('num relative h-[22px] px-2 text-[11px] transition-colors duration-200', v === value ? 'text-canvas' : 'text-fg-2 hover:text-fg')}>
+        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)} className={cx('num relative h-[22px] whitespace-nowrap px-2 text-[11px] transition-colors duration-200', v === value ? 'text-canvas' : 'text-fg-2 hover:text-fg')}>
           {v === value && <motion.span layoutId={`${id}-p`} aria-hidden className="absolute inset-0 rounded-[3px] bg-fg" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 600, damping: 45 }} />}
           <span className="relative">{text}</span>
         </button>

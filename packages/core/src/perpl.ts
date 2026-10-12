@@ -157,6 +157,27 @@ export interface PxScreenRow {
 }
 export interface PxScreen { days: number; at: number; rows: PxScreenRow[] }
 /** Something worth a second look: a large deposit or withdrawal, a liquidation, a large position opened or closed. */
+/**
+ * The Flow tab's groups of traders, chosen from Perpl's own record over the last 30 days. Across every account a perp's
+ * longs equal its shorts, so net positioning only means something for a group.
+ */
+export const FLOW_GROUPS = [
+  { id: 'top', label: 'Top traders', hint: 'the 100 best accounts by realised PnL over 30 days' },
+  { id: 'winners', label: 'Consistent winners', hint: '30+ closes, profit factor 1.5+ and in profit over 30 days' },
+  { id: 'whales', label: 'Whales', hint: '$100k+ traded per day over 30 days' },
+] as const;
+export type FlowGroup = (typeof FLOW_GROUPS)[number]['id'];
+/** One group's positioning per market: net buying over 1, 6 and 24 hours, and what it holds now. */
+export interface PxPositioning {
+  at: number; group: FlowGroup; accounts: number;
+  markets: { sym: string; change1hUsd: number; change6hUsd: number; change24hUsd: number; longUsd: number; shortUsd: number; holders: number }[];
+}
+/** One order on the tape: an account's fills on one market, one side, in one block. Liquidations are their own type. */
+export interface PxTapeRow {
+  ts: number; block: number; account: number; address: string | null; sym: string; long: boolean; action: PxTradeKind;
+  type: 'market' | 'limit' | 'liquidation'; size: number; price: number; usd: number; groups: FlowGroup[];
+}
+export interface PxTape { at: number; rows: PxTapeRow[] }
 export interface PxSignal { ts: number; kind: 'deposit' | 'withdraw' | 'liquidation' | 'open' | 'close'; account: number; address: string | null; sym?: string; long?: boolean; usd: number; pnl?: number }
 export interface PxFlows { days: number; depositsUsd: number; withdrawalsUsd: number; depositors: number; withdrawers: number; deposits: PxFlowRow[]; withdrawals: PxFlowRow[] }
 

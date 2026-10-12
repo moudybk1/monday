@@ -12,12 +12,14 @@ import { INPUT, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { at } from '@/lib/hosts';
 
-// Analytics, one place: Perpl's protocol and any wallet on it (public, no sign-in, so anyone can open a link),
-// side-by-side wallets, and the signed-in user's own Monday fills. The header matches the app's.
+// Analytics, one place: Perpl's protocol, what groups of its traders are doing, and any wallet on it (public, no
+// sign-in, so anyone can open a link), side-by-side wallets, and the signed-in user's own Monday fills. The header
+// matches the app's.
 
 const TABS = [
   { href: '/analytics', label: 'Perpl', on: (p: string) => p === '/analytics' || p.startsWith('/analytics/wallet') },
   { href: '/analytics/screener', label: 'Screener', on: (p: string) => p.startsWith('/analytics/screener') },
+  { href: '/analytics/flow', label: 'Flow', on: (p: string) => p.startsWith('/analytics/flow') },
   { href: '/analytics/compare', label: 'Compare', on: (p: string) => p.startsWith('/analytics/compare') },
   { href: '/analytics/monday', label: 'My Monday', on: (p: string) => p.startsWith('/analytics/monday') },
 ];
