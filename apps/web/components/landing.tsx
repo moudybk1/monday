@@ -132,7 +132,7 @@ function scene(step: number): MarketState {
       sym: 'BTC', at: T0, stale: false, S: burst ? 2.6 : 0.2,
       w5: burst ? win(640_000, 2.9, 14) : win(38_000, 0.3, 4), w15: burst ? win(710_000, 2.2, 22) : win(-21_000, -0.1, 11), w60: burst ? win(820_000, 1.1, 51) : win(96_000, 0.2, 40),
     },
-    trades: [], priceSeries: [],
+    trades: [],
     inPolicy: true, stage: 'normal', why: '', quotedPct: null, quoteAgeMs: { bid: null, ask: null }, basisBps: null,
     aheadUsd: { bid: 2_045, ask: pulled ? null : 1_790 }, tape: [], day: { volumeUsd: null, changePct: null, high: null, low: null }, openInterestUsd: 0, fills1h: 0, markout1mBps: null, trend5mBps: 0,
   };

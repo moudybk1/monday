@@ -114,7 +114,9 @@ export async function buildApi(deps: ApiDeps) {
   const app = Fastify({ trustProxy: ['loopback', 'uniquelocal'], logger: { level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'] } });
   await app.register(cookie);
   // Clients only ever send a one-line hello; anything bigger is not ours.
-  await app.register(websocket, { options: { maxPayload: 4_096 } });
+  // Compressed frames: the terminal's state for 11 markets is ~100 KB of JSON a second and deflates about 5x. Uncompressed it
+  // outran slower connections and the terminal lagged (2026-10-12).
+  await app.register(websocket, { options: { maxPayload: 4_096, perMessageDeflate: true } });
 
   const nonces = new Map<string, number>();
   /** Signed-in live streams by user, so signing out can end them. */

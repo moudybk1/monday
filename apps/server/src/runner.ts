@@ -101,7 +101,7 @@ interface MarketRt {
   min: MinuteAgg | null;
   bothHist: number[];
   lastDecisionId: number | null;
-  series: MarketState['priceSeries'];
+  series: { t: number; p: number; bid: number | null; ask: number | null }[]; // one sample every 5 s, for the trend term
   bandAlertAt: number;
 }
 
@@ -1429,7 +1429,7 @@ export class Runner {
         hlMid: this.hlShown(sym, snap.mark),
         position: { size: pos.size, entryPrice: pos.entryPrice, notionalUsd: pos.size * snap.mark, unrealizedUsd: pos.size ? pos.size * (snap.mark - pos.entryPrice) : 0 },
         params: rt.params, paramsSource: rt.paramsSource, reflex: quoting && rt.reflex && rt.reflex.until > now ? rt.reflex : null,
-        signal: this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(sym), trades: this.deps.collector.latestTrades(sym, 14), priceSeries: rt.series,
+        signal: this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(sym), trades: this.deps.collector.latestTrades(sym, 14),
         inPolicy: this.policy.markets.includes(sym), stage: rt.stage, why: rt.why, quotedPct: this.quotedPct(rt), quoteAgeMs: { bid: ageOf('bid'), ask: ageOf('ask') },
         basisBps: rt.basis.n ? rt.basis.bps : null,
         aheadUsd: { bid: aheadOf('bid'), ask: aheadOf('ask') }, tape: tapeOf(feed).prints.get(sym) ?? [],
@@ -1443,7 +1443,7 @@ export class Runner {
       const a = anchorOf(d.id);
       return a ? { ...d, anchor: a.status, txHash: a.tx ?? d.txHash, onchainId: a.onchainId ?? d.onchainId } : d;
     });
-    // Full snapshot every second per subscriber. Send diffs if bandwidth ever matters.
+    // Full snapshot every second per subscriber, compressed on the socket (api.ts). Send diffs if that stops being enough.
     return {
       at: now, sim: this.deps.driver.kind === 'sim', paper: this.deps.driver.kind === 'paper', status: this.status, killReason: this.killReason,
       closing: this.status !== 'quoting' ? this.owed : null, startedAt: this.startedAt, policy: this.policy, // owed is set for the whole of a cleanup
