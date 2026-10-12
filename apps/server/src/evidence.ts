@@ -196,6 +196,9 @@ export async function computeEvidence(driver: VenueDriver, collector: Collector)
     }
     // Point-in-time rule: a trade counts from the moment we could have seen it.
     const flows = collector.minuteFlows(sym, from - lag, end - lag);
+    // No Smart Trader trade in the window (markets added on 2026-10-11, or ones they do not trade on Hyperliquid): there is
+    // nothing to study, and a correlation of 0.00 from 0.00 to 0.00 would read as a result.
+    if (!flows.some((x) => x !== 0)) continue;
     const offset = closes.length - candles.length; // leading minutes with no price yet
     const r = await offThread({ sym, spec, candles, closes, flows, offset });
     out.studies[sym] = r.study;
