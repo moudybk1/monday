@@ -9,6 +9,7 @@ Built for Monad Metropolis, Track 01, with entries for Perpl's Best Analytics / 
 - [mondaytrade.xyz](https://mondaytrade.xyz): what Monday is and how it works
 - [app.mondaytrade.xyz](https://app.mondaytrade.xyz): the agent. Setup, Terminal, and a public record of every decision
 - [analytics.mondaytrade.xyz](https://analytics.mondaytrade.xyz): Perpl analytics, open to anyone, no wallet needed
+- [mondaytrade.xyz/system](https://mondaytrade.xyz/system): how every part works, and what Kimi decided on mainnet
 
 ## What is in it
 
