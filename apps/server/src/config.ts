@@ -111,4 +111,3 @@ if (!config.sessionSecret) throw new Error('SESSION_SECRET is required outside t
 // demo keys stored in a paper database still open after a restart. In production a random key dies with the process.
 if (!config.masterKey) config.masterKey = prod ? randomBytes(32).toString('base64') : 'monday-dev-master-key-simulated-orders-only';
 
-export type Config = typeof config;

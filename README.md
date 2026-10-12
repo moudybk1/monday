@@ -1,8 +1,29 @@
 # Monday
 
-An AI trading agent that market-makes on [Perpl](https://perpl.xyz)'s on-chain order book from the user's own account, and steps aside when Nansen-labelled smart money moves on Hyperliquid. Funds stay in the user's Perpl account; the agent holds a trade-scoped API key that can never withdraw.
+An AI trading agent that market-makes on [Perpl](https://perpl.xyz)'s on-chain order book from the user's own account, and steps aside when Smart Traders (Nansen-labelled smart money) move on Hyperliquid. Funds stay in the user's Perpl account; the agent holds a trade-scoped API key that can never withdraw. Alongside it: a public Perpl analytics dashboard with an AI chat.
 
-Built for Monad Metropolis, Track 01.
+Built for Monad Metropolis, Track 01, with entries for Perpl's Best Analytics / Risk Tool bounty and the Kimi bounty.
+
+**Live on Monad mainnet (real funds):**
+
+- [mondaytrade.xyz](https://mondaytrade.xyz): what Monday is and how it works
+- [app.mondaytrade.xyz](https://app.mondaytrade.xyz): the agent. Setup, Terminal, and a public record of every decision
+- [analytics.mondaytrade.xyz](https://analytics.mondaytrade.xyz): Perpl analytics, open to anyone, no wallet needed
+
+## What is in it
+
+**The agent.** The user sets limits (margin, leverage, markets, a daily stop loss, optional take profit) and Monday quotes both sides of Perpl's book from their account. One entry per position: once a position is open only its exit is quoted, at the entry plus both fees and 1 bp, dropping to breakeven after 10 minutes. New entries stay 3 bps on the safe side of Hyperliquid's price, which Perpl follows. Reflexes step a quote aside when Smart Traders burst, when Hyperliquid moves first, or right after a fill. A position closes at market at a quarter of the user's stop loss or after an hour; the stop loss itself stops Monday for the day. Kill cancels every order and closes every position on the account.
+
+**Perpl analytics.** Every Perpl trade since launch, indexed from Envio HyperSync for all 11 markets:
+
+- Protocol: volume, open interest, TVL, fees and active traders over 24h, 7d, 30d and all time; daily series; collateral flows; per-market funding and long/short; liquidation map, positions closest to liquidation, largest positions and the latest liquidations; who makes money (cohorts), retention, when Perpl trades, signals.
+- Wallets: search by address or account number; equity, open positions with liquidation price, trade history with realised PnL, win rate, profit factor, drawdown, streaks, hold time, best and worst markets, rank among active accounts, and what stands out. Compare up to four wallets side by side. A screener with presets (winners, streaks, whales, makers, takers, liquidated, losers) and thresholds, and leaderboards for 1, 7, 30 and 90 days.
+- My Monday: the agent's own fills, fill quality and results, for a signed-in user.
+
+**Kimi.** Kimi (`kimi-k3`, through b.ai's OpenAI-compatible API) is the model in two places:
+
+- **Governor.** Every 15 minutes per market Kimi reads a snapshot (Smart Trader flow, volatility, funding, Monday's position, PnL and fill quality, the user's limits, and what the fixed rules would set) and answers with bounded parameters: spread, size, lean, position cap, whether to quote, a regime and a plain-language reason. Code validates and clamps every value, hashes the decision with its evidence and publishes it at `/decisions/<id>`. If Kimi is slow or down, the rules answer; Kimi never places an order.
+- **Ask Monday**, the chat on the analytics pages. Rules answer common questions at once. Kimi turns free-form questions into a structured query that the code answers with real figures, writes open answers from a sheet of live figures only (a reply quoting a dollar or percent figure that is not on it is discarded), and writes the "Explain in plain words" wallet summaries.
 
 ## Run it
 
@@ -61,7 +82,7 @@ Put the address in `MONDAY_REGISTRY_ADDRESS`, fund the logging wallet with test 
 
 `NETWORK=mainnet` switches the chain (143), the RPC default, the explorer and every Perpl address together. With `VENUE=perpl` that means live orders with real collateral.
 
-**Read this first.** The order path (sign-in, place, change, cancel, flatten) was written from Perpl's docs and has never placed a real order. Run it on testnet with a real key before mainnet: it is free and it is the same code.
+Monday has traded real funds on mainnet since 2026-10-08. Try changes in paper mode first (`VENUE=paper NETWORK=mainnet`): same prices and book, simulated orders.
 
 Guards that apply on real funds:
 
@@ -70,11 +91,11 @@ Guards that apply on real funds:
 | `ALLOW_REAL_FUNDS=yes` | The server refuses to start on mainnet with the live venue until this is set. |
 | RPC check | At boot the server asks `MONAD_RPC_URL` for its chain id and stops if it is not the network you named. |
 | Policy caps | `CAP_QUOTE_USD`, `CAP_INVENTORY_USD`, `CAP_DAILY_LOSS_USD` bound every user's policy. Defaults: $50, $250, $25. |
-| Acknowledgement | A user must tick "this trades real funds" before the first start. The header shows "Mainnet: real funds" at all times. |
+| Acknowledgement | A user must tick "this trades real funds" before the first start. The header shows a green "Monad Mainnet" badge at all times. |
 | No simulated signals | Without a Nansen key there is no smart-money signal: the regime rests on volatility alone, and nothing simulated ever drives a live order. |
 | Collateral rule | A policy needs the margin for its full inventory at its leverage plus the whole daily loss limit. The High leverage preset (10x) and the margin x leverage sizer obey it, so the loss kill fires before Perpl's maintenance margin. |
 | Margin floor | Equity below the margin the policy needs kills and flattens, so losses carried across days cannot walk into a liquidation. |
-| Existing limits | Price band of 1% around the oracle, inventory and leverage checks on every order, daily loss kill, stale-data kill, three-failures kill. |
+| Existing limits | Price band of 1% around the oracle, inventory and leverage checks on every order, daily loss kill, stale-data kill, three-failures kill. The loss limits read cash that fills explain, so the gap between Perpl's cash and position messages after a fill cannot fire them. |
 
 Suggested order:
 
@@ -103,7 +124,7 @@ infra           Dockerfile, docker-compose, Caddyfile
 
 Three layers, as in PRD section 10:
 
-- **Engine**, every second. Fair price (Perpl blended halfway toward Hyperliquid's mid, ignored past a 50 bps gap), spread, inventory skew, smart-money skew, order-book skew, quote size capped at 5% of an average hour's volume, PostOnly safety. In the calm and active regimes each quote then joins the best price, or betters it by one tick when the spread has room for both sides to, never closer to fair price than the maker fee (0.45 bps). A quote at the front keeps its place in line until it is 0.5 bps behind the best or more than $3,000 rests ahead of it, because every requote goes to the back of the queue. Deterministic and unit tested.
+- **Engine**, every second. Fair price (Perpl blended toward Hyperliquid's mid by the user's reference mode, ignored past a 50 bps gap), spread, inventory skew, smart-money skew, order-book skew, quote size capped at a share of an average hour's volume (1, 5 or 10%), PostOnly safety. One entry per position, the exit in profit or at breakeven after 10 minutes, and entries 3 bps clear of Hyperliquid (see above). In the calm and active regimes each quote then joins the best price, or betters it by one tick when the spread has room for both sides to, never closer to fair price than the maker fee (0.45 bps). A quote at the front keeps its place in line until it is 0.5 bps behind the best or more than $3,000 rests ahead of it, because every requote goes to the back of the queue. Deterministic and unit tested.
 - **Reflex**, next tick after a burst. Pulls or widens the threatened side for five minutes. Two cheaper guards run under it. A move in the reference price (Hyperliquid's mid, which Perpl follows: 1.5 bps in 3 seconds widens, 3 bps pulls) steps the side the move runs into aside for 6 seconds, before Perpl's book catches up. A trend in the mark over the last five minutes (past 4 bps) leans the centre with it and keeps the side that would add against it off the touch, because in a slide the bids are the fills that keep losing. When smart money is quiet, a lopsided Perpl book (top 5 levels, nine tenths one side) widens the threatened side for 60 seconds; it never pulls it.
 - **Governor**, every 15 minutes. Sets bounded parameters and a plain-language reason. LLM output is schema-validated and clamped; on any failure the rules answer.
 
@@ -137,11 +158,13 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 | Strategy math, signal engine, statistics | Unit tested. |
 | Full flow on the simulator: onboarding, quoting, fills, markouts, reflex, pause, kill, policy change | Run end to end in a browser. |
 | Paper mode on mainnet data: best-price quoting, queue position, fills | Run live (2026-10-09): 12 fills in two minutes across BTC, ETH and SOL with no Nansen key. |
+| Live trading on mainnet | Since 2026-10-08 with real funds: quoting, fills, exits, the daily stop, Kill and flatten, restarts that adopt resting quotes. |
+| Perpl analytics | Live: HyperSync indexer over every market, public API and pages, Ask Monday. |
 | `MondayRegistry` | 25 Foundry tests pass. Not deployed. |
 | Perpl market data, candles, account lookup | Run against live testnet. Market data and specs also loaded read-only from mainnet. |
-| Perpl trading (sign-in, orders, fills, flatten) | Written from the official docs and replayed offline against documented frames. Key validation (trading sign-in) has succeeded live on mainnet. No order has been placed yet. Expect to debug orders on first use. |
+| Perpl trading (sign-in, orders, fills, flatten) | Live on mainnet, and replayed offline against documented frames in the tests. |
 | Nansen client | Run live with a real key: 7-day backfill and polling. |
-| LLM governor | Run live through an OpenAI-compatible API (b.ai) and through Claude Code headless (`LLM_PROVIDER=claude-code`, Opus 5.5) in multi-hour paper runs. The Anthropic SDK path has not been called with a key. |
+| LLM governor | Live on mainnet with Kimi (`kimi-k3` through b.ai). Also run through Claude Code headless (`LLM_PROVIDER=claude-code`) in paper runs. The Anthropic SDK path has not been called with a key. |
 | On-chain log queue and wallet-signed policy | Written against the contract ABI. Never run against a deployed registry. |
 
 ## Where this differs from the PRD
@@ -149,12 +172,12 @@ cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl testne
 - **One server process and SQLite** instead of three services and Postgres. Table names follow PRD section 14, so moving is mechanical. Simulated mode keeps the database in memory.
 - **npm workspaces** instead of pnpm.
 - **Fees.** Perpl's docs charge the fee on every fill, closes included. PRD 11.8 says reducing fills are free.
-- **Leverage caps** are 15x BTC, 12x ETH, 10x SOL per the live context.
+- **Leverage caps** come per market from Perpl's live context.
 - **Collateral token.** Live testnet reports AUSD `0xa9012a055bd4e0edff8ce09f960291c09d5322dc`, not the address in PRD 11.1.
 - **One-Click Trading** is a third prerequisite the PRD does not list.
 - **Policy changes** take effect only after the wallet-signed `setPolicy` is visible on Monad, when a registry is configured (PRD 17.4).
 - **Nansen lean** (`k`) is switched on per market by the event study's own decision rule, and is zero until the study supports it.
-- **Not built:** Follow mode, Ask Monday chat, in-app key enrollment, pooled vault, x402. All are P1 or P2 in the PRD.
+- **Not built:** Follow mode, in-app key enrollment, pooled vault, x402. All are P1 or P2 in the PRD.
 
 ## Deploy
 
@@ -164,12 +187,14 @@ Host it where Perpl serves users (not the US or the UK, for example; Singapore o
 
 ```bash
 git clone https://github.com/moudybk1/monday.git && cd monday
-cp .env.example .env     # fill it in: DOMAIN, WEB_ORIGIN and API_PUBLIC_URL (https://<DOMAIN>), SESSION_SECRET, MONDAY_MASTER_KEY
+cp .env.example .env     # fill it in: DOMAIN, WEB_ORIGIN (https://app.<DOMAIN>), API_PUBLIC_URL, SITE_URL, APP_URL, ANALYTICS_URL, SESSION_SECRET, MONDAY_MASTER_KEY
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 ```
 
-Point A records for both `DOMAIN` and `analytics.DOMAIN` at the machine and open ports 80 and 443; Caddy fetches the
-certificates. `analytics.DOMAIN` serves the public analytics; sign-in and the trading app stay on `DOMAIN`. Data lives in
+Point A records for `DOMAIN`, `app.DOMAIN` and `analytics.DOMAIN` at the machine and open ports 80 and 443; Caddy fetches
+the certificates. `DOMAIN` serves the site, `app.DOMAIN` sign-in and the agent, `analytics.DOMAIN` the public analytics.
+On a machine that already runs Caddy, add `infra/docker-compose.host-caddy.yml` and use `infra/host-caddy.caddy`. Phone
+wallets need `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (free at cloud.reown.com, with the domains allowlisted). Data lives in
 `apps/server/data` on the host, so a rebuild keeps it.
 
 Back up the account database daily with `scripts/backup-db.sh` (needs `sqlite3`; the cron line is in the script) and

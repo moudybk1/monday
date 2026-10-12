@@ -9,12 +9,11 @@ import { generateSiweNonce, parseSiweMessage } from 'viem/siwe';
 import { z } from 'zod';
 import {
   MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, policyForHash, usd,
-  type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type MarketSym, type Me, type Policy, type TrackRecord, type TrackRow,
+  type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type Me, type Policy,
 } from '@monday/core';
 import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain';
 import { config } from './config';
 import { db, seal, upsertUser } from './db';
-import { evidence } from './evidence';
 import { llmEnabled } from './governor';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
@@ -116,7 +115,8 @@ export async function buildApi(deps: ApiDeps) {
   // Clients only ever send a one-line hello; anything bigger is not ours.
   // Compressed frames: the terminal's state for 11 markets is ~100 KB of JSON a second and deflates about 5x. Uncompressed it
   // outran slower connections and the terminal lagged (2026-10-12).
-  await app.register(websocket, { options: { maxPayload: 4_096, perMessageDeflate: true } });
+  // Fastest zlib level: each socket compresses on its own, and level 1 still shrinks this JSON about 4x for a fraction of the CPU.
+  await app.register(websocket, { options: { maxPayload: 4_096, perMessageDeflate: { zlibDeflateOptions: { level: 1 } } } });
 
   const nonces = new Map<string, number>();
   /** Signed-in live streams by user, so signing out can end them. */
@@ -209,19 +209,6 @@ export async function buildApi(deps: ApiDeps) {
     minDepositUsd: deps.driver.minDepositUsd(), llm: llmEnabled, specs: deps.driver.feed.specs(),
   }));
   app.get('/api/health', async () => deps.health());
-  app.get('/api/evidence', async () => evidence() ?? { pending: true });
-  // Every fill Monday made, by the rules that made it: totals only, no account or wallet. A close is a fill that reduced a
-  // position (older rows only know their PnL: a non-zero one was a close).
-  const trackRows = db.prepare(`
-    select coalesce(json_extract(ctx, '$.strategy'), 'unknown') version, min(ts) "from", max(ts) "to", count(distinct user_id) accounts,
-      group_concat(distinct sym) markets, count(*) fills, sum(is_maker) makerFills, sum(price * size) volumeUsd,
-      sum(coalesce(json_extract(ctx, '$.reduces'), realized <> 0)) closes, sum(coalesce(json_extract(ctx, '$.reduces'), realized <> 0) and realized > 0) wins,
-      sum(realized) realizedUsd, sum(fee) feesUsd, avg(case when is_maker = 1 then markout_5m end) markout5mBps, count(case when is_maker = 1 then markout_5m end) markoutN
-    from fills where coalesce(external, 0) = 0 group by 1 order by 2 desc`);
-  app.get('/api/track-record', async (): Promise<TrackRecord> => ({
-    at: Date.now(), networkName: config.networkName, realFunds: config.realFunds,
-    rows: (trackRows.all() as (Omit<TrackRow, 'markets'> & { markets: string })[]).map((r) => ({ ...r, markets: r.markets.split(',') })),
-  }));
   app.get('/api/public/preview', async () => deps.house()?.state() ?? null);
   // Candles for the price chart, 1m to 1D. Cached for 30 s per market and resolution at the most bars anyone may ask for,
   // so any number of viewers costs Perpl one request per window and the cache holds at most 18 entries.

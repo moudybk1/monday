@@ -72,7 +72,7 @@ function progress(now: number) {
 const overview = cached(10_000, async (): Promise<PxOverview> => {
   const now = Date.now();
   const [m, t, dv, f, tvlUsd, accts, hl, positions] = await Promise.all([
-    meta(), ticker(), dailyVolume(), funding(), tvl(), accounts(), hyperliquidVolume().catch(() => null), allPositions().catch(() => [] as PxPosition[]),
+    meta(), ticker(), dailyVolume(), funding().catch(() => null), tvl(), accounts(), hyperliquidVolume().catch(() => null), allPositions().catch(() => [] as PxPosition[]),
   ]);
 
   // Daily volume from Perpl's candles: every day since launch.
@@ -156,9 +156,10 @@ const overview = cached(10_000, async (): Promise<PxOverview> => {
     markets: [...m.markets.values()].map((mk) => {
       const x = t.get(mk.id);
       const c = counts.get(mk.sym) ?? { longs: 0, shorts: 0 };
+      const rate = f?.get(mk.id);
       return {
         id: mk.id, sym: mk.sym, mark: x?.mark ?? 0, change24hPct: x && x.prev > 0 ? (x.mark / x.prev - 1) * 100 : null, volume24hUsd: x?.volume24hUsd ?? 0,
-        openInterestUsd: x ? x.oi * x.mark : 0, fundingRate: f.get(mk.id) ?? 0, fundingIntervalMin: mk.fundingIntervalMin, longs: c.longs, shorts: c.shorts,
+        openInterestUsd: x ? x.oi * x.mark : 0, fundingRate: rate ?? 0, fundingUnknown: rate == null || undefined, fundingIntervalMin: mk.fundingIntervalMin, longs: c.longs, shorts: c.shorts,
         hlVolume24hUsd: hl?.get(mk.sym) ?? null,
       };
     }).sort((a, b) => b.volume24hUsd - a.volume24hUsd),
@@ -378,7 +379,7 @@ function leaderboard(days: number, sort: 'net' | 'volume' | 'loss') {
     const order = sort === 'volume' ? 'volume desc' : sort === 'loss' ? 'net asc' : 'net desc';
     // Losers lost: on a quiet day the bottom 25 by PnL would otherwise include accounts in profit.
     board = cached(30_000, async () => all<{ account: number; volume: number; net: number; trades: number }>(
-      `select account, sum(volume) volume, sum(net) net, sum(trades) trades from px_day where day >= ? and account != 0 group by account ${sort === 'loss' ? 'having net < 0 ' : ''}order by ${order} limit 25`,
+      `select account, sum(volume) volume, sum(net) net, sum(trades) trades from px_day where day >= ? and account != 0 group by account ${sort === 'loss' ? 'having sum(net) < 0 ' : ''}order by ${order} limit 25`,
       windowStartDay(Date.now(), days),
     ).map((t) => ({ account: t.account, address: addressById(t.account), volumeUsd: t.volume, netUsd: t.net, trades: t.trades })));
     boards.set(key, board);

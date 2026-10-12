@@ -63,7 +63,8 @@ export function normalise(o: Record<string, unknown>): Record<string, unknown> {
 
 const answers = new Map<string, { at: number; v: Promise<AskAnswer> }>();
 const CACHE_MS = 10 * 60_000;
-// Kimi k2.6 on b.ai needs 25 to 50 s for these prompts (measured 2026-10-11); the bar says it is still thinking.
+// With thinking off (see ./llm) Kimi k2.6 on b.ai answers these in about 4 s (measured 2026-10-12); the timeouts leave
+// room for a slow provider, and the bar says it is still thinking.
 // STATS_ASK_MODEL lets the bar use a quicker model than the summaries without touching the governor's setting.
 const ASK_TIMEOUT_MS = Number(process.env.STATS_ASK_TIMEOUT_MS) || 60_000;
 const EXPLAIN_TIMEOUT_MS = Number(process.env.STATS_EXPLAIN_TIMEOUT_MS) || 75_000;

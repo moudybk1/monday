@@ -71,7 +71,7 @@ export class SimWorld implements VenueDriver, MarketFeed {
       };
       c.cur.o = c.cur.h = c.cur.l = c.cur.c = c.price;
       this.coins[sym] = c;
-      // 7 days of history at one-minute steps, so z-score baselines and the evidence page have data on boot.
+      // 7 days of history at one-minute steps, so z-score baselines and the Smart Trader study have data on boot.
       for (let t = end - HISTORY_MS; t < end; t += 60_000) this.step(c, t, 60);
     }
     this.now = end;

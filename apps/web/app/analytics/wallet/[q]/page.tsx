@@ -33,7 +33,7 @@ export default function WalletPage() {
 
   if (w.isPending) return <div className="grid gap-1 pt-1"><Skeleton className="h-14" /><Skeleton className="h-[74px]" /><Skeleton className="h-64" /></div>;
   if (w.error instanceof ApiError && (w.error.status === 404 || w.error.code === 'not_found')) return <div className="pt-2"><Notice>No Perpl account for <span className="num">{q}</span>. Search a wallet address (0x…) or an account number.</Notice></div>;
-  if (w.isError || !w.data) return <div className="pt-2"><Notice tone="warn">Could not load this wallet. {w.error instanceof Error ? w.error.message : ''}</Notice></div>;
+  if (!w.data) return <div className="pt-2"><Notice tone="warn">Could not load this wallet. {w.error instanceof Error ? w.error.message : ''}</Notice></div>;
   const d = w.data;
   const p = d.performance;
   const upnl = d.positions.reduce((s, x) => s + x.upnl, 0);

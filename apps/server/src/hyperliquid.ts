@@ -1,6 +1,6 @@
 // Hyperliquid over one public WebSocket, no key. Two things come from it:
-// - Mid prices for the blended reference (Tread's Blend mode): Perpl's book is thin, Hyperliquid is where BTC, ETH and
-//   SOL perps are priced.
+// - Mid prices for the blended reference (Tread's Blend mode): Perpl's book is thin, Hyperliquid is where these perps are
+//   priced.
 // - The trade tape. Every print names its buyer and seller, so the collector sees a wallet Nansen labels as smart money
 //   trade within a second (Nansen's own feed arrives one to four minutes later).
 // Never started on the simulator, whose prices are made up.

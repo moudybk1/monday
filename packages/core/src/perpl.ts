@@ -60,6 +60,8 @@ export interface PxMarketRow {
   volume24hUsd: number;
   openInterestUsd: number;
   fundingRate: number; // per interval, fraction
+  /** Perpl's funding could not be read: fundingRate is then 0 as a placeholder, not a rate. */
+  fundingUnknown?: true;
   fundingIntervalMin: number;
   longs: number;
   shorts: number;
@@ -496,30 +498,39 @@ export type AskIntent =
 export type AskAnswer = { intent: AskIntent; source: 'rules' | 'model' | 'none'; dropped?: string };
 
 const WALLET_RE = /^(0x[0-9a-f]{40}|#?\d{1,8})$/i;
-// $1,000,000, 1.5m, $100k: groups are the digits, the decimals and the suffix.
-const AMOUNT = String.raw`\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?([kmb])?\b`;
+/** What a size's suffix multiplies by. Ask Monday's check of the model's figures reads sizes the same way. */
+export const AMOUNT_SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9 };
+// $1,000,000, 1.5m, $100k, 2 million: groups are the digits, the decimals and the suffix.
+const SIZE = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s?(${Object.keys(AMOUNT_SCALE).join('|')})?\b`;
+const AMOUNT = String.raw`\$?\s*${SIZE}`;
 const OVER = String.raw`(?:over|above|more than|at least|min(?:imum)?(?:\s+of)?)`;
 // The size that belongs to "volume": just after "volume over", just before "volume", else the one dollar amount.
-const VOLUME_AT = [new RegExp(String.raw`\bvolume\s+(?:of\s+)?${OVER}\s+${AMOUNT}`), new RegExp(String.raw`${AMOUNT}\+?\s+(?:(?:usd|dollars?|in|of)\s+)*volume\b`), /\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?([kmb])?\b/];
+const VOLUME_AT = [new RegExp(String.raw`\bvolume\s+(?:of\s+)?${OVER}\s+${AMOUNT}`), new RegExp(String.raw`${AMOUNT}\+?\s+(?:(?:usd|dollars?|in|of)\s+)*volume\b`), new RegExp(String.raw`\$\s*${SIZE}`)];
 const volumeOf = (s: string) => {
   const m = VOLUME_AT.map((re) => re.exec(s)).find(Boolean);
-  return m ? Number(m[1].replace(/,/g, '') + (m[2] ?? '')) * (m[3] === 'b' ? 1e9 : m[3] === 'm' ? 1e6 : m[3] === 'k' ? 1e3 : 1) : undefined;
+  return m ? Number(m[1].replace(/,/g, '') + (m[2] ?? '')) * (AMOUNT_SCALE[m[3]] ?? 1) : undefined;
 };
 
 // ponytail: a fixed list; a newly listed ticker that is also an English word needs adding here.
 const WORD_TICKERS = new Set(['NEAR', 'UNI', 'LIT', 'PUMP', 'HYPE', 'MON']);
-const MARKET_WORD = /^\s+(funding|price|market|perps?|volume|oi|open interest|longs|shorts|chart)\b/i;
+const MARKET_WORD = String.raw`(?:funding|price|market|perps?|volume|oi|open interest|longs?[ -]?shorts?|longs|shorts|skew|fees|liquidations|traders|chart)`;
+const WORD_AFTER = new RegExp(String.raw`^(?:['’]s)?\s+${MARKET_WORD}\b`, 'i');
+const WORD_BEFORE = new RegExp(String.raw`\b${MARKET_WORD}\s+((?:on|for|in)\s+)?$`, 'i');
 /**
  * The market a question names, the first one in the text. A ticker that is also a word ("funding near zero") counts only
- * with evidence: written in capitals, with a $, followed by a market word, or the whole question. Reads the raw text.
+ * with evidence: written in capitals, with a $, followed by a market word ("hype skew", "hype's funding"), after one
+ * ("funding on mon", or "skew mon" as the last word), or the whole question ("show me near."). Reads the raw text.
  */
 export function marketIn(raw: string, markets: string[]): string | undefined {
   let first: { sym: string; at: number } | undefined;
   for (const sym of markets) {
     const esc = sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     for (const m of raw.matchAll(new RegExp(`(?<![\\w$#.])(\\$?)(${esc})(?![\\w#])`, 'gi'))) {
-      const meant = !WORD_TICKERS.has(sym) || m[1] || m[2] === sym || MARKET_WORD.test(raw.slice(m.index + m[0].length))
-        || new RegExp(`^\\s*(show me\\s+)?\\$?${esc}\\s*\\??\\s*$`, 'i').test(raw);
+      const after = raw.slice(m.index + m[0].length);
+      const before = WORD_BEFORE.exec(raw.slice(0, m.index));
+      const last = /^[\s?!.]*$/.test(after);
+      const meant = !WORD_TICKERS.has(sym) || m[1] || m[2] === sym || WORD_AFTER.test(after) || (before && (before[1] || last))
+        || (last && /^\s*(show me\s+)?$/i.test(raw.slice(0, m.index)));
       if (!meant) continue;
       if (!first || m.index < first.at) first = { sym, at: m.index };
       break;
@@ -549,7 +560,8 @@ export function quickAsk(raw: string, markets: string[], loose = false): AskInte
   const sym = marketIn(q, markets);
   if (sym && q.trim().toUpperCase() === sym) return { kind: 'market', sym };
   if (!loose && (t.trim().split(' ').length > 8 || WONDERING.test(t))) return null;
-  const ids = q.match(/0x[0-9a-f]{40}|(?<![\w.$])#?\d{1,8}(?![\w.%])/gi)?.map((x) => x.replace(/^#/, '')) ?? [];
+  // "over 30 days" is a window, not account 30.
+  const ids = q.replace(/\b\d+\s*(?:d|days?|w|weeks?|months?|h|hours?)\b/gi, ' ').match(/0x[0-9a-f]{40}|(?<![\w.$])#?\d{1,8}(?![\w.%])/gi)?.map((x) => x.replace(/^#/, '')) ?? [];
   if (/\b(compare|vs|versus|against)\b/.test(t) && ids.length >= 2) return { kind: 'compare', wallets: ids.slice(0, 4) };
 
   const days: AskDays | undefined = /\btoday\b/.test(t) ? 1 : /\b(7 ?d|week|7 days)\b/.test(t) ? 7 : /\b(30 ?d|month|30 days)\b/.test(t) ? 30 : /\b(90 ?d|quarter|3 months|90 days)\b/.test(t) ? 90 : undefined;

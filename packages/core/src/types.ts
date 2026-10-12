@@ -331,7 +331,7 @@ export const REGISTRY_ABI = [
   'event KillLogged(address indexed user, uint8 reason, bytes32 evidenceHash)',
 ] as const;
 
-// ---- evidence page (PRD 19) ----
+// ---- evidence: the Smart Trader study that decides the lean (PRD 19) ----
 export interface EventStudy {
   sym: MarketSym;
   samples: number;
@@ -374,33 +374,6 @@ export interface Evidence {
   policy: PolicyLimits;
   studies: Partial<Record<MarketSym, EventStudy>>;
   replays: Partial<Record<MarketSym, Replay>>;
-}
-
-/** Monday's own fills on the venue, grouped by the strategy version that made them. Trades placed by hand are left out. */
-export interface TrackRow {
-  version: string;
-  from: number;
-  to: number;
-  accounts: number;
-  markets: string[];
-  fills: number;
-  makerFills: number;
-  volumeUsd: number;
-  /** Fills that reduced or closed a position, and those of them that realised a profit. */
-  closes: number;
-  wins: number;
-  realizedUsd: number;
-  feesUsd: number;
-  /** Mean price move five minutes after a maker fill, in the maker's favour. Null without samples. */
-  markout5mBps: number | null;
-  markoutN: number;
-}
-
-export interface TrackRecord {
-  at: number;
-  networkName: string;
-  realFunds: boolean;
-  rows: TrackRow[];
 }
 
 export interface AppConfig {

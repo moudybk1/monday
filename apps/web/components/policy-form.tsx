@@ -110,7 +110,7 @@ export const draftMargin = (d: PolicyDraft) => (d.margin != null ? parse(d.margi
 export const takeProfitUsd = (d: PolicyDraft) => (d.takeProfitPct ? Math.floor(draftMargin(d) * d.takeProfitPct * 100) / 100 : null);
 
 /**
- * The bot settings editor, laid out like Tread's bot form: the inputs on the left, what they add up to on the right
+ * The Setup editor, laid out like Tread's bot form: the inputs on the left, what they add up to on the right
  * next to the page's own action (`children`). Margin, leverage, daily loss and markets size the limits; typing a
  * position limit instead makes the margin follow it, so the two always agree.
  */

@@ -211,6 +211,8 @@ it('margin moving between Perpl\'s cash and position messages is not a loss; a r
     connect: async () => v.account(), close() {}, connected: () => true, quote: () => null, setQuote: async () => {}, cancelAll: async () => {}, flatten: async () => { v.size = 0; },
     on: (e: string, cb: never) => { if (e === 'fill') onFill = cb; },
     account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+    settling: () => v.pending,
+    pending: false,
   };
   const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
   const deps = { driver, collector: new Collector(null), k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xmgn', accountId: 1, token: 't', secret: 's' }) };
@@ -234,6 +236,17 @@ it('margin moving between Perpl\'s cash and position messages is not a loss; a r
   v.balance += 2;
   ticks(20);
   expect(r.state().pnl.lossLimitUsedPct).toBeCloseTo(1); // the $0.01 fee, of a $1 limit
+
+  // The position message 20 s late, longer than the 15 s a cash move needs to be booked: still not a withdrawal.
+  onFill({ ...fill, id: 'perpl:1:0xm:3:3', side: 'bid', realizedUsd: 0, feeUsd: 0 });
+  v.pending = true;
+  v.balance -= 2;
+  ticks(20);
+  v.pending = false;
+  v.balance += 2;
+  ticks(20);
+  expect(r.state()).toMatchObject({ status: 'quoting', pnl: { depositsUsd: 0 } });
+  expect(r.state().pnl.lossLimitUsedPct).toBeCloseTo(1);
 
   onFill({ ...fill, id: 'perpl:1:0xm:2:2', side: 'ask', realizedUsd: -1.5 });
   v.size = 0;

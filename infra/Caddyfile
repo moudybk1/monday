@@ -27,7 +27,7 @@
 	}
 }
 
-# The signed-in app: onboarding, the terminal, Bot settings and My Monday.
+# The signed-in app: onboarding, Setup, the terminal and My Monday.
 app.{$DOMAIN} {
 	route {
 		reverse_proxy /api/stats/* stats:3002

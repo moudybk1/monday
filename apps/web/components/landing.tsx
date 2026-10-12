@@ -36,7 +36,7 @@ export function LiveMarket() {
     return () => clearTimeout(t);
   }, []);
   const [picked, setPicked] = useState<MarketSym>('BTC');
-  // The hero shows the three largest markets; the terminal lists every one Perpl has.
+  // The hero shows the first three markets (BTC, ETH, SOL); the terminal lists every one Perpl has.
   const syms = state ? (Object.keys(state.markets) as MarketSym[]).slice(0, 3) : [];
   const sym = syms.includes(picked) ? picked : syms[0];
   const m = sym ? state?.markets[sym] : undefined;

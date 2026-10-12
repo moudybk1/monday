@@ -8,13 +8,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { parseAbi } from 'viem';
 import { arbitrum, base as baseChain, bsc, mainnet, monad, monadTestnet, optimism, polygon } from 'viem/chains';
 import { createSiweMessage } from 'viem/siwe';
-import { WagmiProvider, createConfig, http, useAccount, useDisconnect, usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
+import { WagmiProvider, createConfig, custom, http, useAccount, useDisconnect, usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
 import { REGISTRY_ABI, type AppConfig, type Me, type Policy } from '@monday/core';
 import { ACCOUNT_CHANGED, ApiError, api } from './api';
 
 // Follows the NETWORK switch (see next.config.ts). The shell warns if the server disagrees.
 export const chain = process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? monad : monadTestnet;
-// Both chains are registered so the types stay simple; only `chain` is ever used. Your own RPC, if set, serves it.
+// Monday reads and writes only on `chain`; your own RPC, if set, serves it.
 const rpc = (id: number) => http(id === chain.id ? process.env.NEXT_PUBLIC_MONAD_RPC_URL : undefined);
 // Browser wallets always; phone wallets over WalletConnect once a project id is set (free at cloud.reown.com).
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
@@ -22,8 +22,10 @@ export const walletConnectReady = Boolean(projectId);
 // Sign-in only. RainbowKit signs only on a chain listed here, and a phone wallet over WalletConnect that has no Monad yet
 // connects on its own network and, when it cannot add Monad, stays there: the Sign button then did nothing and no request
 // reached the wallet (2026-10-12). The message is the same on any network (Monad's chain id is inside it, and the server
-// checks that), and nothing is ever sent or read on these.
+// checks that). Nothing is sent or read on these: their transport refuses every call, so no lookup of the user's address
+// (RainbowKit's ENS name, for one) reaches a public RPC.
 const signIn = [mainnet, baseChain, arbitrum, bsc, polygon, optimism] as const;
+const none = custom({ request: async () => { throw new Error('Monday reads nothing on this network.'); } });
 const wagmiConfig = createConfig({
   // The app's chain first: a phone wallet over WalletConnect is offered it before any other.
   chains: chain.id === monad.id ? [monad, monadTestnet, ...signIn] : [monadTestnet, monad, ...signIn],
@@ -35,7 +37,7 @@ const wagmiConfig = createConfig({
   ),
   transports: {
     [monadTestnet.id]: rpc(monadTestnet.id), [monad.id]: rpc(monad.id),
-    [mainnet.id]: http(), [baseChain.id]: http(), [arbitrum.id]: http(), [bsc.id]: http(), [polygon.id]: http(), [optimism.id]: http(),
+    [mainnet.id]: none, [baseChain.id]: none, [arbitrum.id]: none, [bsc.id]: none, [polygon.id]: none, [optimism.id]: none,
   },
   ssr: true,
 });
@@ -118,11 +120,12 @@ function Auth({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (wallet && address && address.toLowerCase() !== wallet) void adapter.signOut().then(() => disconnect());
   }, [wallet, address, adapter, disconnect]);
-  // Connected elsewhere (see signIn above): ask the wallet once more to switch to Monad, adding it if it does not know it.
-  // Signing in works on either; Monad is where the rest of the app expects the wallet.
+  // Connected elsewhere (see signIn above) and known to be signed out (not merely reloading who is signed in): ask the
+  // wallet once more to switch to Monad, adding it if it does not know it.
+  const signedOut = me.data === null;
   useEffect(() => {
-    if (isConnected && !wallet && chainId !== undefined && chainId !== chain.id) switchChain({ chainId: chain.id });
-  }, [isConnected, wallet, chainId, switchChain]);
+    if (isConnected && signedOut && chainId !== undefined && chainId !== chain.id) switchChain({ chainId: chain.id });
+  }, [isConnected, signedOut, chainId, switchChain]);
   return (
     <RainbowKitAuthenticationProvider adapter={adapter} status={me.isLoading ? 'loading' : wallet ? 'authenticated' : 'unauthenticated'}>
       <RainbowKitProvider theme={theme} initialChain={chain} modalSize="compact" appInfo={{ appName: 'Monday' }}>

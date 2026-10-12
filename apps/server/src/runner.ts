@@ -12,7 +12,7 @@ import {
   DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, fillTrigger, inventoryStage, marginFloorUsd,
   markoutBps, median, nextReflex, orderJobs, quotingFor, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
-  type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketState, type MarketSym, type Policy, type Priority,
+  type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketSym, type Policy, type Priority,
   type QuoteOutput, type QuoteTarget, type ReflexState, type Side, type StrategyConfig, type TapePrint,
 } from '@monday/core';
 import type { Hex } from 'viem';
@@ -101,7 +101,7 @@ interface MarketRt {
   min: MinuteAgg | null;
   bothHist: number[];
   lastDecisionId: number | null;
-  series: { t: number; p: number; bid: number | null; ask: number | null }[]; // one sample every 5 s, for the trend term
+  series: { t: number; p: number }[]; // the mark every 5 s, for the trend term
   bandAlertAt: number;
 }
 
@@ -360,6 +360,7 @@ export class Runner {
       // would start it again. Its quotes from before the restart may still rest: cancel them (tick retries until it lands).
       if (resuming) {
         this.status = 'paused';
+        this.endSession('pause');
         this.persist();
         await this.cleanup('cancel');
       }
@@ -563,7 +564,7 @@ export class Runner {
       rt.book += (this.bookNow(sym, snap) - rt.book) * 0.13;
       this.updateBasis(rt, snap);
       if (!rt.series.length || now - rt.series[rt.series.length - 1].t >= 5_000) {
-        rt.series.push({ t: now, p: snap.mark, bid: v?.quote(sym, 'bid')?.price ?? null, ask: v?.quote(sym, 'ask')?.price ?? null });
+        rt.series.push({ t: now, p: snap.mark });
         if (rt.series.length > 240) rt.series.shift();
       }
       if (this.status !== 'quoting' || !v) {
@@ -1134,6 +1135,12 @@ export class Runner {
     const d = bal - this.cash.expected;
     if (Math.abs(d) < 0.005) {
       this.cash.since = 0;
+      return;
+    }
+    // A fill's position update still on its way: the balance is off by that position's margin, not by a deposit or a
+    // withdrawal. Nothing is booked until it lands (Perpl has been seen 15 s apart, longer than CASH_SETTLE_MS).
+    if (this.venue!.settling?.()) {
+      Object.assign(this.cash, { drift: d, since: now });
       return;
     }
     if (!stopped && (!this.cash.since || Math.abs(d - this.cash.drift) > 0.005)) {

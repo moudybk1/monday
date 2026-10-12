@@ -378,7 +378,9 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
                   <td className="pl-3"><div className="h-5 w-24"><Sparkline values={last14.map((d) => d.byMarket[m.sym] ?? 0)} fill={false} /></div></td>
                   <td className="text-right">{money(m.openInterestUsd)}{ago != null && <> <Delta now={m.openInterestUsd} prev={ago} up="none" /></>}</td>
                   <td className="pl-3"><span className="flex items-center gap-2"><Share value={m.openInterestUsd / oiTotal} className="w-16" /><span className="w-9 text-fg-3">{((m.openInterestUsd / oiTotal) * 100).toFixed(0)}%</span></span></td>
-                  <td className="text-right" title={`${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 1)}</span><span className="text-fg-3"> /yr</span></td>
+                  {m.fundingUnknown
+                    ? <td className="text-right text-fg-3" title="Perpl did not return this market's funding just now">-</td>
+                    : <td className="text-right" title={`${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 1)}</span><span className="text-fg-3"> /yr</span></td>}
                   <td className="text-right"><Skew longs={m.longs} shorts={m.shorts} /></td>
                   <td className="text-right text-fg-2">{m.hlVolume24hUsd ? `${((m.volume24hUsd / m.hlVolume24hUsd) * 100).toFixed(m.volume24hUsd / m.hlVolume24hUsd < 0.01 ? 2 : 1)}%` : 'n/a'}</td>
                   <td className="pr-2.5 pl-3"><span className="flex flex-wrap gap-1">{flags.map((f) => <span key={f.text} title={f.title}><Tag tone={f.tone}>{f.text}</Tag></span>)}</span></td>
@@ -443,7 +445,8 @@ function Activity() {
 /** Funding right now, every market on one scale: positive pays shorts. */
 function FundingNow({ o }: { o: PxOverview }) {
   const reduce = useReducedMotion();
-  const rows = [...o.markets].map((m) => ({ sym: m.sym, apr: apr(m.fundingRate, m.fundingIntervalMin), oi: m.openInterestUsd })).sort((a, b) => b.apr - a.apr);
+  // A market whose funding Perpl did not return is left out rather than drawn at 0.
+  const rows = o.markets.filter((m) => !m.fundingUnknown).map((m) => ({ sym: m.sym, apr: apr(m.fundingRate, m.fundingIntervalMin), oi: m.openInterestUsd })).sort((a, b) => b.apr - a.apr);
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.apr)));
   return (
     <Panel title="Funding now" aside={<span className="hidden sm:inline">annualised, positive: longs pay shorts</span>} bodyClassName="px-2.5 py-2" className="min-h-[260px]">
