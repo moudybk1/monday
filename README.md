@@ -1,148 +1,130 @@
 # Monday
 
-**The AI trading terminal for [Perpl](https://perpl.xyz), the on-chain order book on Monad.** Make markets, scalp a bias, or build a position in slices, from your own Perpl account and inside your limits. Kimi is the risk governor. Alongside it: public analytics for all of Perpl, with a chat that answers from on-chain data.
+Monday is a trading terminal for [Perpl](https://perpl.xyz), the on-chain order book on Monad. It runs from your own Perpl account through a trade-only API key, so your funds never move. You pick a mode and a loss you can live with; the code does the trading and Kimi acts as the risk governor. Next to it there is a public analytics site for all of Perpl.
 
-[![CI](https://github.com/moudybk1/monday/actions/workflows/ci.yml/badge.svg)](https://github.com/moudybk1/monday/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Live on Monad mainnet](https://img.shields.io/badge/live-Monad%20mainnet-orange)](https://app.mondaytrade.xyz)
+It is live on Monad mainnet with real money: the terminal at [app.mondaytrade.xyz](https://app.mondaytrade.xyz), the analytics at [analytics.mondaytrade.xyz](https://analytics.mondaytrade.xyz), and a long-form explanation of every part at [mondaytrade.xyz/system](https://mondaytrade.xyz/system). It was built for Monad Metropolis (Track 01), Perpl's analytics bounty and the Kimi bounty, and the analytics index Perpl's history through Envio HyperSync.
 
-[![Monday](docs/landing.jpg)](https://mondaytrade.xyz)
+[![CI](https://github.com/moudybk1/monday/actions/workflows/ci.yml/badge.svg)](https://github.com/moudybk1/monday/actions/workflows/ci.yml) [![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Live, on Monad mainnet with real funds:**
+[![The Monday site](docs/landing.jpg)](https://mondaytrade.xyz)
 
-| | |
-| --- | --- |
-| [app.mondaytrade.xyz](https://app.mondaytrade.xyz) | The terminal: sign in with a wallet, set up a mode, watch it trade. Every decision has a public record. |
-| [analytics.mondaytrade.xyz](https://analytics.mondaytrade.xyz) | Perpl analytics, open to anyone, no wallet needed. |
-| [mondaytrade.xyz](https://mondaytrade.xyz) | What Monday is and how it works. |
-| [mondaytrade.xyz/system](https://mondaytrade.xyz/system) | Every part in detail, and what Kimi decided on mainnet. |
+## Three modes
 
-Built for **Monad Metropolis (Track 01)**, with entries for **Perpl's Best Analytics / Risk Tool bounty** and the **Kimi bounty**. The analytics index Perpl's full history through **Envio HyperSync**.
+The market maker quotes both sides of the book in the markets you choose and earns the spread. It runs until you stop it. Every 15 minutes Kimi reviews how wide and how big it should quote, inside bounds the code enforces; it never places an order itself. You give it a margin and a daily stop loss; when the loss is hit it cancels its orders and closes what it holds.
 
-## Three ways to trade
+Agentic Trade is a scalping session on one market. You say long or short, Monday reads the daily and 4-hour charts, and then scalps your side on a 1, 5 or 15 minute timeframe, one position at a time, until the session's stop loss or take profit (both a share of its margin) or its time is up. Each scalp's stop and target rest on Perpl as real orders from the moment it fills.
 
-Each mode trades from the user's own Perpl account, in markets of its own, and stops at a loss the user sets. All three can run at once.
+TWAP builds a position in slices, as maker orders where it can, so a big order does not move a thin book. It takes up to a day to build and then holds the position under a stop loss (and an optional target) that also rest on Perpl. You can give it a price it must not pass.
 
-| | Agentic Market Maker | Agentic Trade | TWAP |
-| --- | --- | --- | --- |
-| **What it does** | Quotes both sides of the book in the markets you choose and earns the spread. | Scalps your long or short bias on one market, again and again, on a 1m, 5m or 15m timeframe. | Builds a position in slices, as maker orders where it can, so one large order does not move a thin book. |
-| **Runs** | Until you stop it. | Up to a week, or until the stop loss or take profit on its margin. | Up to 24 hours to build, then held until its stop, its target or you close it. |
-| **Kimi's part** | Reviews spread and size every 15 minutes, inside hard bounds. Never places an order. | Sums up D1, H4 and H1 before you start. Code reads the trend and picks every entry. | Sums up the market before you start. Code places every slice. |
-| **Protection** | A daily stop loss on the margin: at it, Monday cancels its orders and closes the positions. | Every scalp's stop and target rest on Perpl from its fill. | A price it must not pass while building, and a stop loss on Perpl from the first fill. |
+All three can run at the same time, each in its own markets, and Kimi writes a short read of the market before you start any of them.
 
-**Custody.** Funds never leave the user's Perpl account. Monday holds a trade-scoped Perpl API key, stored encrypted; Perpl never lets any API key withdraw. Stop, Kill and revoking the key are one click each. Sign-in is a signed message (SIWE), no gas.
+Custody is simple. Your collateral stays in your Perpl account; only your wallet can withdraw. Monday holds a Perpl API key with trade scope, stored encrypted, and Perpl does not let any API key withdraw or transfer. Stop and Kill are one click, and revoking the key on Perpl cuts Monday off at once. Signing in is a signed message from your wallet, no gas.
 
-## How the market maker thinks
+## How the market maker works
 
-Three loops on three clocks. The fast ones are plain code, so nothing urgent ever waits for a model.
+Three loops on three clocks. The fast ones are plain code, so nothing urgent waits on a model.
 
-- **Engine, every second.** Fair price from Perpl's book blended toward the reference market (Hyperliquid, which Perpl follows), spread from volatility and the user's floor, inventory and order-book skew, quote size capped at a share of an hour's volume. One entry per position: once a position is open only its exit is quoted, in profit or at breakeven after ten minutes. Post-only, never crossing the book. Deterministic and unit tested.
-- **Reflex, the next tick.** Pulls or widens the side about to be run over: a Smart Trader burst (wallets with a consistent profit record, from Nansen's labels), a move in the reference market before Perpl's book catches up, or a fill on Monday's own quote.
-- **Governor, every 15 minutes.** Kimi (`kimi-k3`) reads the whole situation (flow, volatility, funding, the position, PnL and fill quality, the user's limits, what the fixed rules would set) and answers with bounded parameters and a reason in plain words. Code validates and clamps every value, hashes the decision with its evidence and publishes it at `/decisions/<id>`. If Kimi is slow or down, the rules answer. Kimi never places an order.
+The engine runs every second. It prices both quotes from Perpl's book, blended toward the reference market where these perps are priced first (Perpl follows it), with a spread from recent volatility and the floor you set, skew from the position and from the shape of the book, and a size capped at a slice of an hour's volume. It opens one position at a time and then only works the exit, in profit or at breakeven after ten minutes. Orders are post-only and never cross the book. All of this is pure functions with unit tests.
 
-**Risk controls on every order:** a 1% band around the oracle, position and account caps, a leverage check, the user's daily stop loss (kill and flatten at 100%, a warning at 70%), a margin floor below which Monday closes everything before Perpl's maintenance margin, a stale-data kill at 30 seconds, and a kill after three failed orders in a row. Kill cancels every order and closes every position on the account.
+The reflex runs on the next tick after something happens: a burst of trading by Smart Traders (wallets with a consistent profit record, from Nansen's labels), a move in the reference market that Perpl's book has not caught up with, or a fill on Monday's own quote. It pulls or widens the side that is about to get run over, for a short while.
+
+The governor is Kimi, every 15 minutes per market. It gets a snapshot (flow, volatility, funding, the position, today's result and fill quality, your limits, and what the fixed rules would choose) and answers with spread and size multipliers, a position cap, whether to quote at all, and a reason in plain words. The code validates and clamps every number, hashes the decision together with its evidence, and publishes it at `/decisions/<id>`. If Kimi is slow or down, the rules take over.
+
+Every order also passes a risk gate: a 1% band around the oracle, position and account caps, a leverage check, your daily stop loss (a warning at 70%, kill and flatten at 100%), a margin floor so the kill fires before Perpl's maintenance margin, a kill when market data stops for 30 seconds, and a kill after three failed orders in a row.
 
 ## Perpl analytics
 
 [![Perpl analytics](docs/analytics.jpg)](https://analytics.mondaytrade.xyz)
 
-Every Perpl trade since launch, indexed from Monad for all 11 markets, refreshed every few seconds.
+Every Perpl trade since launch, for all 11 markets, refreshed every few seconds and open to anyone.
 
-- **Protocol.** Volume, open interest, TVL, fees and active traders over 24h, 7d, 30d and all time; daily series; collateral flows; per-market funding and long/short; a liquidation map, positions closest to liquidation, the largest positions and the latest liquidations; who makes money, retention cohorts, when Perpl trades.
-- **Flow.** What Perpl's top traders, consistent winners and whales hold and how they moved over 1h, 6h and 24h, and a live tape of their orders.
-- **Wallets.** Search by address or account number: equity, open positions with liquidation prices, trade history with realised PnL, win rate, profit factor, drawdown, streaks, hold time, best and worst markets, rank among active accounts. Compare up to four wallets. A screener with presets (winners, streaks, whales, makers, takers, liquidated, losers) and leaderboards for 1, 7, 30 and 90 days.
-- **Ask Monday.** A chat on every analytics page. Rules answer the common questions at once; Kimi turns free-form questions into a structured query the code answers with real figures, and writes plain-words wallet summaries from a sheet of live facts. A reply that quotes a figure not on that sheet is discarded.
-- **Data.** Perpl's Exchange contract events from genesis through Envio HyperSync (fills with fees, positions, liquidations, deposits, withdrawals), the chain head over RPC while HyperSync is rate-limited, and Perpl's API and contract reads for live funding, the book and open positions.
+The overview has volume, open interest, TVL, fees and active traders over 24h, 7d, 30d and all time, daily series, collateral flows, funding and long/short per market, a liquidation map with the positions closest to it, the largest positions, who makes money, retention cohorts and when Perpl trades. The Flow tab shows what the top traders, the consistent winners and the whales hold and how they moved over the last hours, plus a live tape of their orders. Any wallet can be opened by address or account number: equity, open positions with liquidation prices, the trade history with realised PnL, win rate, profit factor, drawdown, streaks, hold time, best and worst markets, and where it ranks among active accounts. Up to four wallets can be compared side by side, and a screener with presets (winners, streaks, whales, makers, takers, liquidated, losers) and leaderboards for 1 to 90 days sits next to it.
 
-## Run it
+Ask Monday is the chat on those pages. Common questions are answered by rules straight away. For free-form questions Kimi turns the text into a structured query that the code answers with real numbers, and it writes the plain-words wallet summaries from a sheet of live facts; an answer that quotes a number not on that sheet is thrown away.
 
-Requires Node 22.13 or newer.
+The data comes from Perpl's Exchange contract events (fills with fees, positions, liquidations, deposits, withdrawals) through Envio HyperSync, with the chain head followed over RPC while HyperSync is rate-limited, plus Perpl's API and contract reads for live funding, the book and open positions.
+
+## Running it
+
+You need Node 22.13 or newer.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000. With no `.env` everything runs on a simulated market: the landing page shows the house account quoting, **Launch app, then "Use a demo account"** walks the real onboarding (any token and secret pass the key step), and the terminal's "Buy burst / Sell burst" fires a Smart Trader burst so you can watch the reflex pull a quote.
+Open http://localhost:3000. Without a `.env` everything is simulated, including the market, so there is nothing to set up first. The landing page shows the house account quoting; "Launch app" and then "Use a demo account" takes you through the real onboarding (any token and secret pass the key step), and the terminal has buttons that fire a Smart Trader burst so you can watch the reflex react.
 
-To run on Perpl's real prices without trading, use paper mode: the book, the tape, the candles and the Smart Trader feed are real, orders are simulated and fill the way a real order at that price would, queue position included.
+Paper mode uses Perpl's real book, tape, candles and the real Smart Trader feed, but simulates the orders. They fill the way a real order at that price would, queue position included.
 
 ```bash
 VENUE=paper NETWORK=mainnet npm run dev
 ```
 
-### Going live
+To go live, copy `.env.example` to `.env`. Each block there switches one piece from simulated to real, and they are independent of each other:
 
-Copy `.env.example` to `.env`. Each block switches one piece to live; they are independent.
+| Piece | Switched on by |
+| --- | --- |
+| Smart Trader data | `NANSEN_API_KEY` (the first boot backfills 7 days) |
+| Real orders | `VENUE=perpl` and `MONDAY_MASTER_KEY`; testnet unless `NETWORK=mainnet` |
+| Kimi (governor, Ask Monday) | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` |
+| Full Perpl history | `ENVIO_API_TOKEN` |
+| Policies and decisions on Monad | `MONDAY_REGISTRY_ADDRESS` and `AGENT_LOGGER_PRIVATE_KEY` |
+| Telegram alerts | `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` |
 
-| Piece | Default | Goes live when |
-| --- | --- | --- |
-| Smart Trader data | Simulated trades | `NANSEN_API_KEY` (Nansen Smart Money perp trades; first boot backfills 7 days) |
-| Execution venue | Simulated book and fills | `VENUE=perpl` and `MONDAY_MASTER_KEY`. Testnet unless `NETWORK=mainnet`. |
-| Governor and Ask Monday | Rule-based | `LLM_API_KEY` (Kimi through an OpenAI-compatible endpoint, or Anthropic) |
-| Perpl history | Recent hours over RPC | `ENVIO_API_TOKEN` (HyperSync, full history in minutes) |
-| On-chain policy and decision log | Hashed, not anchored | `MONDAY_REGISTRY_ADDRESS` and `AGENT_LOGGER_PRIVATE_KEY` |
-| Alerts | Off | `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` |
+Simulated signals never drive real orders: with a live venue and no Nansen key there is simply no Smart Trader signal, and the regime comes from volatility alone.
 
-Live orders are never driven by simulated signals: with a live venue and no Nansen key there is no Smart Trader signal at all, and the regime rests on volatility alone.
+Before anyone can trade on Perpl through Monday they need a Perpl account (deposit AUSD on Perpl), One-Click Trading switched on in Perpl's settings, and an API key with trade scope from Perpl's `/apikeys` page.
 
-Before a user can trade on Perpl: deposit AUSD on Perpl to open an exchange account, turn on **One-Click Trading** in Perpl's settings, and create a key with **trade** scope on Perpl's `/apikeys` page.
+### Real money
 
-### Real funds
+`NETWORK=mainnet` with `VENUE=perpl` places real orders with real collateral. The server will not start that way until `ALLOW_REAL_FUNDS=yes` is set. It checks the RPC's chain id at boot, and it only accepts a policy whose margin covers the full inventory at its leverage plus the whole daily loss, so the loss kill always comes before Perpl's maintenance margin. `CAP_QUOTE_USD`, `CAP_INVENTORY_USD` and `CAP_DAILY_LOSS_USD` can cap every user's policy, and Agentic Trade and TWAP need `PLANS_LIVE=yes`.
 
-`NETWORK=mainnet` with `VENUE=perpl` places real orders with real collateral. The server refuses to start in that mode until `ALLOW_REAL_FUNDS=yes` is set, checks the RPC's chain id at boot, and requires every policy to carry the margin for its full inventory plus the whole daily loss, so the loss kill fires before Perpl's maintenance margin. Optional operator caps (`CAP_QUOTE_USD`, `CAP_INVENTORY_USD`, `CAP_DAILY_LOSS_USD`) bound every user's policy. Agentic Trade and TWAP need `PLANS_LIVE=yes` on real funds.
+Monday has been trading real money on mainnet since 2026-10-08. Test changes in paper mode first. Perpl blocks some countries, so host the server somewhere Perpl serves users.
 
-Monday has traded real funds on mainnet since 2026-10-08. Try changes in paper mode first. Perpl geo-blocks some countries; host the server where Perpl serves users.
+## Deploying
 
-## Deploy
-
-One machine runs the trading server, the stats process (indexer and `/api/stats`, kept apart so heavy analytics never stalls trading), the web app and Caddy for TLS.
+One machine runs the trading server, a separate stats process (the indexer and the public `/api/stats`, kept apart so heavy queries never stall trading), the web app and Caddy for TLS.
 
 ```bash
 git clone https://github.com/moudybk1/monday.git && cd monday
-cp .env.example .env     # DOMAIN, WEB_ORIGIN (https://app.<DOMAIN>), API_PUBLIC_URL, SITE_URL, APP_URL, ANALYTICS_URL, SESSION_SECRET, MONDAY_MASTER_KEY
+cp .env.example .env   # DOMAIN, WEB_ORIGIN (https://app.<DOMAIN>), API_PUBLIC_URL, SITE_URL, APP_URL, ANALYTICS_URL, SESSION_SECRET, MONDAY_MASTER_KEY
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 ```
 
-Point A records for `DOMAIN`, `app.DOMAIN` and `analytics.DOMAIN` at the machine; Caddy fetches the certificates. On a host that already runs Caddy, add `infra/docker-compose.host-caddy.yml` and `infra/host-caddy.caddy`. Data lives in `apps/server/data` on the host; back it up daily with `scripts/backup-db.sh`. Never run two Mondays on the same Perpl account.
+Point A records for `DOMAIN`, `app.DOMAIN` and `analytics.DOMAIN` at the machine and Caddy gets the certificates. If the host already runs Caddy, add `infra/docker-compose.host-caddy.yml` and use `infra/host-caddy.caddy`. The databases live in `apps/server/data` on the host; `scripts/backup-db.sh` backs up the account database. Never run two Mondays on the same Perpl account.
 
-## How it is built
+## Layout
 
 ```
-apps/web         Next.js 16: site, terminal, setup, analytics, decision records
-apps/server      One Node process: REST + WebSocket API, Smart Trader collector, per-user runners, plans, governor
-  src/venue      The seam. sim.ts simulates, paper.ts fills against the real tape, perpl/ is the live adapter
-  src/stats      Its own process: Perpl indexer (HyperSync + RPC) and the public /api/stats API
-packages/core    Pure strategy math and shared types: quoting model, reflexes, scalper, plans, analytics
-contracts        MondayRegistry (Solidity 0.8.24, Foundry): user limits and decision hashes on Monad
+apps/web         Next.js: site, terminal, setup, analytics, decision records
+apps/server      one Node process: REST and WebSocket API, Smart Trader collector, per-user runners, plans, governor
+  src/venue      the seam between Monday and the exchange: sim.ts, paper.ts and the live perpl/ adapter
+  src/stats      the stats process: Perpl indexer (HyperSync and RPC) and /api/stats
+packages/core    pure strategy math and shared types: quoting model, reflexes, scalper, plans, analytics
+contracts        MondayRegistry (Solidity, Foundry): user limits and decision hashes on Monad
 infra            Dockerfiles, docker-compose, Caddyfile
-docs             Design reports and research notes
 ```
 
-The web app only talks to its own origin (`/api` is proxied), so the session cookie is httpOnly and SameSite=Strict; the live stream uses a one-time ticket. Perpl keys are sealed with AES-256-GCM and decrypted only in memory when a session opens. Every order passes one risk gate, leaves through one scheduler that serves risk work first, and is written down with the market it saw, so any fill traces back to the quote, the signal and the decision behind it.
+The browser only ever talks to its own origin (`/api` is proxied), so the session cookie is httpOnly and SameSite=Strict and the live stream uses a one-time ticket. Perpl keys are sealed with AES-256-GCM and only decrypted in memory when a session opens. Each order goes through one risk gate and one scheduler (risk work first), and is written down with the market it saw, so any fill can be traced back to the quote, the signal and the decision behind it.
 
-The interface is a trading terminal, measured against live ones rather than built from a template: dark first with a light theme one click away, Manrope throughout with nothing under 12 px, colour rationed to bid, ask and "this is Monday's", a fixed-viewport panel grid on desktop.
-
-## Checks
+## Tests
 
 ```bash
-npm test                 # strategy, runner, plans, paper venue, collector, governor, analytics, and a replay of Perpl trading frames
+npm test                 # strategy, runner, plans, paper venue, collector, governor, analytics, replayed Perpl frames
 npm run typecheck
 npm run build            # production build of the web app
-cd contracts && forge test                                   # 25 tests incl. fuzz and invariants
-cd apps/server && npx tsx src/venue/perpl/smoke.ts           # live Perpl: context, book, candles, account lookup
+cd contracts && forge test
+cd apps/server && npx tsx src/venue/perpl/smoke.ts    # against live Perpl: context, book, candles, account lookup
 ```
 
-CI runs typecheck and the tests on every push and pull request.
+CI runs the typecheck and the tests on every push and pull request.
 
-## Honest limits
+## What to know before using it
 
-- The market maker's edge is not proven. Replays and live fills say the exits in profit and the reference-market guard help; fees and adverse fills can still make a round trip lose. Monday reports results and does not promise profit.
-- Smart Trader signals can be wrong or late. The reflexes and the governor shrink or step aside; they never predict.
-- `MondayRegistry` passes its 25 Foundry tests but is not deployed in this deployment, so decisions are hashed and published by the app rather than anchored on Monad.
-- Kill closes every position on the account, the user's own included: it is the emergency stop, not a selective one.
-- The Perpl adapter was written from Perpl's public API docs; no Perpl example code was copied.
-- The code, tests and docs were written with Claude Code, directed and reviewed by the author; commits it helped with carry a `Co-Authored-By: Claude` trailer. At runtime the governor itself is an LLM.
+Market making can lose money. The exits in profit and the reference-market guard helped on the fills we have, but fees and adverse fills still make round trips lose, and nothing here promises a profit. Smart Trader signals can be wrong or late; Monday only steps aside on them, it never predicts with them. The registry contract has its Foundry tests but is not deployed in the live setup, so decisions are hashed and published by the app rather than anchored on-chain. Kill is the emergency stop: it closes every position on the account, including ones you opened yourself.
+
+The Perpl adapter was written from Perpl's public API docs. Claude Code was used as a pair programmer throughout, with the author directing and reviewing the work.
 
 ## License
 
