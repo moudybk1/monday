@@ -3,13 +3,15 @@
 import { ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import type { PlanView } from '@monday/core';
-import { ButtonLink, Tag, cx } from '@/components/ui';
+import { Button, ButtonLink, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
-import { useMe } from '@/lib/wallet';
+import { useAppConfig, useMe } from '@/lib/wallet';
 
 /** Setup starts here: the three ways Monday trades for you. Each can run beside the others, in markets of its own. */
 export default function Setup() {
   const me = useMe().data!;
+  // Off on real funds until the operator turns plans on: the cards say so rather than lead to a form that is refused.
+  const plansOff = useAppConfig().data?.plansLive === false;
   const plans = useQuery({ queryKey: ['plans'], queryFn: () => api<PlanView[]>('/plans'), enabled: me.hasKey, refetchInterval: 10_000 });
   const running = (kind: PlanView['input']['kind']) => (plans.data ?? []).filter((p) => p.status !== 'done' && p.input.kind === kind).length;
   const maker = Boolean(me.policy || me.policyPending);
@@ -60,7 +62,9 @@ export default function Setup() {
                 <li key={f} className="flex items-center gap-2"><span aria-hidden className="size-1 flex-none rounded-full bg-fg-3" />{f}</li>
               ))}
             </ul>
-            <ButtonLink href={c.href} size="lg" variant={c.id === 'maker' && maker ? 'ghost' : 'primary'} className={cx('mt-6 w-full')}>{c.cta}</ButtonLink>
+            {plansOff && c.id !== 'maker'
+              ? <Button size="lg" variant="ghost" disabled className="mt-6 w-full">Not live yet</Button>
+              : <ButtonLink href={c.href} size="lg" variant={c.id === 'maker' && maker ? 'ghost' : 'primary'} className={cx('mt-6 w-full')}>{c.cta}</ButtonLink>}
           </section>
         ))}
       </div>

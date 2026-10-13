@@ -391,6 +391,8 @@ export interface AppConfig {
   networkName: string;
   /** Mainnet with the live venue: real orders, real collateral. */
   realFunds: boolean;
+  /** Agentic Trade and TWAP can start: always off real funds, on real funds once the operator turns them on. */
+  plansLive: boolean;
   /** Operator ceilings on policies while real funds are at stake. */
   caps: Pick<PolicyLimits, 'quoteSizeUsd' | 'maxInventoryUsd' | 'maxDailyLossUsd'> | null;
   smartMoney: 'nansen' | 'sim' | 'none';

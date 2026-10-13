@@ -210,7 +210,7 @@ export async function buildApi(deps: ApiDeps) {
 
   // ---- public ----
   app.get('/api/config', async (): Promise<AppConfig> => ({
-    sim: deps.driver.kind === 'sim', paper: deps.driver.kind === 'paper', network: config.network, networkName: config.networkName, realFunds: config.realFunds, caps: config.caps,
+    sim: deps.driver.kind === 'sim', paper: deps.driver.kind === 'paper', network: config.network, networkName: config.networkName, realFunds: config.realFunds, plansLive: config.plansLive, caps: config.caps,
     smartMoney: config.smartMoney, chainId: config.chain.chainId, registry: config.chain.registry || null,
     agentAddress: chainEnabled ? agentAddress : null, explorerUrl: config.chain.explorerUrl, perplAppUrl: config.perpl.appUrl,
     minDepositUsd: deps.driver.minDepositUsd(), llm: llmEnabled, specs: deps.driver.feed.specs(),
@@ -460,6 +460,7 @@ export async function buildApi(deps: ApiDeps) {
     return readMarket(deps.driver.feed, sym);
   });
   app.post('/api/plans', async (req) => {
+    if (!config.plansLive) throw new HttpError(409, 'plans_off', 'Agentic Trade and TWAP are not live on real funds yet.');
     const r = runner(req);
     const input = PlanBody.parse(req.body) as PlanInput;
     await r.connect(); // a plan needs the trading connection even while the market maker is stopped

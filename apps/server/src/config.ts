@@ -53,6 +53,8 @@ export const config = {
   network: network as 'testnet' | 'mainnet',
   networkName: net.name,
   realFunds,
+  /** Agentic Trade and TWAP on real funds only once PLANS_LIVE=yes: off until a minimum-size Perpl test has passed. */
+  plansLive: !realFunds || env('PLANS_LIVE') === 'yes',
   venue: venue as 'sim' | 'paper' | 'perpl',
   perpl: { apiUrl: net.perplApi, wsUrl: net.perplWs, chainId: net.chainId, rpcUrl, exchangeAddress: net.exchange as `0x${string}`, appUrl: net.perplApp },
   budgetPerMin: num('TRADING_REQ_BUDGET_PER_MIN', 40),
