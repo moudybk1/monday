@@ -97,7 +97,7 @@ const added = [
   ['fills', 'markout_1s', 'real'], ['fills', 'markout_5s', 'real'], ['fills', 'markout_10s', 'real'], ['fills', 'half_bps', 'real'],
   ['fills', 'external', 'integer'], ['fills', 'quote_event_id', 'integer'], ['fills', 'ctx', 'text'],
   ['agents', 'session_sl', 'real'], ['agents', 'session_tp', 'real'], ['agents', 'session_equity', 'real'], ['agents', 'owed', 'text'], ['agents', 'own_orders', 'text'],
-  ['decisions', 'llm_ms', 'real'], ['decisions', 'llm_cost', 'real'], ['pnl_snapshots', 'balance', 'real'],
+  ['decisions', 'llm_ms', 'real'], ['decisions', 'llm_cost', 'real'], ['pnl_snapshots', 'balance', 'real'], ['users', 'signed_out_at', 'integer'],
 ];
 for (const [table, col, type] of added) {
   try {
