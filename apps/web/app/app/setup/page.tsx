@@ -3,7 +3,7 @@
 import { ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import type { PlanView } from '@monday/core';
-import { Button, ButtonLink, Tag, cx } from '@/components/ui';
+import { Button, ButtonLink, Tag } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAppConfig, useMe } from '@/lib/wallet';
 
@@ -43,28 +43,32 @@ export default function Setup() {
   ];
 
   return (
-    <div className="grid gap-8 py-10 md:py-14">
-      <header>
+    // Centred in the window below the 48px header; taller content (a phone's stacked cards) simply scrolls.
+    <div className="grid min-h-[calc(100dvh-3rem)] content-center gap-8 py-10 md:py-14">
+      <header className="text-center">
         <h1 className="display text-3xl md:text-4xl">Setup</h1>
-        <p className="mt-3 max-w-[62ch] text-fg-2">Choose how Monday trades for you. They can run side by side, each in markets of its own, all inside your own Perpl account.</p>
+        <p className="mx-auto mt-3 max-w-[62ch] text-fg-2">Choose how Monday trades for you. They can run side by side, each in markets of its own, all inside your own Perpl account.</p>
       </header>
       <div className="grid gap-3 lg:grid-cols-3">
         {cards.map((c) => (
-          <section key={c.id} aria-labelledby={`${c.id}-title`} className="panel flex flex-col p-5">
+          <section
+            key={c.id} aria-labelledby={`${c.id}-title`}
+            className="panel group flex flex-col p-5 transition-[translate,border-color,box-shadow] duration-200 ease-out hover:-translate-y-1 hover:border-accent/50 hover:shadow-[0_16px_40px_-20px_rgb(0_0_0/0.7)] focus-within:border-accent/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+          >
             <div className="flex items-start justify-between gap-3">
-              <span className="grid size-10 place-items-center rounded-sm border border-line-2 bg-raised text-accent"><c.icon size={20} /></span>
+              <span className="grid size-10 place-items-center rounded-sm border border-line-2 bg-raised text-accent transition-colors duration-200 group-hover:border-accent/50 group-hover:bg-accent/10"><c.icon size={20} /></span>
               {c.status}
             </div>
             <h2 id={`${c.id}-title`} className="mt-5 text-[18px] font-semibold tracking-tight">{c.title}</h2>
             <p className="mt-2 text-[13.5px] leading-relaxed text-fg-2">{c.text}</p>
-            <ul className="mt-5 grid gap-1.5 border-t border-line pt-4 text-[12.5px] text-fg-2">
+            <ul className="mt-5 mb-6 grid gap-1.5 border-t border-line pt-4 text-[12.5px] text-fg-2">
               {c.facts.map((f) => (
                 <li key={f} className="flex items-center gap-2"><span aria-hidden className="size-1 flex-none rounded-full bg-fg-3" />{f}</li>
               ))}
             </ul>
             {plansOff && c.id !== 'maker'
-              ? <Button size="lg" variant="ghost" disabled className="mt-6 w-full">Not live yet</Button>
-              : <ButtonLink href={c.href} size="lg" variant={c.id === 'maker' && maker ? 'ghost' : 'primary'} className={cx('mt-6 w-full')}>{c.cta}</ButtonLink>}
+              ? <Button size="lg" variant="ghost" disabled className="mt-auto w-full">Not live yet</Button>
+              : <ButtonLink href={c.href} size="lg" className="mt-auto w-full">{c.cta}</ButtonLink>}
           </section>
         ))}
       </div>
