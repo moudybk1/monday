@@ -160,7 +160,7 @@ export default function Terminal() {
           <Notice tone="ask" action={state.closing ? undefined : <Button size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15" onClick={start}>Review done, restart</Button>}>
             <strong>{state.closing ? 'Killed, still closing.' : 'Killed.'}</strong> {state.killReason ? KILL_WHY[state.killReason] : ''}{' '}
             {state.closing ? 'Perpl has not confirmed that every order is cancelled and every position closed. Monday retries every 10 seconds, also after a restart. You can close them on Perpl too.' : 'All orders were cancelled and positions closed.'}
-            {state.killReason === 'key_error' && <> <Link href="/app/onboarding" className="underline">Add a new key</Link>.</>}
+            {state.killReason === 'key_error' && <> <Link href="/app/connect" className="underline">Add a new key</Link>.</>}
           </Notice>
         )}
         {state.status === 'paused' && state.closing === 'cancel' && <Notice tone="warn">Stopped, but Perpl has not confirmed the cancels yet. Monday keeps retrying.</Notice>}

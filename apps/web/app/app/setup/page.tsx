@@ -26,8 +26,8 @@ export default function Setup() {
     },
     {
       id: 'trade', icon: CrosshairIcon, title: 'Agentic Trade',
-      text: 'Your call, carried out: long or short, one market, your margin and leverage. Monday enters at market, at your limit or on a breakout, and keeps the position under a stop loss.',
-      facts: ['Stop loss and take profit on Perpl itself', 'Entry at market, limit or breakout', 'Cancel or close from the terminal'],
+      text: 'Your bias, scalped: long or short on one market. Monday reads D1 and H4, then scalps that side on a short timeframe, again and again, until your stop loss or take profit on the margin.',
+      facts: ['Follow or counter, read from D1 and H4', 'Every scalp protected on Perpl itself', 'Stops at your stop loss or take profit'],
       status: trades ? <Tag tone="accent">{trades} running</Tag> : null,
       cta: 'New trade', href: '/app/setup/trade',
     },
@@ -64,7 +64,6 @@ export default function Setup() {
           </section>
         ))}
       </div>
-      {!me.hasKey && <p className="text-[13px] text-fg-3">Each one first connects your Perpl account with a trade-only API key. It takes about two minutes.</p>}
     </div>
   );
 }

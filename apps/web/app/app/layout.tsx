@@ -34,8 +34,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   const [next, setNext] = useState<string | null | undefined>(undefined);
   useEffect(() => setNext(safeReturnPath(new URLSearchParams(location.search).get('next'))), []);
   const readOnly = next?.startsWith('/analytics') ?? false;
-  // Not connected to Perpl yet: Setup, where the user picks what to run and each choice connects first.
-  const mustOnboard = me.data && next !== undefined && !onboarded && !readOnly && pathname !== '/app/onboarding' && !pathname.startsWith('/app/setup');
+  // Not connected to Perpl yet: the key comes first, once, before any choice of what to run.
+  const mustOnboard = me.data && next !== undefined && !onboarded && !readOnly && pathname !== '/app/connect';
   const terminal = pathname === '/app' && onboarded;
 
   // Every change this tab asks for names the account it shows (see lib/api).
@@ -43,7 +43,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => showAccount(wallet), [wallet]);
 
   useEffect(() => {
-    if (mustOnboard) router.replace(`/app/setup${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+    if (mustOnboard) router.replace(`/app/connect${next ? `?next=${encodeURIComponent(next)}` : ''}`);
   }, [mustOnboard, next, router]);
   useEffect(() => {
     if (me.data && next && (readOnly || (onboarded && pathname === '/app'))) router.replace(next);
@@ -51,7 +51,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
-      <AppHeader nav={Boolean(me.data)}>
+      <AppHeader nav={onboarded}>
         {/* Always say which network the orders go to. A live mainnet is never hidden, even on a phone. */}
         {cfg.data?.realFunds ? (
           <>

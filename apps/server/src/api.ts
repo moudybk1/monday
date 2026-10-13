@@ -8,14 +8,14 @@ import { getAddress, keccak256, toHex, verifyMessage } from 'viem';
 import { generateSiweNonce, parseSiweMessage } from 'viem/siwe';
 import { z } from 'zod';
 import {
-  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, planNumbers, policyForHash, usd,
+  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, planNumbers, policyForHash, rollUp, usd,
   type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type Me, type PlanInput, type Policy,
 } from '@monday/core';
 import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain';
 import { config } from './config';
 import { db, seal, upsertUser } from './db';
 import { llmEnabled } from './governor';
-import { PlanError } from './plans';
+import { PlanError, readMarket } from './plans';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
 import { VenueError, type Candle, type VenueDriver } from './venue/types';
@@ -93,30 +93,21 @@ const FIELD_LABELS: Record<string, string> = {
 const StartBody = z.object({ stopLossUsd: usdLimit, takeProfitUsd: usdLimit });
 const CredsBody = z.object({ apiKeyToken: z.string().trim().min(1).max(512), apiKeySecret: z.string().trim().min(1).max(512) });
 // The shape only; what makes a plan sound (sides, liquidation, balance) is planProblems, the same check the page runs.
-const planCommon = {
-  sym: z.enum(MARKETS), bias: z.enum(['long', 'short']), marginUsd: z.number().positive().max(1e7), leverage: z.number().int().min(1).max(100),
-  stopLossPct: z.number().positive().max(100), takeProfitPct: z.number().positive().max(1000).nullable(),
-};
+const planCommon = { sym: z.enum(MARKETS), bias: z.enum(['long', 'short']), marginUsd: z.number().positive().max(1e7), leverage: z.number().int().min(1).max(100) };
 const PlanBody = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('trade'), ...planCommon, entry: z.enum(['market', 'limit', 'stop']), entryPrice: z.number().positive().nullable(), expiryHours: z.number().int().min(1).max(168) }),
-  z.object({ kind: z.literal('twap'), ...planCommon, durationMin: z.number().int().min(1).max(1440), slices: z.number().int().min(1).max(500), style: z.enum(['passive', 'balanced', 'aggressive']), limitPrice: z.number().positive().nullable() }),
+  z.object({
+    kind: z.literal('trade'), ...planCommon, frame: z.enum(['1m', '5m', '15m']),
+    lossLimitPct: z.number().positive().max(100), profitTargetPct: z.number().positive().max(1000).nullable(), expiryHours: z.number().int().min(1).max(168),
+  }),
+  z.object({
+    kind: z.literal('twap'), ...planCommon, durationMin: z.number().int().min(1).max(1440), slices: z.number().int().min(1).max(500), style: z.enum(['passive', 'balanced', 'aggressive']),
+    limitPrice: z.number().positive().nullable(), stopLossPct: z.number().positive().max(100), takeProfitPct: z.number().positive().max(1000).nullable(),
+  }),
 ]);
 
 const RES_SEC = [60, 300, 900, 3600, 14_400, 86_400];
 const MAX_BARS = 1_000;
 const MAX_SOCKETS = 1_000; // live dashboards at once; beyond this a viewer waits and reconnects
-/** Merge candles into `spanMs` buckets aligned to UTC. A no-op on candles that already have that width. */
-function rollUp(cs: Candle[], spanMs: number): Candle[] {
-  const out: Candle[] = [];
-  for (const k of cs) {
-    const t = Math.floor(k.t / spanMs) * spanMs;
-    const last = out[out.length - 1];
-    if (last?.t !== t) out.push({ ...k, t });
-    else Object.assign(last, { h: Math.max(last.h, k.h), l: Math.min(last.l, k.l), c: k.c, v: last.v == null && k.v == null ? undefined : (last.v ?? 0) + (k.v ?? 0) });
-  }
-  return out;
-}
-
 export async function buildApi(deps: ApiDeps) {
   // Behind Caddy or the web app's proxy every visitor arrives from a private address; trust the forwarded client address
   // from those only, so per-address rate limits count visitors and not the proxy. A direct public caller cannot spoof it.
@@ -444,6 +435,12 @@ export async function buildApi(deps: ApiDeps) {
     throw e;
   };
   app.get('/api/plans', async (req) => runner(req).plans.views());
+  // What the scalper would read for a market right now: D1, H4 and whether they agree. For the setup page.
+  app.get('/api/plans/read', async (req) => {
+    need(req);
+    const { sym } = z.object({ sym: z.enum(MARKETS) }).parse(req.query);
+    return readMarket(deps.driver.feed, sym);
+  });
   app.post('/api/plans', async (req) => {
     const r = runner(req);
     const input = PlanBody.parse(req.body) as PlanInput;
@@ -455,7 +452,7 @@ export async function buildApi(deps: ApiDeps) {
     if (caps && spec && mark) {
       const n = planNumbers(input, spec, mark);
       if (n.notionalUsd > caps.maxInventoryUsd) throw new HttpError(400, 'over_cap', `Position size is capped at ${usd(caps.maxInventoryUsd)} on this server while it trades real funds.`, 'marginUsd');
-      if (n.lossUsd > caps.maxDailyLossUsd) throw new HttpError(400, 'over_cap', `A stop loss may risk at most ${usd(caps.maxDailyLossUsd)} on this server while it trades real funds.`, 'stopLossPct');
+      if (n.lossUsd > caps.maxDailyLossUsd) throw new HttpError(400, 'over_cap', `A stop loss may risk at most ${usd(caps.maxDailyLossUsd)} on this server while it trades real funds.`, input.kind === 'trade' ? 'lossLimitPct' : 'stopLossPct');
     }
     try {
       return r.plans.create(input, r.policy.markets);

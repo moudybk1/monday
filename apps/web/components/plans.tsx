@@ -3,7 +3,7 @@
 import { ShieldCheckIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ENTRY_LABEL, OUTCOME_LABEL, STYLE_LABEL, priceAway, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
+import { MODE_LABEL, OUTCOME_LABEL, STYLE_LABEL, TREND_LABEL, priceAway, usd, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
 import { tone } from './agent';
 import type { ChartLevel } from './price-chart';
 import { Button, Tag, cx } from './ui';
@@ -15,8 +15,8 @@ const STATUS: Record<PlanView['status'], { label: string; tone: 'neutral' | 'acc
   waiting: { label: 'Waiting', tone: 'neutral' }, entering: { label: 'Entering', tone: 'accent' }, open: { label: 'Open', tone: 'bid' }, done: { label: 'Done', tone: 'neutral' },
 };
 
-const what = (p: PlanView) => (p.input.kind === 'twap' ? `TWAP, ${STYLE_LABEL[p.input.style].toLowerCase()}` : ENTRY_LABEL[p.input.entry]);
-const pnlOf = (p: PlanView) => p.realizedUsd - p.feesUsd + p.unrealizedUsd;
+const what = (p: PlanView) => (p.input.kind === 'twap' ? `TWAP, ${STYLE_LABEL[p.input.style].toLowerCase()}` : `Scalping ${p.input.frame}`);
+const pnlOf = (p: PlanView) => p.scalp?.sessionPnl ?? p.realizedUsd - p.feesUsd + p.unrealizedUsd;
 
 /** Agentic Trade and TWAP plans: the running ones first, then the last few that ended. */
 export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[]; specs: Partial<Record<MarketSym, MarketSpec>>; sim: boolean; now: number; onError: (message: string) => void }) {
@@ -44,13 +44,14 @@ export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[
       setBusy(null);
     }
   };
+  const venue = sim ? 'the exchange' : 'Perpl';
 
   return (
-    <table className="w-full min-w-[860px] text-[11.5px]">
+    <table className="w-full min-w-[900px] text-[11.5px]">
       <thead>
         <tr className={HEAD}>
-          <th className="pl-2.5">Plan</th><th>Status</th><th className="text-right">Filled</th><th className="text-right">Entry</th>
-          <th className="text-right" title={`Rest on ${sim ? 'the exchange' : 'Perpl'} while the position is open`}>Stop loss</th><th className="text-right">Take profit</th>
+          <th className="pl-2.5">Plan</th><th>Status</th><th>Progress</th><th className="text-right">Entry</th>
+          <th className="text-right" title={`Rest on ${venue} while a position is open`}>Stop loss</th><th className="text-right">Take profit</th>
           <th className="text-right">PnL</th><th className="pl-4">Now</th><th className="pr-2.5" />
         </tr>
       </thead>
@@ -61,6 +62,10 @@ export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[
           const live = p.status !== 'done';
           const pnl = pnlOf(p);
           const s = STATUS[p.status];
+          const sc = p.scalp;
+          const level = (price: number | null, onVenue: boolean, fallback: string) => price != null
+            ? <span className="inline-flex items-center gap-1">{onVenue && <ShieldCheckIcon size={12} className="text-accent" aria-label={`resting on ${venue}`} />}{fmtPrice(price, spec)}</span>
+            : <span className="text-fg-3">{fallback}</span>;
           return (
             <tr key={p.id} className={cx('h-[26px] border-t border-line align-middle', !live && 'text-fg-3')}>
               <td className="pl-2.5 font-sans">
@@ -69,22 +74,28 @@ export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[
                 <span className="text-fg-3">{what(p)}, {p.input.leverage}x</span>
               </td>
               <td className="font-sans">{live ? <Tag tone={s.tone}>{s.label}</Tag> : <span title={p.endedAt ? `${ago(p.endedAt, now)} ago` : undefined}>{p.outcome ? OUTCOME_LABEL[p.outcome] : 'Done'}</span>}</td>
-              <td className="text-right">{fmtSize(p.filledSize, spec)}<span className="text-fg-3">/{fmtSize(p.targetSize, spec)}</span></td>
-              <td className="text-right">{p.avgEntry != null ? fmtPrice(p.avgEntry, spec) : p.input.kind === 'trade' && p.input.entryPrice ? <span className="text-fg-3">{fmtPrice(p.input.entryPrice, spec)}</span> : '-'}</td>
-              <td className="text-right">
-                {p.slPrice != null ? <span className="inline-flex items-center gap-1">{p.stopOnVenue && <ShieldCheckIcon size={12} className="text-accent" aria-label={`resting on ${sim ? 'the exchange' : 'Perpl'}`} />}{fmtPrice(p.slPrice, spec)}</span> : <span className="text-fg-3">{p.input.stopLossPct}%</span>}
+              <td className="font-sans">
+                {sc ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>{sc.scalps} scalp{sc.scalps === 1 ? '' : 's'}{sc.scalps ? `, ${sc.wins} won` : ''}</span>
+                    {live && <span className="text-fg-3" title="D1 and H4 as Monday last read them">D1 {TREND_LABEL[sc.d1].slice(0, 4).toLowerCase()}, H4 {TREND_LABEL[sc.h4].slice(0, 4).toLowerCase()}{sc.mode ? `, ${MODE_LABEL[sc.mode].toLowerCase()}` : ''}</span>}
+                  </span>
+                ) : (
+                  <span>{fmtSize(p.filledSize, spec)}<span className="text-fg-3">/{fmtSize(p.targetSize, spec)}</span>{p.twap && live ? <span className="text-fg-3"> {p.twap.slicesDone}/{p.twap.slices} slices</span> : null}</span>
+                )}
               </td>
-              <td className="text-right">
-                {p.tpPrice != null ? <span className="inline-flex items-center gap-1">{p.takeOnVenue && <ShieldCheckIcon size={12} className="text-accent" aria-label="resting on the exchange" />}{fmtPrice(p.tpPrice, spec)}</span> : <span className="text-fg-3">{p.input.takeProfitPct ? `${p.input.takeProfitPct}%` : 'Off'}</span>}
+              <td className="text-right">{p.avgEntry != null ? fmtPrice(p.avgEntry, spec) : '-'}</td>
+              <td className="text-right">{level(p.slPrice, p.stopOnVenue, sc ? '-' : p.input.kind === 'twap' ? `${p.input.stopLossPct}%` : '-')}</td>
+              <td className="text-right">{level(p.tpPrice, p.takeOnVenue, sc ? '-' : p.input.kind === 'twap' && p.input.takeProfitPct ? `${p.input.takeProfitPct}%` : 'Off')}</td>
+              <td className="text-right" title={sc ? `Session stop loss -${usd(sc.lossLimitUsd, 2)}${sc.targetUsd != null ? `, take profit +${usd(sc.targetUsd, 2)}` : ''}` : undefined}>
+                {sc || p.filledSize > 0 ? <span className={tone(pnl)}>{fmtSigned(pnl)}</span> : '-'}
+                {sc && live && <span className="text-fg-3"> of -{usd(sc.lossLimitUsd)}{sc.targetUsd != null ? `/+${usd(sc.targetUsd)}` : ''}</span>}
               </td>
-              <td className={cx('text-right', p.filledSize > 0 && tone(pnl))}>{p.filledSize > 0 ? fmtSigned(pnl) : '-'}</td>
-              <td className="max-w-[22rem] truncate pl-4 font-sans text-fg-2" title={p.note}>
-                {p.twap && live ? `${p.twap.slicesDone}/${p.twap.slices} slices. ` : ''}{p.note}
-              </td>
+              <td className="max-w-[22rem] truncate pl-4 font-sans text-fg-2" title={p.note}>{p.note}</td>
               <td className="pr-2.5 text-right font-sans whitespace-nowrap">
                 {live && (p.filledSize > 0
-                  ? <Button size="xs" variant={confirm === p.id ? 'danger' : 'ghost'} disabled={busy === p.id} onClick={() => void act(p, true)} title="Cancel what is left to enter and close the position at market">{confirm === p.id ? 'Confirm close' : 'Close'}</Button>
-                  : <Button size="xs" variant="ghost" disabled={busy === p.id} onClick={() => void act(p, false)}>Cancel</Button>)}
+                  ? <Button size="xs" variant={confirm === p.id ? 'danger' : 'ghost'} disabled={busy === p.id} onClick={() => void act(p, true)} title="Stop and close the position at market">{confirm === p.id ? 'Confirm close' : 'Close'}</Button>
+                  : <Button size="xs" variant="ghost" disabled={busy === p.id} onClick={() => void act(p, false)} title={sc ? 'End the session: no new scalps' : undefined}>{sc ? 'Stop' : 'Cancel'}</Button>)}
               </td>
             </tr>
           );
@@ -94,14 +105,18 @@ export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[
   );
 }
 
-/** A running plan's prices on the chart: where it waits to enter, its stop loss and its take profit. */
+/** A running plan's prices on the chart: where a scalp waits to enter, and the stop loss and take profit resting now. */
 export function planLevels(p: PlanView | undefined): ChartLevel[] {
   if (!p || p.status === 'done') return [];
   const out: ChartLevel[] = [];
-  const entry = p.input.kind === 'trade' && p.input.entry !== 'market' && p.status === 'waiting' ? p.input.entryPrice : null;
-  if (entry) out.push({ price: entry, label: p.input.kind === 'trade' && p.input.entry === 'stop' ? 'Breakout' : 'Entry', tone: 'accent' });
-  // Before the first fill the levels are where they will be if the entry fills at its price.
-  const ref = p.avgEntry ?? entry;
+  if (p.input.kind === 'trade') {
+    if (p.status === 'entering' && p.avgEntry != null) out.push({ price: p.avgEntry, label: 'Scalp entry', tone: 'accent' });
+    if (p.slPrice != null) out.push({ price: p.slPrice, label: 'Stop loss', tone: 'ask' });
+    if (p.tpPrice != null) out.push({ price: p.tpPrice, label: 'Take profit', tone: 'bid' });
+    return out;
+  }
+  // A TWAP's levels are priced from where it started, so they show before the first fill too.
+  const ref = p.twap?.arrival || p.avgEntry;
   const sl = p.slPrice ?? (ref ? priceAway(p.input.bias, ref, p.input.stopLossPct, true) : null);
   const tp = p.tpPrice ?? (ref && p.input.takeProfitPct ? priceAway(p.input.bias, ref, p.input.takeProfitPct, false) : null);
   if (sl) out.push({ price: sl, label: 'Stop loss', tone: 'ask' });
