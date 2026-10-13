@@ -70,7 +70,9 @@ export const config = {
   nansen: {
     apiUrl: env('NANSEN_API_URL', 'https://api.nansen.ai'),
     apiKey: nansenKey,
-    pollSeconds: num('NANSEN_POLL_SECONDS', 120),
+    // 5 credits a call: every 10 minutes is about 1,000 credits a day. Known Smart Traders still count live from
+    // Hyperliquid's feed in between; a poll mostly finds newly labelled wallets. Paused while no Monday is quoting.
+    pollSeconds: num('NANSEN_POLL_SECONDS', 600),
   },
 
   llm: {
@@ -80,6 +82,9 @@ export const config = {
     model: env('LLM_MODEL'),
   },
   governorIntervalMin: num('GOVERNOR_INTERVAL_MIN', 15),
+  // An early review (a Smart Trader burst, data going stale) waits at least this long after the last one, and runs with
+  // the model's reasoning off: bursts of reviews under two minutes apart were about half of all model calls (2026-10-13).
+  governorEarlyGapMin: num('GOVERNOR_EARLY_GAP_MIN', 10),
 
   chain: {
     rpcUrl,
@@ -103,6 +108,8 @@ export const config = {
     rpcUrl: env('STATS_RPC_URL'),
     // Blocks per eth_getLogs call: Monad's public RPC allows 100.
     rpcLogBlocks: num('STATS_RPC_LOG_BLOCKS', 100),
+    // Model answers the public pages may ask for in a UTC day (Ask Monday, wallet summaries); then the rules answer.
+    llmDailyCap: num('STATS_LLM_DAILY_CAP', 300),
   },
 };
 

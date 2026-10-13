@@ -171,7 +171,7 @@ export default function SystemPage() {
 
               <h3 className={H3}>How it is called</h3>
               <p className={P}>
-                Through an OpenAI-compatible API with JSON output. The governor runs kimi-k3 with its reasoning on: about {KIMI.avgSec} seconds an answer, which a 15-minute loop absorbs while the rules hold the book. Ask Monday runs the same model with reasoning off, about 4 seconds an answer, because a person is waiting.
+                Through an OpenAI-compatible API with JSON output. The governor runs kimi-k3 with its reasoning on for the scheduled review: about {KIMI.avgSec} seconds an answer, which a 15-minute loop absorbs while the rules hold the book. An early review, when a burst or stale data calls for one, runs with reasoning off and answers in seconds, at most every 10 minutes. Ask Monday runs the same model with reasoning off, about 4 seconds an answer, because a person is waiting.
               </p>
 
               <h3 className={H3}>What Kimi brings</h3>

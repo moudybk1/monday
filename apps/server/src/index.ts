@@ -59,6 +59,8 @@ function dropRunner(userId: number) {
 // Anything that touches the chain must be on the chain NETWORK names.
 if (!world || chainEnabled) await verifyRpc();
 await driver.feed.start();
+// Nansen is called only while some Monday quotes: it is the one signal that costs credits, and nothing else reads it.
+collector.pauseWhen(() => house?.status !== 'quoting' && ![...runners.values()].some((r) => r.status === 'quoting'));
 await collector.start();
 if (!world) startHyperliquid((t) => collector.onHyperliquidTrade(t)); // mids for the blend, and the smart-money tape
 // Public Perpl stats (indexing and /api/stats) run in their own process, stats/run.ts (npm run indexer, also started by

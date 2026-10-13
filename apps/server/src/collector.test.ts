@@ -38,3 +38,25 @@ it('counts a labelled wallet live from Hyperliquid, once, and lets Nansen replac
   ingest([nansen({ hash: '0xn2', valueUsd: 5_000, ts: now + 10_200 })]);
   expect(c.recentTrades('BTC', now + 5_000).map((t) => [t.type, t.valueUsd])).toEqual([['Market', 5_000], [LIVE, 8_000]]);
 });
+
+it('calls Nansen only while a Monday quotes, and catches up on the hours it missed', async () => {
+  const c = new Collector(null) as unknown as {
+    kind: string; source: unknown; lastPollAt: number; tick(): Promise<void>; pauseWhen(f: () => boolean): void;
+  };
+  c.kind = 'nansen';
+  const calls: string[] = [];
+  c.source = { poll: async () => (calls.push('poll'), []), backfill: async (h: number) => (calls.push(`backfill ${h}h`), []) };
+  let idle = true;
+  c.pauseWhen(() => idle);
+  c.lastPollAt = Date.now() - 3 * 3_600_000; // last asked three hours ago
+  await c.tick();
+  expect(calls).toEqual([]); // nobody quoting: no credits spent
+  idle = false;
+  await c.tick();
+  expect(calls).toEqual(['backfill 4h']); // a Monday starts: the three hours missed, and one more
+  await c.tick();
+  expect(calls).toEqual(['backfill 4h']); // just asked: not due yet
+  c.lastPollAt = Date.now() - 11 * 60_000;
+  await c.tick();
+  expect(calls).toEqual(['backfill 4h', 'poll']); // due after 10 minutes: the usual one-hour poll
+});
