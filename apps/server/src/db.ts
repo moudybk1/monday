@@ -12,8 +12,13 @@ import type { SimStore } from './venue/sim';
 if (config.databasePath !== ':memory:') mkdirSync(dirname(config.databasePath), { recursive: true });
 export const db = new DatabaseSync(config.databasePath);
 
+// synchronous = normal: in WAL mode a commit no longer waits for the disk, only checkpoints do. Under the default (full)
+// every write fsynced on the main thread: 5 ms typical and 76 ms at worst on the VPS disk when idle, seconds when the
+// stats indexer or a backup kept it busy, which stalled the event loop 1 to 2.6 s (2026-10-13). A crash of the process
+// loses nothing; only the machine losing power could drop the last moments of writes.
 db.exec(`
 pragma journal_mode = wal;
+pragma synchronous = normal;
 pragma busy_timeout = 2000;
 create table if not exists users (
   id integer primary key, wallet text unique not null, created_at integer not null
