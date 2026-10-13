@@ -85,6 +85,20 @@ export interface MarketInsight {
   summary: string;
   source: 'model' | 'rules';
   model: string | null;
+  /** What the page draws for each timeframe. */
+  frames: Record<'d1' | 'h4' | 'h1', FrameRead>;
+}
+
+/** One timeframe of a market read: its recent closes, where the close sits against the 20 EMA, and its 20-bar range. */
+export interface FrameRead {
+  closes: number[];
+  ema: number;
+  /** Close against the 20 EMA, in percent. */
+  distPct: number;
+  /** The 20 EMA's move over its last 5 bars, in percent. */
+  slopePct: number;
+  high: number;
+  low: number;
 }
 
 /** Follow when the user's side is the market's, counter when it is against it; a mixed market has no mode. */

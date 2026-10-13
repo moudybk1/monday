@@ -19,6 +19,12 @@ it('reads D1, H4 and H1 by rule when no model is set, and says the trend lines u
   expect(r).toMatchObject({ d1: 'bullish', h4: 'bullish', h1: 'bullish', market: 'bullish', aligned: true, source: 'rules', model: null });
   expect(r.summary).toBe('BTC is bullish on D1, H4 and H1: the trend lines up on all three.');
   expect(r.price).toBeGreaterThan(100); // the last H1 close when the feed has no snapshot
+  // What the page draws: closes, the close above a rising 20 EMA, and a range around the price.
+  expect(r.frames.h1.closes.length).toBe(40);
+  expect(r.frames.h1.distPct).toBeGreaterThan(0);
+  expect(r.frames.h1.slopePct).toBeGreaterThan(0);
+  expect(r.frames.h1.low).toBeLessThan(r.price);
+  expect(r.frames.h1.high).toBeGreaterThan(r.price - 1);
 });
 
 it('names a pullback and a mixed market; the model text loses markdown and em dashes', () => {
