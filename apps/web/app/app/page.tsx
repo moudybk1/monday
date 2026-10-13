@@ -261,7 +261,7 @@ export default function Terminal() {
           </div>
           <div className="flex min-h-0 flex-col xl:col-start-3 xl:row-start-2">
             <Panel
-              title={<>Smart Traders <span className="font-normal text-fg-3">on Hyperliquid</span></>}
+              title="Smart Traders"
               className="h-[360px] flex-none md:h-[520px] xl:h-auto xl:min-h-0 xl:flex-1"
               bodyClassName="flex flex-col !overflow-hidden"
               aside={cfg?.sim ? (
@@ -443,7 +443,7 @@ function Stats({ m, quoting, blend }: { m: MarketState; quoting: boolean; blend:
             )}
           </Cell>
           <Cell k="Vol 1m" hint="How much the price typically moves in a minute. 1 bp is 0.01%.">{m.sigma1mBps ? `${m.sigma1mBps.toFixed(1)} bps` : '-'}</Cell>
-          <Cell k="vs Hyperliquid" hint={m.hlMid ? `Hyperliquid mid ${fmtPrice(m.hlMid, m.spec)}. How far Perpl's mark sits from it; ${blend > 0 ? `Monday centres its quotes ${towardHl(blend)} from Perpl to Hyperliquid` : 'in Mid mode Monday quotes off Perpl alone'}.` : 'Hyperliquid is off, stale or too far from Perpl to trust, so Monday uses Perpl alone.'}>
+          <Cell k="vs reference" hint={m.hlMid ? `Reference market mid ${fmtPrice(m.hlMid, m.spec)}, where these perps are priced first. How far Perpl's mark sits from it; ${blend > 0 ? `Monday centres its quotes ${towardHl(blend)} from Perpl to it` : 'in Mid mode Monday quotes off Perpl alone'}.` : 'The reference market is off, stale or too far from Perpl to trust, so Monday uses Perpl alone.'}>
             {gapBps == null ? <span className="text-fg-3">off</span> : `${gapBps >= 0 ? '+' : ''}${gapBps.toFixed(1)} bps`}
           </Cell>
           </dl>
@@ -461,7 +461,7 @@ function StatusBar({ state, sim, paper, connected }: { state: DashboardState; si
     ['Data', `${(h.marketDataAgeMs / 1000).toFixed(1)}s`, h.marketDataAgeMs > 5_000],
     // Two separate sources with separate health: the Smart Trader poll, and Hyperliquid's live tape and mids.
     ['Smart Traders', h.signalAgeMs < 0 ? 'none' : `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs > 15 * 60_000],
-    ['Hyperliquid', h.hlAgeMs < 0 ? 'off' : `${(h.hlAgeMs / 1000).toFixed(1)}s`, h.hlAgeMs > 5_000],
+    ['Reference market', h.hlAgeMs < 0 ? 'off' : `${(h.hlAgeMs / 1000).toFixed(1)}s`, h.hlAgeMs > 5_000],
     ['Order latency', h.latencyMs.venue == null ? 'n/a' : `${Math.round(h.latencyMs.venue)}ms`, (h.latencyMs.venue ?? 0) > 3_000],
     ['Budget', `${h.budgetRemaining}/${h.budgetPerMin}`, h.budgetRemaining < 8],
     ['Governor', h.llm ? (h.llmFailing ? 'rules, LLM failing' : 'LLM + rules') : 'rules', h.llmFailing],

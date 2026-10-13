@@ -16,13 +16,13 @@ const KIMI = { decisions: 167, looser: 0 };
 // The loops, with what feeds them and what comes out. Same facts as the System page, one line each.
 const INPUTS = [
   ['Perpl', 'Order book, trades, mark and funding, over the market-data socket.'],
-  ['Hyperliquid', 'Mid prices and the trade tape, because Perpl follows Hyperliquid.'],
-  ['Smart Traders', 'Trades by wallets with a consistent profit record on Hyperliquid.'],
+  ['Reference market', 'Mid prices and the trade tape of the market where these perps are priced first, which Perpl follows.'],
+  ['Smart Traders', 'Trades by wallets with a consistent profit record.'],
   ['Your limits', 'Markets, margin, leverage and a daily stop loss, set in Setup.'],
 ] as const;
 const LOOPS = [
-  { name: 'Engine', when: 'every second', who: 'code', text: 'Prices both quotes from the book, Hyperliquid and the position, and changes only what moved enough to matter.' },
-  { name: 'Reflex', when: 'the next tick', who: 'code', text: 'Pulls or widens the side about to be run over: a Smart Trader burst, a Hyperliquid move, a fill on its own quote.' },
+  { name: 'Engine', when: 'every second', who: 'code', text: 'Prices both quotes from the book, the reference market and the position, and changes only what moved enough to matter.' },
+  { name: 'Reflex', when: 'the next tick', who: 'code', text: 'Pulls or widens the side about to be run over: a Smart Trader burst, a move in the reference market, a fill on its own quote.' },
   { name: 'Governor', when: 'every 15 minutes', who: 'Kimi', text: 'Reads the whole situation, sets how carefully Monday quotes inside hard bounds, and says why in plain words. Never places an order.' },
 ] as const;
 const outputs = (onchain: boolean) => [

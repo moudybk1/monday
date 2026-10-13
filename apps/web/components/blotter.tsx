@@ -149,7 +149,7 @@ export function Model({ m, quoting, policy }: { m: MarketState; quoting: boolean
   // The reference mode and participation the engine uses for this policy, not the Grid and Normal defaults.
   const { blend, participation } = quotingFor(policy).cfg;
   const rows: [string, string, string][] = [
-    ['Fair price', fmtPrice(m.model.ref, m.spec), m.hlMid != null && blend > 0 ? `Perpl, pulled ${fmtBps(m.model.blendBps, 1)} bps ${towardHl(blend)} to Hyperliquid` : 'Perpl mark, or the book mid when it agrees'],
+    ['Fair price', fmtPrice(m.model.ref, m.spec), m.hlMid != null && blend > 0 ? `Perpl, pulled ${fmtBps(m.model.blendBps, 1)} bps ${towardHl(blend)} to the reference market` : 'Perpl mark, or the book mid when it agrees'],
     ['Half-spread', `${m.model.halfBps.toFixed(2)} bps`, `volatility ${m.sigma1mBps.toFixed(1)} bps a minute, widened ${g.spread_mult}x by the ${g.regime} regime. In a calm market the quote moves up to the best price instead.`],
     ['Inventory skew', `${fmtBps(m.model.skewInvBps, 2)} bps`, m.model.q === 0 ? 'flat, no skew' : `leans to shed the ${m.model.q > 0 ? 'long' : 'short'}`],
     ['Smart Trader skew', `${fmtBps(m.model.skewNanBps + g.skew_bias_bps, 2)} bps`, m.model.skewNanBps === 0 && g.skew_bias_bps === 0 ? 'off or neutral' : 'leans with the flow'],

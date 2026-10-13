@@ -42,8 +42,8 @@ const EXAMPLES = [
 ];
 
 const LOOPS = [
-  { name: 'Engine', when: 'every second', who: 'code', text: 'Prices both quotes from the book, Hyperliquid and the position, and changes only what moved enough to matter.' },
-  { name: 'Reflexes', when: 'within seconds', who: 'code', text: 'Widen or pull the side that is about to be run over: a Smart Trader burst, a Hyperliquid move, a fill.' },
+  { name: 'Engine', when: 'every second', who: 'code', text: 'Prices both quotes from the book, the reference market and the position, and changes only what moved enough to matter.' },
+  { name: 'Reflexes', when: 'within seconds', who: 'code', text: 'Widen or pull the side that is about to be run over: a Smart Trader burst, a move in the reference market, a fill.' },
   { name: 'Governor', when: 'every 15 minutes', who: 'Kimi', text: 'Reads the whole situation and sets how carefully Monday quotes, with a reason in plain words. Never places an order.' },
 ];
 
@@ -90,7 +90,7 @@ export default function SystemPage() {
                 ))}
               </ol>
               <p className={P}>
-                What goes in: Perpl&apos;s order book, trades, mark and funding over its market-data socket; the account&apos;s orders, fills and positions over its trading socket; Hyperliquid&apos;s mid prices and trade tape, because Perpl follows Hyperliquid; trades by wallets labelled as consistently profitable on Hyperliquid (Smart Traders); and the limits the user set. What comes out: maker orders on the user&apos;s Perpl account, and a public record of every decision.
+                What goes in: Perpl&apos;s order book, trades, mark and funding over its market-data socket; the account&apos;s orders, fills and positions over its trading socket; the reference market&apos;s mid prices and trade tape, because Perpl follows it; trades by wallets labelled as consistently profitable (Smart Traders); and the limits the user set. What comes out: maker orders on the user&apos;s Perpl account, and a public record of every decision.
               </p>
             </Section>
 
@@ -106,7 +106,7 @@ export default function SystemPage() {
             <Section id="engine" title="The engine">
               <p className={P}>Every second, for each market the user picked:</p>
               <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
-                <Item k="Fair price">Perpl&apos;s mid, blended toward Hyperliquid&apos;s by the user&apos;s reference mode (none, halfway, or a chosen weight), and ignored past a 50 bps gap.</Item>
+                <Item k="Fair price">Perpl&apos;s mid, blended toward the reference market&apos;s by the user&apos;s reference mode (none, halfway, or a chosen weight), and ignored past a 50 bps gap.</Item>
                 <Item k="Spread">The larger of the user&apos;s minimum and 1.5 times the one-minute volatility, times the governor&apos;s spread multiple, plus the maker fee.</Item>
                 <Item k="Skew">Leans with the position (to shed it), the order book, the five-minute trend, and Smart Trader flow when the study allows leaning.</Item>
                 <Item k="Placement">In calm and active markets it joins the best price, never closer to fair than the maker fee. A quote at the front keeps its place until it is clearly behind.</Item>
@@ -114,7 +114,7 @@ export default function SystemPage() {
               </ul>
               <h3 className={H3}>Exits</h3>
               <p className={P}>
-                One entry per position. Once a position is open, Monday only quotes its exit, never adds to it. The exit rests at the entry plus both maker fees and 1 bp; after 10 minutes it drops to the entry plus fees, out at breakeven rather than waiting. New entries stay at least 3 bps on the safe side of Hyperliquid&apos;s price, since a quote Perpl is about to move through is the one that loses. Exits are never held back by that rule.
+                One entry per position. Once a position is open, Monday only quotes its exit, never adds to it. The exit rests at the entry plus both maker fees and 1 bp; after 10 minutes it drops to the entry plus fees, out at breakeven rather than waiting. New entries stay at least 3 bps on the safe side of the reference price, since a quote Perpl is about to move through is the one that loses. Exits are never held back by that rule.
               </p>
             </Section>
 
@@ -122,7 +122,7 @@ export default function SystemPage() {
               <p className={P}>Plain code, no model in the loop:</p>
               <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
                 <Item k="Smart Trader burst">An unusual five-minute flow widens the side it runs into for five minutes; a stronger one, or a single $250k trade, pulls it.</Item>
-                <Item k="Hyperliquid first">A 1.5 bps move in three seconds widens the side it runs into, 3 bps pulls it, for six seconds: before Perpl&apos;s book catches up.</Item>
+                <Item k="Reference first">A 1.5 bps move in three seconds widens the side it runs into, 3 bps pulls it, for six seconds: before Perpl&apos;s book catches up.</Item>
                 <Item k="After a fill">A fill widens that side for 30 seconds; two in a minute pull it. The taker who hit it is often still working.</Item>
                 <Item k="Lopsided book">Nine tenths of the depth on one side widens the threatened side for a minute.</Item>
               </ul>
@@ -217,7 +217,7 @@ export default function SystemPage() {
 
             <Section id="infrastructure" title="Infrastructure">
               <p className={P}>
-                One server runs four parts: the trading server (an agent per user, sockets to Perpl and Hyperliquid, the API), the analytics process (indexer and public API, kept apart so heavy queries never stall trading), the web app, and Caddy for TLS. Three sites: mondaytrade.xyz, app.mondaytrade.xyz for the agent, analytics.mondaytrade.xyz for the dashboard. The terminal streams its state over a compressed WebSocket. Code is TypeScript end to end, with the strategy in pure, unit-tested functions.
+                One server runs four parts: the trading server (an agent per user, sockets to Perpl and the reference market, the API), the analytics process (indexer and public API, kept apart so heavy queries never stall trading), the web app, and Caddy for TLS. Three sites: mondaytrade.xyz, app.mondaytrade.xyz for the agent, analytics.mondaytrade.xyz for the dashboard. The terminal streams its state over a compressed WebSocket. Code is TypeScript end to end, with the strategy in pure, unit-tested functions.
               </p>
             </Section>
 

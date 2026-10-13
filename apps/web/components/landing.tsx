@@ -97,7 +97,7 @@ export function HeroTerminal({ className }: { className?: string }) {
                 <OrderBook m={m} rows={10} now={state.at} />
               </Panel>
               <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[320px] lg:h-auto" />
-              <Panel title="Smart Traders on Hyperliquid" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
+              <Panel title="Smart Traders" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
                 <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
                 <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={20} /></div>
               </Panel>
@@ -423,13 +423,13 @@ function scene(step: number): MarketState {
 
 const STEPS = [
   { verb: 'Quote', ms: 3000, text: 'Monday rests one bid and one ask around fair price. It aims to earn the spread when both fill; fees and price moves can still make a round trip lose.' },
-  { verb: 'Detect', ms: 4000, text: 'Smart Traders buy $640k of BTC on Hyperliquid in five minutes. The flow score passes 2.5.' },
+  { verb: 'Detect', ms: 4000, text: 'Smart Traders buy $640k of BTC in five minutes. The flow score passes 2.5.' },
   { verb: 'Step aside', ms: 4000, text: 'On the next one-second tick the reflex pulls the ask, so a better-informed buyer cannot lift it. The bid stays.' },
   { verb: 'Explain', ms: 4000, text: 'The governor sets a storm regime and writes its reason in plain words, with a hash of the data behind it.' },
 ];
 
 const CARDS: Pick<Decision, 'id' | 'source' | 'reason'>[] = [
-  { id: 1, source: 'reflex', reason: 'Smart Traders bought $640k BTC on Hyperliquid in 5 min (z = 2.9). Ask pulled for 5 minutes.' },
+  { id: 1, source: 'reflex', reason: 'Smart Traders bought $640k BTC in 5 min (z = 2.9). Ask pulled for 5 minutes.' },
   { id: 2, source: 'governor', reason: 'Storm regime. Widening quotes 2.5x and cutting size to 40% until flow cools.' },
 ];
 
@@ -505,7 +505,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           <OrderBook m={m} rows={6} now={T0} />
         </Panel>
         <div className="flex min-h-0 flex-col gap-1">
-          <Panel title="Smart Traders on Hyperliquid" className="flex-none" bodyClassName="!overflow-visible">
+          <Panel title="Smart Traders" className="flex-none" bodyClassName="!overflow-visible">
             <FlowBars m={m} />
           </Panel>
           <Panel title="Decisions" className="min-h-[10rem] flex-1">

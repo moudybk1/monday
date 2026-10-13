@@ -87,7 +87,7 @@ const OUTPUT_SCHEMA = {
 
 const SYSTEM = `You set risk parameters for Monday, a market-making agent that keeps one resting bid and one resting ask on Perpl (a perpetuals exchange on Monad) for a retail user's own account. Every 15 minutes you receive a JSON snapshot of one market and reply with one JSON object of parameters. A deterministic engine turns those parameters into quotes; you never place orders.
 
-The key input is Smart Trader flow: trades by wallets labelled as consistently profitable on Hyperliquid, where price discovery happens. When that flow is strongly one-sided, price on Perpl tends to follow, and a maker quoting the other side gets picked off. Your job is to decide how defensively to quote for the next few minutes.
+The key input is Smart Trader flow: trades by wallets labelled as consistently profitable on the market where these perps are priced first. When that flow is strongly one-sided, price on Perpl tends to follow, and a maker quoting the other side gets picked off. Your job is to decide how defensively to quote for the next few minutes.
 
 Priorities, in order:
 1. Protect the user's capital. When unsure, quote wider and smaller.
@@ -221,7 +221,7 @@ function flowPhrase(ctx: Pick<GovernorContext, 'signal' | 'market'>): string {
   const w = [{ x: ctx.signal.w5, span: '5 min' }, { x: ctx.signal.w15, span: '15 min' }, { x: ctx.signal.w60, span: 'the last hour' }]
     .reduce((a, b) => (Math.abs(b.x.z) > Math.abs(a.x.z) ? b : a));
   const verb = w.x.netUsd >= 0 ? 'bought' : 'sold';
-  return `Smart Traders net ${verb} ${usdCompact(Math.abs(w.x.netUsd))} ${ctx.market} on Hyperliquid in ${w.span}`;
+  return `Smart Traders net ${verb} ${usdCompact(Math.abs(w.x.netUsd))} ${ctx.market} in ${w.span}`;
 }
 
 export function rulesProposal(ctx: Pick<GovernorContext, 'market' | 'signal' | 'sigma1mBps' | 'sigmaMedianBps' | 'policy' | 'lean'>): Omit<GovernorParams, 'reason'> {

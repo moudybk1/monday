@@ -62,7 +62,7 @@ const GLOSSARY: { re: RegExp; text: string; metric?: AskIntent }[] = [
   { re: /\bmakers?\b|\btakers?\b/, text: "A maker's order rests on the book until someone fills it; a taker's order fills against the book at once. Makers pay lower fees." },
   { re: /\bmark price\b|\bmark\b/, text: 'The mark price is the price Perpl values positions at, kept close to the oracle so one trade cannot move it.' },
   { re: /\bperps?\b|\bperpetual/, text: 'A perpetual future (perp) tracks an asset without an expiry date; funding keeps it near the index.' },
-  { re: /\bsmart traders?\b/, text: 'Smart Traders are wallets with a strong track record on Hyperliquid. Monday watches their trades and steps aside when they move.' },
+  { re: /\bsmart traders?\b/, text: 'Smart Traders are wallets with a strong track record. Monday watches their trades and steps aside when they move.' },
   { re: /\bstreak\b/, text: 'A streak is profitable (or losing) days in a row, ending on the last day the wallet traded.' },
   { re: /\bvolume\b/, text: 'Volume is the notional value of every fill.', metric: { kind: 'metric', metric: 'volume' } },
 ];
