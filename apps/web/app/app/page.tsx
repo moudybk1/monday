@@ -5,13 +5,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_CONFIG, MARKETS, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
-import { AgentConsole, sessionUsd, terminalStatus, type SessionDraft } from '@/components/agent';
+import { AgentConsole, terminalStatus } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
 import { Diverging, LineChart } from '@/components/charts';
 import { Guide } from '@/components/guide';
 import { draftFrom, toBody } from '@/components/policy-form';
-import { PlanList, planLevels } from '@/components/plans';
+import { MakerRow, PlanList, planLevels } from '@/components/plans';
 import { PriceChart } from '@/components/price-chart';
 import { FlowBars, SmartTape } from '@/components/smart-money';
 import { Tape } from '@/components/tape';
@@ -52,8 +52,8 @@ export default function Terminal() {
   const [side, setSide] = useState<'book' | 'trades'>('book');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [session, setSession] = useState<SessionDraft>({ sl: '', tp: '' });
   const killDialog = useRef<HTMLDialogElement>(null);
+  const blotter = useRef<HTMLElement>(null);
   const guide = useRef<HTMLDialogElement>(null);
   const chartArea = useRef<HTMLDivElement>(null);
   const ready = Boolean(state);
@@ -112,11 +112,9 @@ export default function Terminal() {
   };
 
   const quoting = state.status === 'quoting';
-  const start = () => {
-    const stopLossUsd = sessionUsd(session.sl), takeProfitUsd = sessionUsd(session.tp);
-    // A mistyped limit must not quietly become "no limit".
-    if (Number.isNaN(stopLossUsd) || Number.isNaN(takeProfitUsd)) return setError('Session stop loss and take profit must be positive amounts, or empty for no limit.');
-    return act('/agent/start', { stopLossUsd, takeProfitUsd });
+  const showPlans = () => {
+    setTab('plans');
+    blotter.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // on a phone the blotter sits below
   };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const running = state.plans.filter((p) => p.status !== 'done');
@@ -136,7 +134,7 @@ export default function Terminal() {
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
   const TABS: [Tab, string, number | null][] = [
-    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length], ['fills', 'History', state.fills.length + ended.length],
+    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length + (quoting ? 1 : 0)], ['fills', 'History', state.fills.length + ended.length],
     ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote model', null],
   ];
 
@@ -183,7 +181,7 @@ export default function Terminal() {
         {state.status === 'paused' && state.closing === 'flatten' && <Notice tone="warn">Take profit reached, but Perpl has not confirmed the position is closed. Monday retries every 10 seconds; you can close it on Perpl too.</Notice>}
         {/* Stop means stop: nothing watches a position left open, so say so while one is. */}
         {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0 && !planMarkets.includes(x.sym)) && (
-          <Notice tone="warn">Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl, use Kill and flatten, or start Monday again.</Notice>
+          <Notice tone="warn" action={<Button size="xs" variant="danger" onClick={() => killDialog.current?.showModal()}>Kill and flatten</Button>}>Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl or with Kill and flatten.</Notice>
         )}
         {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes pulled. Monday resumes on its own when data returns.</Notice>}
         {/* The newest warning from the agent itself: loss-limit approach, rate limits, blocked orders, disconnects. */}
@@ -198,7 +196,7 @@ export default function Terminal() {
           <div ref={chartArea} className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-span-2">
             <PriceChart sym={sym} m={m} fills={state.fills} now={now} levels={planLevels(running.find((p) => p.input.sym === sym))} className="h-[360px] flex-none xl:h-auto xl:flex-[3]" />
 
-            <section className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
+            <section ref={blotter} className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
               <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
                 <div role="tablist" aria-label="Blotter" className="scroll flex h-full overflow-x-auto">
                   {TABS.map(([id, label, n]) => (
@@ -209,18 +207,23 @@ export default function Terminal() {
                 </div>
                 {/* One line, cut short when the tabs need the room: it never wraps into the tab row. */}
                 <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[11.5px] text-fg-3 lg:block">
-                  {tab === 'orders' ? 'queue: what must trade before each order does'
+                  {tab === 'orders' ? "the market maker's quotes; a plan's orders show under Plans"
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
-                    : tab === 'plans' ? `Agentic Trade and TWAP; stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
+                    : tab === 'plans' ? `everything that trades; plan stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
-                    : tab === 'fills' ? (past === 'fills' ? 'markout: price move after the fill, positive is good' : 'Agentic Trade and TWAP that have ended')
+                    : tab === 'fills' ? (past === 'fills' ? "the market maker's fills; markout is the move after, positive is good" : 'Agentic Trade and TWAP that have ended')
                     : tab === 'model' ? `${sym}, this tick` : `since ${state.equity[0] ? fmtTime(state.equity[0].t, false) : 'start'}`}
                 </span>
               </header>
               <div className={cx('scroll min-h-0 flex-1', tab === 'equity' && 'p-1.5')}>
                 {tab === 'orders' && <OpenOrders state={state} onPick={pick} />}
                 {tab === 'positions' && <Positions state={state} onPick={pick} />}
-                {tab === 'plans' && <PlanList plans={running} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick} />}
+                {tab === 'plans' && (
+                  <PlanList
+                    plans={running} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick}
+                    maker={quoting ? <MakerRow state={state} busy={busy !== null} onStop={() => void act('/agent/pause')} onKill={() => killDialog.current?.showModal()} onPick={pick} /> : undefined}
+                  />
+                )}
                 {tab === 'fills' && (
                   <>
                     <div role="group" aria-label="History" className="flex gap-1 border-b border-line px-2.5 py-1.5">
@@ -229,7 +232,7 @@ export default function Terminal() {
                           key={v} type="button" aria-pressed={past === v} onClick={() => setPast(v)}
                           className={cx('flex h-6 items-center gap-1.5 rounded-sm px-2 text-[11.5px]', past === v ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}
                         >
-                          {v === 'fills' ? 'Fills' : 'Plans'}<span className="num text-[10.5px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
+                          {v === 'fills' ? 'Maker fills' : 'Plans'}<span className="num text-[10.5px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
                         </button>
                       ))}
                     </div>
@@ -271,8 +274,7 @@ export default function Terminal() {
           <div className="order-first md:col-span-2 xl:order-none xl:col-span-1 xl:col-start-3 xl:row-start-1">
             {state.policy.markets.length ? (
               <AgentConsole
-                state={state} sym={sym} onPick={pick} session={session} onSession={setSession} busy={busy !== null}
-                onStart={start} onPause={() => act('/agent/pause')} onKill={() => killDialog.current?.showModal()}
+                state={state} sym={sym} onPick={pick} onShowPlans={showPlans}
               />
             ) : (
               <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} />
@@ -317,8 +319,9 @@ export default function Terminal() {
   );
 }
 
-/** Market as agent state: traded by the policy, dropped but still holding a position, or only watched. */
-const agentTag = (x: MarketState) => (x.inPolicy ? 'trading' : x.position.size !== 0 ? 'exit' : 'off');
+/** Market as agent state: a running plan's, traded by the policy, dropped but still holding a position, or only watched. */
+const agentTag = (x: MarketState, state: DashboardState) =>
+  state.plans.some((p) => p.status !== 'done' && p.input.sym === x.sym) ? 'plan' : x.inPolicy ? 'trading' : x.position.size !== 0 ? 'exit' : 'off';
 const pct = (n: number | null) => (n == null ? '-' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`);
 const PICK_COLS = 'grid grid-cols-[minmax(0,1.3fr)_1fr_0.8fr] items-center gap-x-3 sm:grid-cols-[minmax(0,1.3fr)_1fr_0.8fr_0.8fr_0.9fr_0.9fr]';
 
@@ -334,7 +337,7 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
     return () => document.removeEventListener('pointerdown', close);
   }, []);
   const x = state.markets[sym];
-  const tag = x && agentTag(x);
+  const tag = x && agentTag(x, state);
   return (
     <details ref={menu} className="relative order-1 flex-none border-r border-line" onKeyDown={(e) => e.key === 'Escape' && menu.current && (menu.current.open = false)}>
       <summary aria-label={`Market: ${sym}. Change market`} className="flex h-14 min-w-[8.25rem] cursor-pointer list-none flex-col justify-center gap-1.5 px-3 hover:bg-raised [&::-webkit-details-marker]:hidden">
@@ -357,7 +360,7 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
         {(Object.keys(state.markets) as MarketSym[]).map((s) => {
           const r = state.markets[s];
           if (!r) return null;
-          const t = agentTag(r);
+          const t = agentTag(r, state);
           const c = r.day.changePct;
           return (
             <button

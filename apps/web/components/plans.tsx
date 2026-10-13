@@ -2,13 +2,13 @@
 
 import { ShieldCheckIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
-import { useEffect, useState, type ReactNode } from 'react';
-import { MODE_LABEL, OUTCOME_LABEL, STYLE_LABEL, TREND_LABEL, planPnl, priceAway, usd, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { MODE_LABEL, OUTCOME_LABEL, STYLE_LABEL, TREND_LABEL, planPnl, priceAway, usd, type DashboardState, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
 import { tone } from './agent';
 import type { ChartLevel } from './price-chart';
 import { Button, SymButton, Tag, cx } from './ui';
 import { api } from '@/lib/api';
-import { ago, fmtPrice, fmtSigned, fmtSize } from '@/lib/format';
+import { ago, fmtPrice, fmtSigned, fmtSize, fmtTime } from '@/lib/format';
 
 const HEAD = 'label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal';
 const STATUS: Record<PlanView['status'], { label: string; tone: 'neutral' | 'accent' | 'bid' }> = {
@@ -17,8 +17,11 @@ const STATUS: Record<PlanView['status'], { label: string; tone: 'neutral' | 'acc
 
 const what = (p: PlanView) => (p.input.kind === 'twap' ? `TWAP, ${STYLE_LABEL[p.input.style].toLowerCase()}` : `Scalping ${p.input.frame}`);
 
-/** Agentic Trade and TWAP plans as given: the Plans tab passes the running ones, History the ones that ended. */
-export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { plans: PlanView[]; specs: Partial<Record<MarketSym, MarketSpec>>; sim: boolean; now: number; onError: (message: string) => void; onPick?: (s: MarketSym) => void; empty?: ReactNode }) {
+/**
+ * Agentic Trade and TWAP plans as given: the Plans tab passes the running ones, History the ones that ended. The Plans
+ * tab also passes the running market maker's row (MakerRow), so everything that trades is stopped from one place.
+ */
+export function PlanList({ plans, specs, sim, now, onError, onPick, empty, maker }: { plans: PlanView[]; specs: Partial<Record<MarketSym, MarketSpec>>; sim: boolean; now: number; onError: (message: string) => void; onPick?: (s: MarketSym) => void; empty?: ReactNode; maker?: ReactNode }) {
   const [busy, setBusy] = useState<number | null>(null);
   // Closing at market is one click away from a mistake: the first click asks, the second within a few seconds does it.
   const [confirm, setConfirm] = useState<number | null>(null);
@@ -28,7 +31,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { p
     return () => clearTimeout(t);
   }, [confirm]);
 
-  if (!plans.length) {
+  if (!plans.length && !maker) {
     return <p className="px-2.5 py-4 text-[12px] text-fg-3">{empty ?? <>No plan running. Start an <Link href="/app/setup/trade" className="underline underline-offset-2 hover:text-fg">Agentic Trade</Link> or a <Link href="/app/setup/twap" className="underline underline-offset-2 hover:text-fg">TWAP</Link> in Setup.</>}</p>;
   }
   const act = async (p: PlanView, close: boolean) => {
@@ -55,6 +58,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { p
         </tr>
       </thead>
       <tbody className="num">
+        {maker}
         {plans.map((p) => {
           const spec = specs[p.input.sym];
           const long = p.input.bias === 'long';
@@ -88,7 +92,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { p
               <td className="text-right">{level(p.tpPrice, p.takeOnVenue, sc ? '-' : p.input.kind === 'twap' && p.input.takeProfitPct ? `${p.input.takeProfitPct}%` : 'Off')}</td>
               <td className="text-right" title={sc ? `Session stop loss -${usd(sc.lossLimitUsd, 2)}${sc.targetUsd != null ? `, take profit +${usd(sc.targetUsd, 2)}` : ''}` : undefined}>
                 {sc || p.filledSize > 0 ? <span className={tone(pnl)}>{fmtSigned(pnl)}</span> : '-'}
-                {sc && live && <span className="text-fg-3"> of -{usd(sc.lossLimitUsd)}{sc.targetUsd != null ? `/+${usd(sc.targetUsd)}` : ''}</span>}
+                {sc && live && <span className="text-fg-3"> of -{usd(sc.lossLimitUsd, 2)}{sc.targetUsd != null ? `/+${usd(sc.targetUsd, 2)}` : ''}</span>}
               </td>
               <td className="max-w-[22rem] truncate pl-4 font-sans text-fg-2" title={p.note}>{p.note}</td>
               <td className="pr-2.5 text-right font-sans whitespace-nowrap">
@@ -101,6 +105,31 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { p
         })}
       </tbody>
     </table>
+  );
+}
+
+/** The running market maker as a row of the Plans table: its markets, its session, and its Stop and Kill. */
+export function MakerRow({ state, busy, onStop, onKill, onPick }: { state: DashboardState; busy: boolean; onStop: () => void; onKill: () => void; onPick?: (s: MarketSym) => void }) {
+  const { policy, session: s } = state;
+  const quotes = policy.markets.reduce((n, m) => n + (state.markets[m]?.quotes.bid ? 1 : 0) + (state.markets[m]?.quotes.ask ? 1 : 0), 0);
+  return (
+    <tr className="h-[26px] border-t border-line align-middle">
+      <td className="pl-2.5 font-sans">
+        {policy.markets.map((m, i) => <Fragment key={m}>{i > 0 && ', '}<SymButton sym={m} onPick={onPick} className="font-semibold text-fg" /></Fragment>)}{' '}
+        <span className="text-fg-3">Market maker, {policy.maxLeverage}x</span>
+      </td>
+      <td className="font-sans"><Tag tone="bid">Quoting</Tag></td>
+      <td className="font-sans">{quotes} order{quotes === 1 ? '' : 's'} resting</td>
+      <td className="text-right text-fg-3">-</td>
+      <td className="text-right" title="Session stop loss when one is set, else the daily loss limit">{s?.stopLossUsd != null ? `-${usd(s.stopLossUsd, 2)}` : <span className="text-fg-3">-{usd(policy.maxDailyLossUsd, 2)} a day</span>}</td>
+      <td className="text-right">{s?.takeProfitUsd != null ? `+${usd(s.takeProfitUsd, 2)}` : <span className="text-fg-3">Off</span>}</td>
+      <td className="text-right">{s ? <span className={tone(s.pnlUsd)}>{fmtSigned(s.pnlUsd)}</span> : '-'}</td>
+      <td className="pl-4 font-sans text-fg-2">{s ? `quoting since ${fmtTime(s.startedAt, false)}` : 'quoting'}</td>
+      <td className="pr-2.5 text-right font-sans whitespace-nowrap">
+        <Button size="xs" variant="ghost" disabled={busy} onClick={onStop} title="Cancel Monday's orders and stop the bot. Open positions and orders you placed yourself stay as they are, and Monday stops watching them.">Stop</Button>{' '}
+        <Button size="xs" variant="danger" disabled={busy} onClick={onKill} title="Cancel every order and close every position on the account, the plans' too">Kill and flatten</Button>
+      </td>
+    </tr>
   );
 }
 

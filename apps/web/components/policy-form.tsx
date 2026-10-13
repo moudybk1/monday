@@ -252,7 +252,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
 
         <Panel title="Pre-trade summary" aside={value.markets.join(', ')}>
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
-            <Line k="Balance on Perpl" v={balance == null ? '-' : money(balance, 2)} />
+            <Line k="Free for the market maker" v={balance == null ? '-' : money(balance, 2)} />
             <Line k="Margin needed" v={money(need, 2)} tone={!fits ? 'text-ask-fg' : undefined} />
             <Line k="Max loss (stop loss)" v={money(l.maxDailyLossUsd)} />
             {takeProfit && <Line k="Take profit" v={value.takeProfitPct ? money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2) : 'Uncapped'} />}
@@ -263,7 +263,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
           </dl>
           {balance != null && !fits && (
             <p role="alert" className="mx-3 mb-3 text-[12px] text-ask-fg">
-              These limits need <span className="num">{money(need, 2)}</span> and the account has <span className="num">{money(balance, 2)}</span>.{' '}
+              These limits need <span className="num">{money(need, 2)}</span> and <span className="num">{money(balance, 2)}</span> is free.{' '}
               <button type="button" onClick={fit} className="font-medium text-fg underline underline-offset-2 hover:text-accent">Fit to my balance</button>
             </p>
           )}

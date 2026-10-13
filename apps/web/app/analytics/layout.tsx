@@ -95,13 +95,18 @@ function WalletSearch() {
     router.push(at(`/analytics/wallet/${v}`));
   };
   return (
-    <form role="search" onSubmit={go} className="flex items-center px-1.5 py-1 max-sm:w-full">
+    <form role="search" onSubmit={go} className="relative flex items-center px-1.5 py-1 max-sm:w-full">
       <label htmlFor="wallet-search" className="sr-only">Find a wallet</label>
       <input
         id="wallet-search" value={q} onChange={(e) => { setQ(e.target.value); setBad(false); }} spellCheck={false} autoComplete="off"
-        placeholder="Wallet address or account #" aria-invalid={bad} title={bad ? 'An address (0x and 40 characters) or an account number' : undefined}
+        placeholder="Wallet address or account #" aria-invalid={bad} aria-describedby={bad ? 'wallet-search-error' : undefined}
         className={cx(INPUT, 'num h-7 text-[12px] sm:w-72', bad && 'border-ask focus:border-ask')}
       />
+      {bad && (
+        <p id="wallet-search-error" role="alert" className="absolute right-1.5 top-full z-20 rounded-sm border border-line-2 bg-raised px-2 py-1 text-[11.5px] text-ask-fg shadow-lg max-sm:left-1.5">
+          Enter a full 0x address (42 characters) or a Perpl account number.
+        </p>
+      )}
     </form>
   );
 }

@@ -54,7 +54,10 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
             <section className="mt-10 border-t border-line-2 pt-6">
               <h2 className="font-semibold">Verify</h2>
               <p className="mt-1 max-w-[66ch] text-[15px] text-fg-2">
-                The agent hashes the parameters and the evidence with keccak256 over canonical JSON and writes both hashes to MondayRegistry on Monad. Recompute them here, then compare with the transaction.
+                The agent hashes the parameters and the evidence with keccak256 over canonical JSON.{' '}
+                {d.txHash || d.anchor === 'pending'
+                  ? 'Both hashes go to MondayRegistry on Monad. Recompute them here, then compare with the transaction.'
+                  : 'Recompute them here to check they match this record. With no on-chain copy (see On Monad below), a match shows the record is consistent, not that it was never changed.'}
               </p>
               <dl className="mt-5 grid gap-4 text-sm">
                 {([['Parameters hash', d.paramsHash, check?.params], ['Evidence hash', d.evidenceHash, check?.evidence]] as const).map(([k, v, ok]) => (

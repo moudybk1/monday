@@ -234,22 +234,21 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
 
   return (
     <Panel
-      title={<Tabs size="sm" label="Metric" value={metric} onChange={setMetric} options={METRICS} />}
-      aside={
-        <>
-          <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="h-6 rounded-sm border border-line-2 bg-raised px-1 text-[11px] text-fg">
-            <option>{ALL}</option>
-            {o.markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
-          </select>
-          {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[11px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By market</button>}
-          {SAMPLED.includes(metric) || metric === 'funding'
-            ? <Segments label="Range" value={range === 7 ? 7 : 30} onChange={(v) => setRange(v)} options={[[7, '7D'], [30, '30D']] as const} />
-            : <Segments label="Range" value={range} onChange={setRange} options={[[7, '7D'], [30, '30D'], [90, '90D'], [0, 'All']] as const} />}
-        </>
-      }
+      // The metrics take the whole header; on a phone they still scroll, faded at the edge to say so.
+      title={<Tabs size="sm" label="Metric" value={metric} onChange={setMetric} options={METRICS} className="max-md:pr-8 max-md:[mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]" />}
       bodyClassName="p-2.5"
       className="min-h-[330px] xl:h-full"
     >
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 text-[11.5px] text-fg-3">
+        <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="h-6 rounded-sm border border-line-2 bg-raised px-1 text-[11px] text-fg">
+          <option>{ALL}</option>
+          {o.markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
+        </select>
+        {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[11px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By market</button>}
+        {SAMPLED.includes(metric) || metric === 'funding'
+          ? <Segments label="Range" value={range === 7 ? 7 : 30} onChange={(v) => setRange(v)} options={[[7, '7D'], [30, '30D']] as const} />
+          : <Segments label="Range" value={range} onChange={setRange} options={[[7, '7D'], [30, '30D'], [90, '90D'], [0, 'All']] as const} />}
+      </div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={`${metric}${stack}${sym}`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.12 } }} transition={{ duration: 0.25, ease: EASE }}>
           {rows.length || SAMPLED.includes(metric) || metric === 'funding' ? body : <p className="flex h-[350px] items-center justify-center text-[12px] text-fg-3">The indexer has not covered a full day yet. This chart fills in as it catches up.</p>}
