@@ -1,6 +1,5 @@
 import { ArrowRightIcon } from '@phosphor-icons/react/dist/ssr';
 import Link from 'next/link';
-import { NetworkNote } from './network-note';
 import { SiteMenu, SiteNav } from './site-menu';
 import { ThemeToggle } from './theme-toggle';
 import { at } from '@/lib/hosts';
@@ -77,10 +76,6 @@ export function SiteFooter() {
               </div>
             ))}
           </nav>
-        </div>
-        <div className="grid gap-x-12 gap-y-3 border-t border-line py-7 text-[13px] leading-relaxed text-fg-3 md:grid-cols-2">
-          <p><NetworkNote /></p>
-          <p>Market making can lose money: Monday reports results and does not promise profit, and Smart Trader signals can be wrong or late. You keep control: stop, kill, revoke, and withdraw directly on Perpl.</p>
         </div>
       </div>
     </footer>

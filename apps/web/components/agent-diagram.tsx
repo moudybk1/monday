@@ -61,33 +61,35 @@ export function ModesDiagram({ className }: { className?: string }) {
 
   const at = (k: keyof typeof LOOP) => (still ? STILL[k] : n % LOOP[k]);
   const mm = mmPhase(at('mm'));
-  const r = Math.min(LAST, at('trade') * 2); // how much of the trade chart is drawn
+  const r = Math.min(LAST, 2 + at('trade') * 2); // how much of the trade chart is drawn; never blank
   const scalp = SCALPS.findIndex((s) => r >= s.entry && r < s.exit);
   const won = SCALPS.filter((s) => r >= s.exit).length;
   const filled = Math.min(SLICES, at('twap'));
-  // Something went to Perpl this tick: a slice, a scalp's entry or exit, or a quote moved.
-  const sent = !still && (filled < SLICES || SCALPS.some((s) => r === s.entry || r === s.exit) || [10, 12, 18, 24].includes(at('mm')));
+  // What went to Perpl this tick, per mode: a quote moved, a scalp's entry or exit, a slice.
+  const sends = !still && { mm: [10, 12, 18, 24].includes(at('mm')), trade: SCALPS.some((s) => r === s.entry || r === s.exit), twap: filled > 0 && filled < SLICES };
+  const sent = sends && (sends.mm || sends.trade || sends.twap);
 
   return (
     <figure ref={ref} className={cx('relative', className)}>
       <div
-        className={cx('mx-auto grid max-w-[44rem] xl:max-w-none xl:grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)_minmax(0,19rem)] xl:gap-x-[var(--wire)]', !live && 'paused')}
+        // On a wide screen four shared rows, the headers and then one per mode, so each input, lane and account row
+        // sits level with the others and every wire runs straight.
+        className={cx('mx-auto grid max-w-[44rem] xl:max-w-none xl:grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)_minmax(0,19rem)] xl:grid-rows-[auto_repeat(3,auto)] xl:gap-x-[var(--wire)]', !live && 'paused')}
         style={{ '--wire': 'clamp(4rem, calc((100vw - 1100px) / 3), 7rem)' } as CSSProperties}
       >
         <Inputs burst={mm === 'burst' || mm === 'pulled'} />
         <Drop><Packet c="fg-3" dur={1400} /><Packet c={mm === 'burst' || mm === 'pulled' ? 'bid' : 'fg-3'} dur={900} delay={500} /></Drop>
 
-        <div className="relative">
+        <div className="relative xl:row-span-4 xl:grid xl:grid-rows-subgrid">
           {/* The page's one light: an amber horizon on Monday's top edge, glowing up into the headline. */}
           <div aria-hidden className="pointer-events-none absolute -inset-x-16 -top-44 h-44 bg-[radial-gradient(50%_80%_at_50%_100%,var(--glow),transparent_72%)]" />
           <div aria-hidden className="pointer-events-none absolute inset-x-[10%] -top-px z-[1] h-px bg-[linear-gradient(90deg,transparent,var(--accent)_22%,var(--accent)_78%,transparent)]" />
-          <div className="relative overflow-hidden rounded-lg border border-line-2 bg-canvas shadow-[0_30px_80px_-30px_rgb(40_30_16/0.28)] dark:shadow-[0_30px_80px_-30px_rgb(0_0_0/0.6)]">
-            <header className="flex h-11 items-center justify-between gap-3 border-b border-line px-4">
+          <div className="relative overflow-hidden rounded-lg border border-line-2 bg-canvas shadow-[0_30px_80px_-30px_rgb(40_30_16/0.28)] xl:row-span-4 xl:grid xl:grid-rows-subgrid dark:shadow-[0_30px_80px_-30px_rgb(0_0_0/0.6)]">
+            <header className="flex h-11 items-center justify-between gap-3 px-4">
               <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight"><Mark size={18} /> Monday</span>
               <Tag>three modes, one account</Tag>
             </header>
-            <div className="grid gap-px bg-line">
-              <Lane name="Market maker" note="both sides, post-only" status={MM_STATUS[mm]} flash={mm === 'calm' ? null : `mm-${mm}`} tone={mm === 'pulled' ? 'ask' : 'accent'}>
+            <Lane name="Market maker" note="both sides, post-only" status={MM_STATUS[mm]} flash={mm === 'calm' ? null : `mm-${mm}`} tone={mm === 'pulled' ? 'ask' : 'accent'}>
                 <BookStrip phase={mm} />
               </Lane>
               <Lane
@@ -100,18 +102,11 @@ export function ModesDiagram({ className }: { className?: string }) {
               <Lane name="TWAP" note="15 slices over 30 min" tone="accent" status={filled < SLICES ? `Buying 1.00 ETH in slices, ${filled} of ${SLICES} filled` : 'Built 1.00 ETH. Its stop rests on Perpl'} flash={filled === SLICES ? `done-${Math.floor(n / LOOP.twap)}` : null}>
                 <Slices filled={filled} />
               </Lane>
-            </div>
           </div>
         </div>
 
         <Drop><Packet c="fg-3" dur={1600} />{sent && <Packet key={n} c="accent" dur={600} once />}</Drop>
-        <div className="relative xl:self-center">
-          <Account mm={mm} scalp={scalp} filled={filled} />
-          <Wire dir="x" className="right-full top-1/2 hidden w-[var(--wire)] xl:block">
-            <Packet c="fg-3" dur={1600} />
-            {sent && <Packet key={n} c="accent" dur={600} once />}
-          </Wire>
-        </div>
+        <Account mm={mm} scalp={scalp} filled={filled} sends={sends || null} n={n} />
       </div>
       <figcaption className="mx-auto mt-6 flex max-w-[44rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px] text-fg-3 xl:max-w-none">
         <span>Drawn with example numbers and the clock sped up. All three can run at once, each in markets of its own.</span>
@@ -128,7 +123,7 @@ export function ModesDiagram({ className }: { className?: string }) {
 /** One mode at work: its name and set-up, what it is doing now, and the picture of it. */
 function Lane({ name, note, status, flash, tone, children }: { name: string; note: string; status: string; flash: string | null; tone: 'accent' | 'ask'; children: ReactNode }) {
   return (
-    <div className="relative isolate bg-canvas px-4 py-3.5">
+    <div className="relative isolate border-t border-line bg-canvas px-4 py-3.5">
       {/* A mode that just acted: a tint that fades, amber for Monday's own moves, vermilion for a pull. */}
       {flash && <span key={flash} aria-hidden className={cx('absolute inset-0 -z-10', tone === 'ask' ? 'flash-down' : 'flash-num')} />}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -232,36 +227,41 @@ function Slices({ filled }: { filled: number }) {
   );
 }
 
-/** The one account all three trade on: what each mode has there now, and what protects it. */
-function Account({ mm, scalp, filled }: { mm: MmPhase; scalp: number; filled: number }) {
+/**
+ * The one account all three trade on: what each mode has there now and what protects it. On a wide screen each row is
+ * level with its mode's lane, and a wire from that lane carries its orders.
+ */
+function Account({ mm, scalp, filled, sends, n }: { mm: MmPhase; scalp: number; filled: number; sends: { mm: boolean; trade: boolean; twap: boolean } | null; n: number }) {
+  const sent = [sends?.mm, sends?.trade, sends?.twap];
   const rows: [string, ReactNode, boolean][] = [
     ['Market maker', mm === 'pulled' ? <><span className="text-accent">Bid</span> resting, <span className="text-ask-fg">ask pulled</span></> : <><span className="text-accent">Bid</span> and <span className="text-accent">ask</span> resting{mm === 'storm' ? ', wider' : ''}</>, false],
     ['Agentic Trade', scalp >= 0 ? <>Long <span className="num">0.010 BTC</span></> : <span className="text-fg-3">Flat between scalps</span>, scalp >= 0],
     ['TWAP', filled ? <>Long <span className="num">{(filled / SLICES).toFixed(2)}</span> of <span className="num">1.00 ETH</span></> : <span className="text-fg-3">Flat, first slice next</span>, filled > 0],
   ];
   return (
-    <div className="panel">
-      <header className="flex h-10 flex-none items-center justify-between gap-3 border-b border-line px-3">
+    <div className="panel !overflow-visible xl:row-span-4 xl:grid xl:grid-rows-subgrid">
+      <header className="flex h-11 flex-none items-center justify-between gap-3 px-3">
         <h3 className="text-[14px] font-semibold">Your Perpl account</h3>
         <Tag tone="accent">funds stay here</Tag>
       </header>
-      <ul className="grid gap-px bg-line">
-        {rows.map(([k, v, safe]) => (
-          <li key={k} className="bg-canvas px-3 py-3">
-            <p className="label">{k}</p>
-            <p className="mt-1.5 flex items-center justify-between gap-2 text-[14px]">
-              <span className="truncate">{v}</span>
-              {safe && <span className="flex flex-none items-center gap-1 text-[12px] text-fg-3"><ShieldCheckIcon size={13} className="text-accent" />{k === 'TWAP' ? 'stop' : 'stop, target'}</span>}
-            </p>
-            {k === 'TWAP' && (
-              <span aria-hidden className="mt-2 block h-1 overflow-hidden rounded-full bg-raised-2">
-                <span className="block h-full rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out-expo" style={{ width: `${(filled / SLICES) * 100}%` }} />
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-      <p className="border-t border-line px-3 py-2.5 text-[13px] text-fg-3">Monday trades with a key that cannot withdraw.</p>
+      {rows.map(([k, v, safe], i) => (
+        <div key={k} className="relative flex flex-col justify-center border-t border-line px-3 py-3">
+          <Wire dir="x" className="right-full top-1/2 hidden w-[var(--wire)] xl:block">
+            <Packet c="fg-3" dur={1800} delay={i * 600} />
+            {sent[i] && <Packet key={n} c="accent" dur={600} once />}
+          </Wire>
+          <p className="label">{k}</p>
+          <p className="mt-1.5 flex items-center justify-between gap-2 text-[14px]">
+            <span className="truncate">{v}</span>
+            {safe && <span className="flex flex-none items-center gap-1 text-[12px] text-fg-3"><ShieldCheckIcon size={13} className="text-accent" />{k === 'TWAP' ? 'stop' : 'stop, target'}</span>}
+          </p>
+          {k === 'TWAP' && (
+            <span aria-hidden className="mt-2 block h-1 overflow-hidden rounded-full bg-raised-2">
+              <span className="block h-full rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out-expo" style={{ width: `${(filled / SLICES) * 100}%` }} />
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -279,11 +279,12 @@ const LOUD = [5, 8, 11, 9, 14, 12, 17, 15, 13, 18, 16, 20];
 function Inputs({ burst }: { burst: boolean }) {
   return (
     // On a phone the three sit in one row, names only; the lines under them return from sm up.
-    <div className="grid grid-cols-3 gap-x-4 gap-y-5 sm:gap-x-6 xl:flex xl:flex-col xl:justify-between xl:py-14 xl:text-right">
+    <div className="grid grid-cols-3 gap-x-4 gap-y-5 sm:gap-x-6 xl:row-span-4 xl:grid-cols-1 xl:grid-rows-subgrid xl:gap-y-0 xl:text-right">
+      <span aria-hidden className="hidden xl:block" />
       {INPUTS.map((x) => {
         const st = x.name === 'Smart Traders';
         return (
-          <div key={x.name} className="relative xl:pr-3">
+          <div key={x.name} className="relative xl:self-center xl:pr-3">
             <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight sm:text-[16px] xl:justify-end">
               {st && burst && <span className="hidden sm:inline-flex"><Tag tone="bid">buying</Tag></span>}
               {x.name}
