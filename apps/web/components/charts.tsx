@@ -539,3 +539,67 @@ export function Share({ value, tone = 'accent', className }: { value: number; to
     </span>
   );
 }
+
+/** One ring segment from angle a0 to a1 (radians, clockwise from the top), outer radius R, inner Ri. */
+function arcPath(cx: number, cy: number, R: number, Ri: number, a0: number, a1: number): string {
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const p = (r: number, a: number) => `${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)}`;
+  return `M${p(R, a0)}A${R} ${R} 0 ${large} 1 ${p(R, a1)}L${p(Ri, a1)}A${Ri} ${Ri} 0 ${large} 0 ${p(Ri, a0)}Z`;
+}
+
+/**
+ * Part of a whole as a ring: the five largest parts in the market hues, in fixed order, the rest folded into "Other",
+ * a 2px gap between segments, the total in the middle and a legend that names every share, so nothing rests on colour
+ * alone. Hovering a segment or its legend row lifts both.
+ */
+export function Donut({ parts, format, label, centre, size = 136, max = 5 }: {
+  parts: { name: string; value: number; tone?: Tone }[]; format: (v: number) => string; label: string; centre?: ReactNode; size?: number; max?: number;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const reduce = useReducedMotion();
+  const named = parts.filter((p) => p.value > 0).sort((a, b) => b.value - a.value);
+  const total = named.reduce((s, p) => s + p.value, 0);
+  const rest = named.slice(max).reduce((s, p) => s + p.value, 0);
+  const slices = [...named.slice(0, max).map((p, i) => ({ ...p, tone: p.tone ?? CATS[i] })), ...(rest > 0 ? [{ name: 'Other', value: rest, tone: 'other' as Tone }] : [])];
+  const r = size / 2, R = r - 1, Ri = R - 16;
+  let a = -Math.PI / 2;
+  const arcs = slices.map((s) => {
+    const a1 = a + (s.value / total) * 2 * Math.PI;
+    const d = slices.length === 1 ? null : arcPath(r, r, R, Ri, a, Math.min(a1, a + 2 * Math.PI - 1e-4));
+    a = a1;
+    return { ...s, d, share: s.value / total };
+  });
+  if (!total) return <p className="flex h-[136px] items-center justify-center text-[13px] text-fg-3">Nothing in this window yet.</p>;
+  return (
+    <div className="flex min-w-0 items-center gap-4">
+      <div className="relative flex-none" style={{ width: size, height: size }}>
+        <svg width={size} height={size} role="img" aria-label={label} className="block">
+          {arcs.map((s, i) => (
+            s.d == null
+              ? <circle key={s.name} cx={r} cy={r} r={(R + Ri) / 2} fill="none" stroke={TONE[s.tone]} strokeWidth={R - Ri}><title>{`${s.name}: ${format(s.value)}, all of it`}</title></circle>
+              : (
+                <motion.path
+                  key={s.name} d={s.d} fill={TONE[s.tone]} stroke="var(--canvas)" strokeWidth={2} strokeLinejoin="round"
+                  onMouseEnter={() => setHover(s.name)} onMouseLeave={() => setHover(null)}
+                  initial={reduce ? false : { opacity: 0 }} animate={{ opacity: hover == null || hover === s.name ? 1 : 0.3 }} transition={{ duration: 0.35, ease: EASE, delay: reduce ? 0 : i * 0.05 }}
+                >
+                  <title>{`${s.name}: ${format(s.value)}, ${(s.share * 100).toFixed(1)}%`}</title>
+                </motion.path>
+              )
+          ))}
+        </svg>
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-center leading-tight">{centre}</div>
+      </div>
+      <ul className="num grid min-w-0 flex-1 gap-1 text-[12px]" aria-label={`${label}, by part`}>
+        {arcs.map((s) => (
+          <li key={s.name} onMouseEnter={() => setHover(s.name)} onMouseLeave={() => setHover(null)} className={cx('grid grid-cols-[8px_minmax(0,1fr)_2.6rem_auto] items-center gap-2 transition-opacity', hover != null && hover !== s.name && 'opacity-40')}>
+            <span className="size-2 rounded-[2px]" style={{ background: TONE[s.tone] }} aria-hidden />
+            <span className="truncate font-sans text-fg">{s.name}</span>
+            <span className="text-right text-fg-3">{(s.share * 100).toFixed(s.share < 0.095 ? 1 : 0)}%</span>
+            <span className="text-right text-fg-2">{format(s.value)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
