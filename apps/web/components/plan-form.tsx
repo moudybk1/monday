@@ -1,22 +1,22 @@
 'use client';
 
-// The setup for Agentic Trade and TWAP: pick a side, size the trade and its risk, review and start. The Perpl key is
+// The setup for Agentic Trade and TWAP: read the market, pick a side, size the trade and its risk, review and start. The Perpl key is
 // already connected (the app asks for it once, right after the wallet). The numbers and the checks are core's
 // planNumbers and planProblems, the same ones the server runs.
 
 import { CheckIcon, ShieldCheckIcon, TrendDownIcon, TrendUpIcon } from '@phosphor-icons/react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   BIAS_LABEL, MODE_LABEL, PLAN_DEFAULTS, PLAN_RULES, SCALP_TARGET_ATR, STYLE_LABEL, TREND_LABEL, planNumbers, planProblems, scalpMode, twapSlicesFor,
-  type Bias, type DashboardState, type MarketRead, type MarketSpec, type MarketSym, type PlanField, type PlanInput, type PlanView, type ScalpFrame, type Trend, type TwapStyle,
+  type Bias, type DashboardState, type MarketInsight, type MarketRead, type MarketSpec, type MarketState, type MarketSym, type PlanField, type PlanInput, type PlanView, type ScalpFrame, type Trend, type TwapStyle,
 } from '@monday/core';
 import { Heading, type PerplAccount } from './perpl-connect';
 import { Chip, Choices, Line, Money, Row, SEG, Slider, levTicks, money, parse } from './policy-form';
 import { Button, INPUT, Notice, Panel, Skeleton, Tag, cx } from './ui';
 import { api } from '@/lib/api';
-import { fmtPrice } from '@/lib/format';
+import { fmtPrice, fmtTime } from '@/lib/format';
 import { useAppConfig, useMe } from '@/lib/wallet';
 
 type Kind = PlanInput['kind'];
@@ -58,9 +58,9 @@ function toInput(kind: Kind, d: Draft): PlanInput | null {
   return { kind, ...common, durationMin: d.durationMin, slices: opt(d.slices) ?? twapSlicesFor(d.durationMin), style: d.style, limitPrice: opt(d.limit), stopLossPct: parse(d.sl), takeProfitPct: opt(d.tp) };
 }
 
-const STEPS: Record<Kind, string[]> = { trade: ['Direction', 'Size and risk', 'Review'], twap: ['Direction', 'Order', 'Review'] };
+const STEPS: Record<Kind, string[]> = { trade: ['Market', 'Direction', 'Size and risk', 'Review'], twap: ['Market', 'Direction', 'Order', 'Review'] };
 const TITLE: Record<Kind, string> = { trade: 'Agentic Trade', twap: 'TWAP' };
-const [DIRECTION, SETTINGS, REVIEW] = [0, 1, 2];
+const [MARKET, DIRECTION, SETTINGS, REVIEW] = [0, 1, 2, 3];
 
 const STYLE_NOTE: Record<TwapStyle, string> = {
   passive: 'Maker orders only, at the best price on the book. The cheapest, but a slice the market never reaches stays unfilled.',
@@ -98,7 +98,10 @@ export function PlanWizard({ kind }: { kind: Kind }) {
   const read = useQuery({
     queryKey: ['plan-read', draft.sym], queryFn: () => api<Read>(`/plans/read?sym=${draft.sym}`), enabled: kind === 'trade' && draft.sym !== null, refetchInterval: 60_000,
   });
-  const [step, setStep] = useState(DIRECTION);
+  const insight = useQuery({
+    queryKey: ['plan-insight', draft.sym], queryFn: () => api<MarketInsight>(`/plans/insight?sym=${draft.sym}`), enabled: draft.sym !== null, staleTime: 5 * 60_000, retry: 1,
+  });
+  const [step, setStep] = useState(MARKET);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,13 +109,23 @@ export function PlanWizard({ kind }: { kind: Kind }) {
   const running = (plans.data ?? []).filter((p) => p.status !== 'done');
   const makerMarkets = me.makerMarkets;
   const planMarkets = running.map((p) => p.input.sym);
+  const blocked = (s: MarketSym) => (makerMarkets.includes(s) ? 'market maker' : planMarkets.includes(s) ? 'plan running' : null);
+  const pickSym = (s: MarketSym) => set({ sym: s, leverage: Math.min(draft.leverage, specs[s]?.maxLeverage ?? draft.leverage) });
+  // The first read opens on its own: the market asked for (?m=), else the first one free, BTC first.
+  useEffect(() => {
+    if (draft.sym || !plans.data || !cfg) return;
+    const free = (Object.keys(cfg.specs) as MarketSym[]).filter((s) => !blocked(s));
+    const asked = new URLSearchParams(location.search).get('m') as MarketSym | null;
+    const first = asked && free.includes(asked) ? asked : free.includes('BTC') ? 'BTC' : free[0];
+    if (first) pickSym(first);
+  }, [plans.data, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   const balance = account.data?.balanceUsd ?? null;
   const input = toInput(kind, draft);
   const spec = draft.sym ? specs[draft.sym] : undefined;
   const mark = draft.sym ? market.data?.markets[draft.sym]?.mark ?? null : null;
   const problems: Partial<Record<PlanField, string>> = input ? planProblems(input, spec, { mark, balanceUsd: balance, makerMarkets, planMarkets, activePlans: running.length }) : {};
   const ok = Boolean(input) && Object.keys(problems).length === 0;
-  const reachable = !draft.bias ? DIRECTION : !ok ? SETTINGS : REVIEW;
+  const reachable = !draft.sym ? MARKET : !draft.bias ? DIRECTION : !ok ? SETTINGS : REVIEW;
   const current = Math.min(step, reachable);
 
   const place = async () => {
@@ -155,12 +168,14 @@ export function PlanWizard({ kind }: { kind: Kind }) {
       </nav>
 
       <div className={cx('min-w-0', current !== SETTINGS && 'max-w-[46rem]')}>
+        {current === MARKET && (
+          <MarketStep kind={kind} sym={draft.sym} symbols={Object.keys(specs) as MarketSym[]} blocked={blocked} prices={market.data?.markets ?? {}} specs={specs} insight={insight} onPick={pickSym} next={() => setStep(DIRECTION)} />
+        )}
         {current === DIRECTION && <DirectionStep kind={kind} value={draft.bias} onPick={(bias) => { set({ bias }); setStep(SETTINGS); }} />}
         {current === SETTINGS && (
           <SettingsStep
             kind={kind} draft={draft} set={set} problems={problems} input={input} specs={specs} prices={market.data?.markets ?? {}} balance={balance} read={read.data}
-            blocked={(s) => (makerMarkets.includes(s) ? 'market maker' : planMarkets.includes(s) ? 'plan running' : null)}
-            sim={Boolean(cfg?.sim || cfg?.paper)} ok={ok} next={() => setStep(REVIEW)}
+            sim={Boolean(cfg?.sim || cfg?.paper)} ok={ok} next={() => setStep(REVIEW)} changeMarket={() => setStep(MARKET)}
           />
         )}
         {current === REVIEW && input && spec && mark && (
@@ -172,6 +187,62 @@ export function PlanWizard({ kind }: { kind: Kind }) {
         {current === REVIEW && !mark && <Skeleton className="h-64" />}
       </div>
     </div>
+  );
+}
+
+/** The first step: a market, and its D1, H4 and H1 read before anything is set up. */
+function MarketStep({ kind, sym, symbols, blocked, prices, specs, insight, onPick, next }: {
+  kind: Kind; sym: MarketSym | null; symbols: MarketSym[]; blocked: (s: MarketSym) => string | null; prices: DashboardState['markets'];
+  specs: Partial<Record<MarketSym, MarketSpec>>; insight: UseQueryResult<MarketInsight>; onPick: (s: MarketSym) => void; next: () => void;
+}) {
+  return (
+    <div>
+      <Heading title="Market read">Pick a market. Monday reads its D1, H4 and H1 trends first, then you set up the {kind === 'trade' ? 'trade' : 'TWAP'}.</Heading>
+      <div className="mt-8 grid gap-6">
+        <Choices legend="Market" note="One market per plan. Markets the market maker quotes, or another plan trades, are taken." grid wide>
+          {symbols.map((s) => {
+            const why = blocked(s);
+            return <Chip key={s} type="radio" name="market" boxed checked={sym === s} disabled={why !== null} onChange={() => onPick(s)}><span title={why ? `Taken: ${why}` : undefined}>{s}</span></Chip>;
+          })}
+        </Choices>
+        {sym && <InsightCard sym={sym} q={insight} m={prices[sym]} spec={specs[sym]} />}
+        <div><Button size="lg" onClick={next} disabled={!sym}>Continue</Button></div>
+      </div>
+    </div>
+  );
+}
+
+function InsightCard({ sym, q, m, spec }: { sym: MarketSym; q: UseQueryResult<MarketInsight>; m?: MarketState; spec?: MarketSpec }) {
+  const r = q.data?.sym === sym ? q.data : null;
+  const overall = r ? (r.market === 'mixed' ? 'neutral' : r.market) : null;
+  return (
+    <section aria-label={`${sym} market read`} aria-live="polite" className="rounded-sm border border-line-2 bg-raised p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[15px] font-semibold">{sym}</span>
+        {m && <span className="num text-[13px] text-fg-2">{fmtPrice(m.mark, spec)}</span>}
+        {r && overall && <Tag tone={trendTone(overall)}>{r.market === 'mixed' ? 'Mixed' : TREND_LABEL[r.market]}</Tag>}
+        {r && r.market !== 'mixed' && <span className="text-[12px] text-fg-3">{r.aligned ? 'D1, H4 and H1 agree' : r.h1 === 'neutral' ? 'H1 flat' : 'H1 pulling back'}</span>}
+      </div>
+      {r ? (
+        <>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {(['d1', 'h4', 'h1'] as const).map((k) => <Tag key={k} tone={trendTone(r[k])}>{k.toUpperCase()} {TREND_LABEL[r[k]]}</Tag>)}
+          </div>
+          <p className="mt-3 max-w-[62ch] text-[14px] leading-relaxed">{r.summary}</p>
+          <p className="mt-2 text-[11.5px] text-fg-3">
+            {r.source === 'model' ? `Read by ${/kimi/i.test(r.model ?? '') ? 'Kimi' : 'the model'}` : 'Read by rule'} at {fmtTime(r.at, false)}. Each timeframe: the close against a rising or falling 20 EMA.
+          </p>
+        </>
+      ) : q.isError ? (
+        <p className="mt-3 text-[13px] text-ask-fg">Could not read {sym} right now. <button type="button" className="underline underline-offset-2" onClick={() => void q.refetch()}>Try again</button></p>
+      ) : (
+        <div className="mt-3 grid gap-2" role="status">
+          <span className="text-[12.5px] text-fg-3">Reading D1, H4 and H1...</span>
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -205,10 +276,10 @@ function DirectionStep({ kind, value, onPick }: { kind: Kind; value: Bias | null
 
 const trendTone = (t: Trend) => (t === 'bullish' ? 'bid' : t === 'bearish' ? 'ask' : 'neutral');
 
-function SettingsStep({ kind, draft, set, problems, input, specs, prices, balance, read, blocked, sim, ok, next }: {
+function SettingsStep({ kind, draft, set, problems, input, specs, prices, balance, read, sim, ok, next, changeMarket }: {
   kind: Kind; draft: Draft; set: (p: Partial<Draft>) => void; problems: Partial<Record<PlanField, string>>; input: PlanInput | null;
   specs: Partial<Record<MarketSym, MarketSpec>>; prices: DashboardState['markets']; balance: number | null; read: Read | undefined;
-  blocked: (s: MarketSym) => string | null; sim: boolean; ok: boolean; next: () => void;
+  sim: boolean; ok: boolean; next: () => void; changeMarket: () => void;
 }) {
   const sym = draft.sym;
   const spec = sym ? specs[sym] : undefined;
@@ -216,7 +287,6 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
   const mark = m?.mark ?? null;
   const long = draft.bias === 'long';
   const maxLev = spec?.maxLeverage ?? 10;
-  const symbols = Object.keys(specs) as MarketSym[];
   const n = input && spec && mark && !problems.marginUsd && !problems.leverage ? planNumbers(input, spec, mark) : null;
   const px = (v: number | null | undefined) => (v != null && Number.isFinite(v) ? fmtPrice(v, spec) : '-');
   const marginNum = parse(draft.margin);
@@ -235,12 +305,16 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
       <div className="grid gap-4 @4xl:grid-cols-[minmax(0,1fr)_19rem] @4xl:items-start">
         <Panel title="Settings" aside={<span className={cx('num font-medium', long ? 'text-bid-fg' : 'text-ask-fg')}>{kind === 'twap' ? (long ? 'Buy' : 'Sell') : BIAS_LABEL[draft.bias ?? 'long']}{sym ? ` ${sym}` : ''}</span>}>
           <div className="grid gap-x-5 gap-y-5 p-4 @2xl:grid-cols-2">
-            <Choices legend="Market" note={sym && m ? <span className="num">{sym} {px(m.mark)}{m.day.changePct != null && <span className={m.day.changePct >= 0 ? 'text-bid-fg' : 'text-ask-fg'}> {m.day.changePct >= 0 ? '+' : ''}{m.day.changePct.toFixed(2)}% 24h</span>}</span> : 'One market per plan. Markets the market maker quotes, or another plan trades, are taken.'} error={problems.sym} grid wide>
-              {symbols.map((s) => {
-                const why = blocked(s);
-                return <Chip key={s} type="radio" name="market" boxed checked={sym === s} disabled={why !== null} onChange={() => set({ sym: s, leverage: Math.min(draft.leverage, specs[s]!.maxLeverage) })}><span title={why ? `Taken: ${why}` : undefined}>{s}</span></Chip>;
-              })}
-            </Choices>
+            {/* Picked, and read, on the first step: here it only shows, with the way back. */}
+            <div className="min-w-0 @2xl:col-span-2">
+              <p className="mb-2 text-[12.5px] font-medium">Market</p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="text-[15px] font-semibold">{sym}</span>
+                {m && <span className="num text-[13px] text-fg-2">{px(m.mark)}{m.day.changePct != null && <span className={m.day.changePct >= 0 ? 'text-bid-fg' : 'text-ask-fg'}> {m.day.changePct >= 0 ? '+' : ''}{m.day.changePct.toFixed(2)}% 24h</span>}</span>}
+                <Button size="xs" variant="ghost" onClick={changeMarket}>Change</Button>
+              </div>
+              {problems.sym && <p className="mt-2 text-[12px] text-ask-fg">{problems.sym}</p>}
+            </div>
 
             {kind === 'trade' && sym && (
               <div className="@2xl:col-span-2">
