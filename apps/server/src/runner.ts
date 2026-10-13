@@ -9,7 +9,7 @@
 // behind it, and a restart does not lose positions, PnL or unfinished cleanup.
 
 import {
-  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, fillTrigger, inventoryStage, marginFloorUsd,
+  DEFAULT_CONFIG, KILL_CODE, MARKETS, REGIME_CODE, STRATEGY_VERSION, bookImbalance, bookTrigger, computeQuotes, depthAhead, ewmaVar, fillTrigger, inventoryStage, balanceNeededUsd, marginFloorUsd,
   markoutBps, median, nextReflex, orderJobs, quotingFor, refTrigger, reflexTrigger, riskGate, shouldRequote, touchRequote, tradeSign, usd, usdCompact, varToBps,
   type AgentStatus, type Alert, type BookLevel, type DashboardState, type Decision, type DecisionSource, type Fill, type GateReason, type GovernorParams,
   type InventoryStage, type Job, type KillReason, type MarketSignal, type MarketSpec, type MarketSym, type Policy, type Priority,
@@ -291,6 +291,19 @@ export class Runner {
   }
 
   /**
+   * Collateral this account has already given out: the market maker's budget while it quotes (its margin and daily loss,
+   * as the policy check counts them), else the margin of any position it still holds; and each running plan's margin.
+   * A new plan gets the balance less both; the market maker's own settings get the balance less the plans.
+   */
+  committed(): { makerUsd: number; plansUsd: number } {
+    const v = this.venue;
+    const makerUsd = this.status === 'quoting'
+      ? balanceNeededUsd(this.policy, this.policy.markets.length)
+      : this.managed().reduce((a, s) => a + (Math.abs(v?.position(s).size ?? 0) * (this.deps.driver.feed.snapshot(s)?.mark ?? 0)) / Math.max(1, this.policy.maxLeverage), 0);
+    return { makerUsd, plansUsd: this.plans.running().reduce((a, p) => a + p.input.marginUsd, 0) };
+  }
+
+  /**
    * The markets the market maker holds, which no plan may trade: its policy's, until a kill has closed everything. After
    * that it starts again only from Setup, so its markets are free.
    */
@@ -341,6 +354,12 @@ export class Runner {
     // A Stop or Kill pressed while Perpl was connecting wins; so does a second Start that got there first.
     // (The status is read again: TypeScript's narrowing from the first line does not survive the await.)
     if (epoch !== this.epoch || (this.status as AgentStatus) === 'quoting') return;
+    // A Start the user pressed: the plans' margins are spoken for (a boot resume carries on as it was).
+    const { plansUsd } = this.committed();
+    const free = (this.venue?.account().balanceUsd ?? 0) - plansUsd, need = balanceNeededUsd(this.policy, this.policy.markets.length);
+    if (limits && plansUsd > 0 && free < need) {
+      throw new VenueError('rejected', `Running plans hold ${usd(plansUsd)} of margin, which leaves ${usd(Math.max(0, free))}; this market maker needs ${usd(need)}. Lower its limits in Setup, or let a plan finish.`);
+    }
     this.resumeAt = 0;
     this.trackCash(Date.now(), true);
     this.killReason = null;

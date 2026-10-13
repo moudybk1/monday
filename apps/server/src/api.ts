@@ -313,7 +313,14 @@ export async function buildApi(deps: ApiDeps) {
   app.get('/api/perpl/account', async (req) => {
     const s = need(req);
     const a = await deps.driver.detectAccount(s.w);
-    return { exists: !!a, accountId: a?.accountId ?? null, balanceUsd: a?.balanceUsd ?? null, minDepositUsd: deps.driver.minDepositUsd(), depositUrl: config.perpl.appUrl };
+    const balance = a?.balanceUsd ?? null;
+    // What is still free: for a new plan (less the market maker's hold and the plans'), for the market maker (less the plans').
+    const c = deps.runnerFor(s.uid)?.committed() ?? { makerUsd: 0, plansUsd: 0 };
+    const free = (less: number) => (balance == null ? null : Math.max(0, balance - less));
+    return {
+      exists: !!a, accountId: a?.accountId ?? null, balanceUsd: balance, committedUsd: c, availableUsd: free(c.makerUsd + c.plansUsd), makerAvailableUsd: free(c.plansUsd),
+      minDepositUsd: deps.driver.minDepositUsd(), depositUrl: config.perpl.appUrl,
+    };
   });
 
   app.post('/api/credentials', async (req) => {
@@ -364,7 +371,9 @@ export async function buildApi(deps: ApiDeps) {
     const clash = markets.filter((m) => planned.includes(m));
     if (clash.length) throw new HttpError(409, 'plan_market', `${clash.join(', ')}: a running Agentic Trade or TWAP plan trades ${clash.length > 1 ? 'these markets' : 'this market'}, and the market maker would share its position. Let the plan finish first.`, 'markets');
     const acct = await deps.driver.detectAccount(s.w);
-    const balance = acct?.balanceUsd ?? 0;
+    // What the running plans hold is not the market maker's to plan with.
+    const held = deps.runnerFor(s.uid)?.committed().plansUsd ?? 0;
+    const balance = Math.max(0, (acct?.balanceUsd ?? 0) - held);
     // A preset shrinks to what the account and the operator caps allow; custom limits are taken as typed.
     const limits = body.preset === 'custom' ? body.limits : fitLimits(PRESETS[body.preset], balance, markets.length, config.caps);
     if (!limits) throw new HttpError(400, 'invalid_request', 'Custom policies need limits.', 'limits');
@@ -384,7 +393,7 @@ export async function buildApi(deps: ApiDeps) {
     }
     // Custom limits beyond the balance would trip the margin kill the moment Monday starts.
     if (balanceNeededUsd(limits, markets.length) > balance) {
-      throw new HttpError(400, 'insufficient_balance', `Balance ${usd(balance)} is too small for ${usd(limits.maxInventoryUsd)} of inventory in ${markets.length} market${markets.length > 1 ? 's' : ''} at ${limits.maxLeverage}x. Pick a preset (they shrink to fit your balance) or use Fit to my balance.`, 'preset');
+      throw new HttpError(400, 'insufficient_balance', `${held > 0 ? `After ${usd(held)} held by running plans, the ${usd(balance)} left` : `Balance ${usd(balance)}`} is too small for ${usd(limits.maxInventoryUsd)} of inventory in ${markets.length} market${markets.length > 1 ? 's' : ''} at ${limits.maxLeverage}x. Pick a preset (they shrink to fit your balance) or use Fit to my balance.`, 'preset');
     }
     const refMode = body.refMode ?? 'grid';
     const policy: Policy = {
@@ -482,7 +491,7 @@ export async function buildApi(deps: ApiDeps) {
       if (n.lossUsd > caps.maxDailyLossUsd) throw new HttpError(400, 'over_cap', `A stop loss may risk at most ${usd(caps.maxDailyLossUsd)} on this server while it trades real funds.`, input.kind === 'trade' ? 'lossLimitPct' : 'stopLossPct');
     }
     try {
-      return r.plans.create(input, r.makerMarkets());
+      return r.plans.create(input, r.makerMarkets(), r.committed().makerUsd);
     } catch (e) {
       return planError(e);
     }

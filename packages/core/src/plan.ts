@@ -219,7 +219,7 @@ export function planProblems(p: PlanInput, spec: MarketSpec | undefined, ctx: Pl
 
   if (!(p.leverage >= 1 && p.leverage <= spec.maxLeverage)) out.leverage = `Between 1x and ${spec.maxLeverage}x on ${p.sym}.`;
   if (!(p.marginUsd >= R.minMarginUsd)) out.marginUsd = `At least ${usd(R.minMarginUsd)}.`;
-  else if (ctx.balanceUsd != null && p.marginUsd > ctx.balanceUsd) out.marginUsd = `More than your Perpl balance of ${usd(ctx.balanceUsd, 2)}.`;
+  else if (ctx.balanceUsd != null && p.marginUsd > ctx.balanceUsd) out.marginUsd = `More than the ${usd(ctx.balanceUsd, 2)} still free in your Perpl account.`;
 
   if (p.kind === 'trade') {
     if (!['1m', '5m', '15m'].includes(p.frame)) out.frame = 'Pick 1m, 5m or 15m.';

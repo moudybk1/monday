@@ -167,13 +167,17 @@ export class PlanBook {
     return this.running().map((p) => p.input.sym);
   }
 
-  /** Check and start a plan. Throws PlanError with the field to fix. */
-  create(input: PlanInput, makerMarkets: MarketSym[]): PlanView {
+  /**
+   * Check and start a plan. Throws PlanError with the field to fix. Its margin must fit in what the account has left after
+   * the running plans' margins and `makerReservedUsd`, what the market maker holds.
+   */
+  create(input: PlanInput, makerMarkets: MarketSym[], makerReservedUsd = 0): PlanView {
     const v = this.venue();
     if (!v?.connected()) throw new PlanError('Monday is still connecting to the exchange. Try again in a few seconds.', undefined, 409);
     const spec = this.feed.specs()[input.sym];
     const mark = this.feed.snapshot(input.sym)?.mark ?? null;
-    const problems = planProblems(input, spec, { mark, balanceUsd: v.account().balanceUsd, makerMarkets, planMarkets: this.markets(), activePlans: this.running().length });
+    const free = v.account().balanceUsd - makerReservedUsd - this.running().reduce((a, p) => a + p.input.marginUsd, 0);
+    const problems = planProblems(input, spec, { mark, balanceUsd: Math.max(0, free), makerMarkets, planMarkets: this.markets(), activePlans: this.running().length });
     const first = Object.entries(problems)[0];
     if (first) throw new PlanError(first[1], first[0]);
     // One position per market on Perpl: a plan in a market that already holds one would take it over.
