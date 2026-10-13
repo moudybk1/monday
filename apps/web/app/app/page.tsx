@@ -245,6 +245,7 @@ export default function Terminal() {
                 {tab === 'model' && <Model m={m} quoting={quoting} policy={state.policy} />}
                 {tab === 'equity' && (
                   <LineChart
+                    drawKey="equity" // a new point lands every 10 s: without a fixed key the line would redraw itself each time
                     label="Account equity over time" format={(v) => fmtUsd(v)} empty="Equity appears after the first few seconds of running"
                     baseline={{ v: state.account.equityUsd - state.pnl.todayUsd, label: 'start of day' }}
                     series={[{ name: 'Equity', tone: 'fg', points: state.equity.map((p) => ({ t: p.t, v: p.v })) }]}
@@ -448,7 +449,7 @@ function Stats({ m, quoting, blend }: { m: MarketState; quoting: boolean; blend:
         </Cell>
         <Cell k="24h volume" hint="Notional traded on Perpl in the last 24 hours. The simulator reports none.">{m.day.volumeUsd == null ? '-' : usdCompact(m.day.volumeUsd)}</Cell>
         <Cell k="Open interest" hint="Notional of all open positions in this market.">{m.openInterestUsd > 0 ? usdCompact(m.openInterestUsd) : '-'}</Cell>
-        <Cell k="Funding" hint="A periodic payment between longs and shorts. Positive means longs pay shorts.">{(m.fundingRate * 100).toFixed(4)}%</Cell>
+        <Cell k="Funding" hint="A periodic payment between longs and shorts, per funding interval as Perpl shows it (the analytics pages show it per 8 hours). Positive means longs pay shorts.">{(m.fundingRate * 100).toFixed(4)}%</Cell>
       </dl>
       <div className="flex flex-none items-center gap-x-4 border-l border-line px-3 py-2 xl:py-0">
         <span title="Monday's readings for this market" className="flex-none"><Mark size={15} /></span>

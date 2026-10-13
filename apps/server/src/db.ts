@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { config } from './config';
+import { config, redact } from './config';
 import type { SimStore } from './venue/sim';
 
 if (config.databasePath !== ':memory:') mkdirSync(dirname(config.databasePath), { recursive: true });
@@ -150,7 +150,7 @@ export function unseal(row: { enc: Uint8Array; iv: Uint8Array; tag: Uint8Array }
 }
 
 export function event(userId: number | null, kind: string, detail: unknown = {}) {
-  db.prepare('insert into agent_events (user_id, kind, detail, created_at) values (?, ?, ?, ?)').run(userId, kind, JSON.stringify(detail), Date.now());
+  db.prepare('insert into agent_events (user_id, kind, detail, created_at) values (?, ?, ?, ?)').run(userId, kind, redact(JSON.stringify(detail)), Date.now());
 }
 
 export function upsertUser(wallet: string): number {

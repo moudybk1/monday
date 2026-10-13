@@ -3,7 +3,7 @@
 // pick an action from a fixed menu, never state a figure. The pages act on the answer with real data.
 
 import { z } from 'zod';
-import { ASK_METRICS, ASK_PRESETS, ASK_SORTS, isWondering, marketIn, quickAsk, type AskAnswer, type AskIntent, type PxWallet } from '@monday/core';
+import { rankPct, ASK_METRICS, ASK_PRESETS, ASK_SORTS, isWondering, marketIn, quickAsk, type AskAnswer, type AskIntent, type PxWallet } from '@monday/core';
 import { ask, firstJsonObject, llmReady, timedOut } from './llm';
 import { meta } from './perpl';
 
@@ -138,7 +138,7 @@ export function walletFacts(w: PxWallet): string[] {
   if (p.byMarket.length) f.push(`Best market ${p.byMarket[0].sym} (${p.byMarket[0].netUsd >= 0 ? 'plus' : 'minus'} ${usd(p.byMarket[0].netUsd)}), worst ${p.byMarket.at(-1)!.sym} (${p.byMarket.at(-1)!.netUsd >= 0 ? 'plus' : 'minus'} ${usd(p.byMarket.at(-1)!.netUsd)}), ${p.byMarket.length} markets traded.`);
   f.push(`Deepest drawdown ${usd(p.maxDrawdownUsd)}; longest streaks ${p.longestWin} wins and ${p.longestLoss} losses in a row.`);
   if (w.liquidations.length) f.push(`Liquidated ${w.liquidations.length} time${w.liquidations.length === 1 ? '' : 's'}, ${usd(w.liquidations.reduce((s, l) => s + l.usd, 0))} of positions closed by the Exchange.`);
-  if (w.rank.volumePct != null && w.rank.pnlPct != null) f.push(`Last ${w.rank.days} days: more volume than ${Math.round((1 - w.rank.volumePct) * 100)}% and a better result than ${Math.round((1 - w.rank.pnlPct) * 100)}% of the ${w.rank.accounts.toLocaleString('en-US')} active accounts.`);
+  if (w.rank.volumePct != null && w.rank.pnlPct != null) f.push(`Last ${w.rank.days} days: more volume than ${rankPct(w.rank.volumePct)}% and a better result than ${rankPct(w.rank.pnlPct)}% of the ${w.rank.accounts.toLocaleString('en-US')} active accounts.`);
   return f;
 }
 

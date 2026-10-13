@@ -175,9 +175,9 @@ function LiveTape({ group, min, sym, onGroup, onMin, onClearSym }: { group: Tape
               </tr>
             </thead>
             <tbody className="num">
-              {q.data.rows.map((r) => (
+              {q.data.rows.map((r, i) => (
                 <motion.tr
-                  key={key(r)} className={cx('h-[28px] border-t border-line', fresh.has(key(r)) && (bought(r) ? 'flash-up' : 'flash-down'))}
+                  key={`${key(r)}:${i}`} className={cx('h-[28px] border-t border-line', fresh.has(key(r)) && (bought(r) ? 'flash-up' : 'flash-down'))}
                   initial={fresh.has(key(r)) && !reduce ? { opacity: 0, y: -8 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: EASE }}
                 >
                   <td className="pl-2.5">

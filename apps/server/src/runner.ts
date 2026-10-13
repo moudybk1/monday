@@ -703,7 +703,8 @@ export class Runner {
     }
     // Plans run whether or not Monday quotes: keep the connection open while one runs.
     if (this.plans.running().length) {
-      if (this.venue?.connected()) this.plans.tick(now);
+      // Not during a kill's sweep or a stop's cancel: a slice posted again between the cancel and the flatten would rest with nobody watching it.
+      if (this.venue?.connected() && !this.cleaning) this.plans.tick(now);
       else if (!this.venue && !this.opening && now >= this.planOpenAt) {
         this.planOpenAt = now + 10_000;
         void this.open().catch((e) => event(this.userId, 'error', { plans: e instanceof Error ? e.message : String(e) }));

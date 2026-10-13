@@ -81,7 +81,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty, maker
                 {sc ? (
                   <span className="inline-flex items-center gap-1.5">
                     <span>{sc.scalps} scalp{sc.scalps === 1 ? '' : 's'}{sc.scalps ? `, ${sc.wins} won` : ''}</span>
-                    {live && <span className="text-fg-3" title="D1 and H4 as Monday last read them">D1 {TREND_LABEL[sc.d1].slice(0, 4).toLowerCase()}, H4 {TREND_LABEL[sc.h4].slice(0, 4).toLowerCase()}{sc.mode ? `, ${MODE_LABEL[sc.mode].toLowerCase()}` : ''}</span>}
+                    {live && <span className="text-fg-3" title="D1 and H4 as Monday last read them">D1 {TREND_LABEL[sc.d1].toLowerCase()}, H4 {TREND_LABEL[sc.h4].toLowerCase()}{sc.mode ? `, ${MODE_LABEL[sc.mode].toLowerCase()}` : ''}</span>}
                   </span>
                 ) : (
                   <span>{fmtSize(p.filledSize, spec)}<span className="text-fg-3">/{fmtSize(p.targetSize, spec)}</span>{p.twap && live ? <span className="text-fg-3"> {p.twap.slicesDone}/{p.twap.slices} slices</span> : null}</span>

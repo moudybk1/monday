@@ -149,7 +149,10 @@ export class Collector {
   }
   private async tick() {
     if (this.kind === 'sim') return this.poll();
-    if (this.polling || this.idle()) return;
+    if (this.polling) return;
+    // Paused on purpose while no Monday quotes: the source is not late, so the terminal and the landing page do not say
+    // "delayed" and "quoting conservatively" for a feed nobody asked. The next Start polls at once (lastPollAt stays).
+    if (this.idle()) return void (this.lastOkAt = Date.now());
     const sinceMs = Date.now() - this.lastPollAt;
     if (sinceMs < Math.min(config.nansen.pollSeconds * 1000, 60 * MIN)) return; // a poll covers the last hour
     this.polling = true;

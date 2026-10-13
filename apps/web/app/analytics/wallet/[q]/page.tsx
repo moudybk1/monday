@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { PxWallet } from '@monday/core';
+import { rankPct, type PxWallet } from '@monday/core';
 import { EASE, HeatGrid, LineChart, Share, Sparkline, type Tone } from '@/components/charts';
 import { Kpi, Segments, WatchButton, ago, liqText, liqTone, money, price, profitText, shortAddress, signedMoney, tone } from '@/components/stats-ui';
 import { Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
@@ -26,7 +26,7 @@ const pctOf = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '
 export default function WalletPage() {
   const { q } = useParams<{ q: string }>();
   // An unknown wallet is an answer, not a failure: no retry, which a background tab would pause with nothing to show.
-  const w = useQuery({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${q}`), refetchInterval: 15_000, retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1 });
+  const w = useQuery({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${encodeURIComponent(q)}`), refetchInterval: 15_000, retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1 });
   useEffect(() => {
     document.title = `${q.startsWith('0x') ? shortAddress(q) : `#${q}`} on Perpl - Monday`;
   }, [q]);
@@ -65,7 +65,7 @@ export default function WalletPage() {
           )}
           {d.rank.volumePct != null && d.rank.pnlPct != null && (
             <p className="mt-1 text-[13px] text-fg-2" title={`Among the ${d.rank.accounts.toLocaleString('en-US')} accounts with a fill in the last ${d.rank.days} days`}>
-              Last {d.rank.days} days: more volume than <span className="num text-fg">{Math.round((1 - d.rank.volumePct) * 100)}%</span> of traders, a better result than <span className={cx('num', d.rank.pnlPct <= 0.5 ? 'text-bid-fg' : 'text-ask-fg')}>{Math.round((1 - d.rank.pnlPct) * 100)}%</span>.
+              Last {d.rank.days} days: more volume than <span className="num text-fg">{rankPct(d.rank.volumePct)}%</span> of traders, a better result than <span className={cx('num', d.rank.pnlPct <= 0.5 ? 'text-bid-fg' : 'text-ask-fg')}>{rankPct(d.rank.pnlPct)}%</span>.
             </p>
           )}
         </div>
@@ -202,8 +202,8 @@ export default function WalletPage() {
           {!d.flows.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">None indexed yet.</p> : (
             <table className="w-full text-[13px]">
               <tbody className="num">
-                {d.flows.map((f) => (
-                  <tr key={`${f.ts}${f.kind}${f.usd}`} className="h-[24px] border-t border-line first:border-t-0">
+                {d.flows.map((f, i) => (
+                  <tr key={`${f.ts}${f.kind}${f.usd}:${i}`} className="h-[24px] border-t border-line first:border-t-0">
                     <td className="pl-2.5 text-fg-3">{shortDay(f.ts)}</td>
                     <td className="font-sans text-fg-2">{f.kind === 'deposit' ? 'Deposit' : 'Withdrawal'}</td>
                     <td className={cx('pr-2.5 text-right', f.kind === 'deposit' ? 'text-bid-fg' : 'text-ask-fg')}>{f.kind === 'deposit' ? '+' : '-'}{money(f.usd, true)}</td>
