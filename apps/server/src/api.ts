@@ -5,7 +5,7 @@ import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { getAddress, keccak256, toHex, verifyMessage } from 'viem';
-import { generateSiweNonce, parseSiweMessage } from 'viem/siwe';
+import { parseSiweMessage, validateSiweMessage } from 'viem/siwe';
 import { z } from 'zod';
 import {
   MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, policyForHash, usd,
@@ -33,6 +33,8 @@ interface Cookie {
   w: string;
   demo: boolean;
   exp: number;
+  /** When it was issued: signing out voids every cookie of that wallet issued up to then. Absent on cookies from before 2026-10-13. */
+  iat?: number;
 }
 interface Session extends Cookie {
   uid: number;
@@ -133,10 +135,14 @@ export async function buildApi(deps: ApiDeps) {
   const need = (req: FastifyRequest): Session => {
     const s = decodeSession(req.cookies[COOKIE]);
     if (!s) throw new HttpError(401, 'unauthorized', 'Sign in with your wallet first.');
-    return { ...s, uid: upsertUser(s.w) };
+    const uid = upsertUser(s.w);
+    // The cookie is stateless, so clearing it in one browser leaves any copy valid: the server remembers the sign-out.
+    const out = (db.prepare('select signed_out_at from users where id = ?').get(uid) as { signed_out_at: number | null }).signed_out_at;
+    if (out != null && (s.iat ?? 0) <= out) throw new HttpError(401, 'unauthorized', 'Sign in with your wallet first.');
+    return { ...s, uid };
   };
-  const setSession = (reply: FastifyReply, s: Omit<Cookie, 'exp'>) =>
-    reply.setCookie(COOKIE, encodeSession({ ...s, exp: Date.now() + 7 * 86_400_000 }), { httpOnly: true, sameSite: 'strict', secure: config.webOrigin.startsWith('https:'), path: '/', maxAge: 7 * 86_400 });
+  const setSession = (reply: FastifyReply, s: Omit<Cookie, 'exp' | 'iat'>) =>
+    reply.setCookie(COOKIE, encodeSession({ ...s, iat: Date.now(), exp: Date.now() + 7 * 86_400_000 }), { httpOnly: true, sameSite: 'strict', secure: config.webOrigin.startsWith('https:'), path: '/', maxAge: 7 * 86_400 });
 
   // 60 requests per minute per signed-in wallet, else per address (PRD 15.3). Public reads served from a shared cache are
   // exempt: their cost does not grow with viewers, and behind the web app's proxy every anonymous viewer has the proxy's
@@ -244,7 +250,8 @@ export async function buildApi(deps: ApiDeps) {
   // ---- auth: Sign-In with Ethereum ----
   app.post('/api/auth/nonce', async () => {
     if (nonces.size >= 10_000) throw new HttpError(503, 'busy', 'Too many sign-ins in progress. Try again in a minute.');
-    const nonce = generateSiweNonce();
+    // Not viem's generateSiweNonce: it slides a window over one Math.random buffer, so consecutive nonces overlap.
+    const nonce = randomBytes(16).toString('hex');
     nonces.set(nonce, Date.now() + 10 * 60_000);
     return { nonce };
   });
@@ -254,6 +261,11 @@ export async function buildApi(deps: ApiDeps) {
     if (!m.address || !m.nonce || !nonces.delete(m.nonce)) throw new HttpError(400, 'bad_nonce', 'Sign-in expired. Try again.');
     if (m.domain !== new URL(config.webOrigin).host) throw new HttpError(400, 'bad_domain', 'This sign-in message was issued for another site.');
     if (m.chainId !== config.chain.chainId) throw new HttpError(400, 'bad_chain', `Switch your wallet to ${config.networkName} and sign in again.`);
+    // EIP-4361: honour the message's Expiration Time and Not Before. Issued At a day off is not a fresh sign-in either;
+    // a day, not minutes, so a device clock set to the wrong time zone can still sign in (the nonce already expires in 10 min).
+    if (!validateSiweMessage({ message: m }) || !m.issuedAt || Math.abs(Date.now() - m.issuedAt.getTime()) > 86_400_000) {
+      throw new HttpError(400, 'bad_time', 'This sign-in message is out of date. Check your device clock and try again.');
+    }
     // EOA signatures only. Use publicClient.verifySiweMessage (ERC-1271/6492) when smart wallets matter.
     const ok = await verifyMessage({ address: m.address, message, signature: signature as `0x${string}` }).catch(() => false);
     if (!ok) throw new HttpError(401, 'bad_signature', 'Signature does not match the wallet.');
@@ -269,9 +281,15 @@ export async function buildApi(deps: ApiDeps) {
   });
   app.post('/api/auth/logout', async (req, reply) => {
     reply.clearCookie(COOKIE, { path: '/' });
-    // Signed out means no more private data: end this account's live streams. A device still signed in reconnects.
+    // Signed out means signed out everywhere: every cookie of this wallet issued until now stops working, a copied one
+    // too, and its live streams end.
     const s = decodeSession(req.cookies[COOKIE]);
-    if (s) for (const socket of streams.get(upsertUser(s.w)) ?? []) socket.close(4401, 'signed out');
+    if (s) {
+      const uid = upsertUser(s.w);
+      db.prepare('update users set signed_out_at = ? where id = ?').run(Date.now(), uid);
+      for (const [k, t] of tickets) if (t.uid === uid) tickets.delete(k);
+      for (const socket of streams.get(uid) ?? []) socket.close(4401, 'signed out');
+    }
     return { ok: true };
   });
 
