@@ -167,8 +167,8 @@ export default function Terminal() {
 
       <div className="grid flex-none gap-1 empty:hidden">
         {error && <Notice tone="warn">{error}</Notice>}
-        {/* Once a plan runs again after the kill, the kill is old news. */}
-        {state.status === 'killed' && (state.closing || !running.length) && (
+        {/* A kill the user pressed needs no notice, nor one a plan has moved on from; one Monday made, or one still closing, does. */}
+        {state.status === 'killed' && (state.closing || (state.killReason !== 'manual' && !running.length)) && (
           // A kill ends everything: trading again starts from Setup, in any mode and any market.
           <Notice tone="ask" action={state.closing ? undefined : <ButtonLink href="/app/setup" size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15">Set up again</ButtonLink>}>
             <strong>{state.closing ? 'Killed, still closing.' : 'Killed.'}</strong> {state.killReason ? KILL_WHY[state.killReason] : ''}{' '}

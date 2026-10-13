@@ -81,7 +81,7 @@ export default function Onboarding() {
             next={async () => { await refresh(); setStep(4); }}
           />
         )}
-        {current === 4 && <ReviewStep view={policy.data} demo={me.demo} explorerUrl={cfg?.explorerUrl ?? ''} realFunds={Boolean(cfg?.realFunds)} networkName={cfg?.networkName ?? ''} registryAt={cfg?.registry ?? null} agent={cfg?.agentAddress ?? null} refresh={refresh} />}
+        {current === 4 && <ReviewStep view={policy.data} demo={me.demo} explorerUrl={cfg?.explorerUrl ?? ''} registryAt={cfg?.registry ?? null} agent={cfg?.agentAddress ?? null} refresh={refresh} />}
       </motion.div>
     </div>
   );
@@ -126,14 +126,13 @@ function LimitsStep({ initial, balance, linked, available, caps, specs, next }: 
   );
 }
 
-function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, registryAt, agent, refresh }: { view?: PolicyView; demo: boolean; explorerUrl: string; realFunds: boolean; networkName: string; registryAt: string | null; agent: string | null; refresh: () => Promise<unknown> }) {
+function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { view?: PolicyView; demo: boolean; explorerUrl: string; registryAt: string | null; agent: string | null; refresh: () => Promise<unknown> }) {
   const router = useRouter();
   const registry = useRegistry();
   // Step two on Monad, checked on its own: a declined authorisation must be retryable without publishing again.
   const authorized = useAgentAuthorized(demo ? null : (registryAt as `0x${string}` | null), agent as `0x${string}` | null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [accepted, setAccepted] = useState(false);
   if (!view) return <Skeleton className="h-64" />;
   const p = view.pending?.policy ?? view.policy;
   if (!p) return <Notice tone="warn">No policy saved yet. Go back one step.</Notice>;
@@ -216,15 +215,7 @@ function ReviewStep({ view, demo, explorerUrl, realFunds, networkName, registryA
 
       {busy && <p className="mt-4 text-[13px] text-fg-2" role="status">{busy}</p>}
       {err && <p role="alert" className="mt-4 text-[13px] text-ask-fg">{err}</p>}
-      {realFunds && (
-        <label className="mt-8 flex cursor-pointer items-start gap-3 rounded-sm border border-ask/60 bg-ask/8 p-3.5 text-[13px]">
-          <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-0.5 size-4 flex-none accent-[var(--ask)]" />
-          <span>
-            <strong>This trades real funds on {networkName}.</strong> Monday will place live orders in your Perpl account up to the limits above. Market making can lose money, the software is new, and past or simulated results promise nothing. I accept that risk.
-          </span>
-        </label>
-      )}
-      <Button size="lg" className="mt-8" onClick={start} disabled={busy !== null || mustSign || (realFunds && !accepted)}>Start Monday</Button>
+      <Button size="lg" className="mt-8" onClick={start} disabled={busy !== null || mustSign}>Start Monday</Button>
       <p className="mt-3 text-[13px] text-fg-3">The first quotes reach the book within seconds. You can stop or kill from the dashboard at any time.</p>
     </div>
   );
