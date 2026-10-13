@@ -35,6 +35,7 @@ const Context = z.object({
       price_decimals: z.number().int().min(0),
       size_decimals: z.number().int().min(0),
       initial_margin: z.number().positive(),
+      maintenance_margin: z.number().positive().optional(),
       maker_fee: z.number(),
       taker_fee: z.number(),
     }),
@@ -85,6 +86,8 @@ export async function loadContext(cfg: PerplConfig): Promise<PerplContext> {
         // initial_margin is in the same hundredths unit as an order's `lv`: 1500 -> 15x (6.67% margin).
         // Confirmed on-chain: getMarginFractions returns init 1500 / maint 2500, and maint < init only holds this way.
         maxLeverage: m.config.initial_margin / 100,
+        // Same unit: 2500 -> liquidated at 25x, i.e. 4% of the notional left as margin.
+        maintLeverage: m.config.maintenance_margin ? m.config.maintenance_margin / 100 : undefined,
       },
     };
     ctx.markets[sym] = market;

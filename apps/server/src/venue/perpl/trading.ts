@@ -4,7 +4,7 @@
 
 import { createPrivateKey, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { MARKETS, type MarketSym, type QuoteTarget, type Side } from '@monday/core';
-import { VenueError, type OwnOrders, type Venue, type VenueAccount, type VenueCredentials, type VenueEvents, type VenuePosition } from '../types';
+import { VenueError, type OrderSpec, type OwnOrders, type Venue, type VenueAccount, type VenueCredentials, type VenueEvents, type VenuePosition } from '../types';
 import type { PerplConfig } from './index';
 import type { PerplContext, PerplMarket } from './rest';
 import { openLink, type Link } from './socket';
@@ -13,6 +13,8 @@ import { openLink, type Link } from './socket';
 const OPEN_LONG = 1, OPEN_SHORT = 2, CLOSE_LONG = 3, CLOSE_SHORT = 4, CANCEL = 5, CHANGE = 7;
 // OrderFlags
 const POST_ONLY = 1, IOC = 4;
+// TriggerPriceCondition: plans trigger on the mark, which one thin-book print cannot spike the way it can the last price
+const GTE_MARK = 3, LTE_MARK = 4;
 // OrderStatus
 const PENDING = 1, OPEN = 2, PARTIALLY_FILLED = 3, FILLED = 4, CANCELED = 5, EXPIRED = 6, FAILED = 7, UNTRIGGERED = 8;
 // OrderStatusReason values this adapter acts on
@@ -66,15 +68,19 @@ export function signInFrame(chainId: number, token: string, key: KeyObject, now 
 // ---- venue ----
 
 interface Resting { mkt: number; oid: number; p: number; left: number } // wire units
-interface OrderReq { mkt: number; t: number; s: number; fl: number; lv: number; oid?: number; p?: number; lp?: number; lb?: number }
+interface OrderReq { mkt: number; t: number; s: number; fl: number; lv: number; oid?: number; p?: number; lp?: number; lb?: number; ms?: number; tp?: number; tpc?: number }
 interface Pending {
   req: OrderReq;
   slot?: string; // the quote slot this request fills
+  /** A plan's order (Agentic Trade, TWAP): never a quote, left alone by Stop and restarts. */
+  plan?: boolean;
+  /** `${mkt}:${oid}` once Perpl names the order. */
+  key?: string;
   rq: number;
   sn: number;
   lb: number;
   retried: boolean;
-  resolve: () => void;
+  resolve: (key?: string) => void;
   reject: (e: VenueError) => void;
 }
 
@@ -248,6 +254,38 @@ export class PerplVenue implements Venue {
     this.handlers[event].push(cb);
   }
 
+  /**
+   * A plan's order. A close is Close* (reduce-only, clamped to the position) linked to the position by `lp`, so Perpl
+   * itself drops it once the position is closed or flipped: a stop loss and a take profit cancel each other with no
+   * help from Monday. A trigger rests with Perpl's keeper and fires on the mark, whether or not Monday is running.
+   * Resolves with the order key, or '' when Perpl finished the order without naming it.
+   */
+  placeOrder(o: OrderSpec): Promise<string> {
+    const m = this.ctx?.markets[o.sym];
+    if (!this.ready) return Promise.reject(new VenueError('disconnected', 'trading socket is down'));
+    if (!m) return Promise.reject(new VenueError('rejected', `${o.sym} is not tradable on this venue`));
+    const s = Math.round(o.size * m.sz);
+    if (!(s > 0)) return Promise.reject(new VenueError('rejected', `invalid size ${o.size} ${o.sym}`));
+    const req: OrderReq = { mkt: m.id, t: o.side === 'bid' ? OPEN_LONG : OPEN_SHORT, s, p: o.price != null ? Math.round(o.price * m.px) : 0, fl: o.price != null && o.postOnly ? POST_ONLY : IOC, lv: Math.round(o.leverage * 100) };
+    if (o.close) {
+      const pos = this.openPositions().find((p) => p.mkt === m.id);
+      if (!pos || (o.side === 'ask') !== (pos.sd === 1)) return Promise.reject(new VenueError('rejected', `No ${o.sym} position for this order to close.`));
+      Object.assign(req, { t: pos.sd === 1 ? CLOSE_LONG : CLOSE_SHORT, lp: pos.pid, lv: 0 });
+    }
+    if (o.slippageBps != null) req.ms = Math.round(o.slippageBps);
+    if (o.trigger) Object.assign(req, { tp: Math.round(o.trigger.price * m.px), tpc: o.trigger.when === 'gte' ? GTE_MARK : LTE_MARK, lb: 0 });
+    return new Promise((resolve, reject) => this.dispatch({ req, plan: true, rq: 0, sn: 0, lb: 0, retried: false, resolve: (key) => resolve(key ?? ''), reject }));
+  }
+
+  cancelOrder(key: string): Promise<void> {
+    if (!this.ready) return Promise.reject(new VenueError('disconnected', 'trading socket is down'));
+    return this.cancel(key);
+  }
+
+  working(key: string): boolean {
+    return this.orders.has(key);
+  }
+
   requests(): number {
     return this.sent;
   }
@@ -290,13 +328,14 @@ export class PerplVenue implements Venue {
 
   private request(req: OrderReq, slot?: string): Promise<void> {
     if (!this.ready) return Promise.reject(new VenueError('disconnected', 'trading socket is down'));
-    return new Promise((resolve, reject) => this.dispatch({ req, slot, rq: 0, sn: 0, lb: 0, retried: false, resolve, reject }));
+    return new Promise((resolve, reject) => this.dispatch({ req, slot, rq: 0, sn: 0, lb: 0, retried: false, resolve: () => resolve(), reject }));
   }
 
   private dispatch(p: Pending): void {
     p.rq = ++this.rq; // strictly increasing: max(local counter, account.lfr) + 1
     p.sn = ++this.sn; // unique and non-zero, echoed as `cid` on the mt 3
-    this.sentRq.add(p.rq);
+    // A plan's order that lands after a reconnect must not be taken for a quote: only Monday's quote requests count as sent.
+    if (!p.plan) this.sentRq.add(p.rq);
     if (this.sentRq.size > 5_000) for (const r of [...this.sentRq].slice(0, 1_000)) this.sentRq.delete(r); // oldest first
     // head < lb <= head + order_ttl_blocks. Before the first heartbeat, 0 lets the server apply the same ceiling.
     p.lb = p.req.lb ?? (this.head ? this.head + this.ttl(p.req.mkt) : 0);
@@ -318,7 +357,7 @@ export class PerplVenue implements Venue {
     this.pending.delete(p.rq);
     this.acks.delete(p.sn);
     if (err) p.reject(err);
-    else p.resolve();
+    else p.resolve(p.key);
   }
 
   private failPending(err: VenueError): void {
@@ -445,7 +484,10 @@ export class PerplVenue implements Venue {
     const key = `${o.mkt}:${o.oid}`;
     const gone = o.r === true || o.st === FILLED || o.st === CANCELED || o.st === EXPIRED;
     const p = snapshot ? undefined : this.pending.get(o.rq) ?? this.pendingOn(o, gone);
-    if (p && o.oid) this.remember(key);
+    if (p && o.oid) {
+      p.key = key;
+      if (!p.plan) this.remember(key); // a plan's order is not Monday's to cancel on a Stop
+    }
     if (gone) this.drop(key);
     else if (o.oid && (snapshot || o.st === OPEN || o.st === PARTIALLY_FILLED || o.st === UNTRIGGERED)) this.track(key, o, p);
     if (p) this.settle(p, o);
@@ -467,6 +509,7 @@ export class PerplVenue implements Venue {
     // Someone else's order on this account (placed by hand, or by another app): tracked so a Kill still sweeps it,
     // never adopted as a quote, never cancelled here, and its fills stay external.
     if (!p && !this.own.has(key) && !this.sentRq.has(o.rq)) return;
+    if (p?.plan) return; // tracked so a Kill sweeps it, never a quote, never in `own`
     this.own.add(key);
     this.remember(key);
     this.saveOwn();
@@ -545,6 +588,7 @@ export class PerplVenue implements Venue {
       isMaker: f.l === 1,
       ts: f.at?.t ?? Date.now(),
       external: !this.mine.has(`${f.mkt}:${f.oid}`),
+      orderKey: `${f.mkt}:${f.oid}`,
     });
   }
 

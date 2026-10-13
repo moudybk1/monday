@@ -92,6 +92,30 @@ export interface VenueFill {
   ts: number;
   /** Not one of Monday's orders (a trade placed by hand on the same account). Only the live venue can tell. */
   external?: boolean;
+  /** The order that filled (`${market}:${order id}` on Perpl), so a plan can claim its own fills. */
+  orderKey?: string;
+}
+
+/**
+ * An order a plan places (Agentic Trade, TWAP). Never one of Monday's quotes: a Stop and a restart leave it alone,
+ * only a Kill sweeps it.
+ */
+export interface OrderSpec {
+  sym: MarketSym;
+  /** bid buys, ask sells. */
+  side: Side;
+  /** Base units. */
+  size: number;
+  leverage: number;
+  /** A limit price. Without one the order is a market order: IOC, filled at most `slippageBps` from the price. */
+  price?: number;
+  /** A limit order that only rests on the book (PostOnly). Without it a limit order takes what it can at once (IOC). */
+  postOnly?: boolean;
+  slippageBps?: number;
+  /** A reduce-only close of this market's position: clamped to its size, and dropped by the venue once it is closed. */
+  close?: boolean;
+  /** Not sent to the book until the mark reaches this price: gte at or above it, lte at or below. */
+  trigger?: { price: number; when: 'gte' | 'lte' };
 }
 
 export interface VenueEvents {
@@ -126,6 +150,11 @@ export interface Venue {
   cancelAll(onlyOwn?: boolean): Promise<void>;
   /** Close every position with reduce-only market orders. */
   flatten(): Promise<void>;
+  /** Place a plan's order. Resolves with its key once the venue has it (an IOC may already be done by then). */
+  placeOrder(o: OrderSpec): Promise<string>;
+  cancelOrder(key: string): Promise<void>;
+  /** The order is still working: resting, partly filled, or waiting for its trigger. */
+  working(key: string): boolean;
   on<E extends keyof VenueEvents>(event: E, cb: VenueEvents[E]): void;
   /** Simulated accounts only: save balance and positions. Called inside the transaction that records a fill. */
   persist?(): void;

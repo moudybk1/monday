@@ -26,14 +26,16 @@ function Shell({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const pathname = usePathname();
   const router = useRouter();
-  const onboarded = Boolean(me.data?.hasKey && me.data.policy);
+  // A key is all the terminal needs: it shows the market maker when one is set up, and Agentic Trade and TWAP plans either way.
+  const onboarded = Boolean(me.data?.hasKey);
   // A page that sent the user here to sign in (`?next=`). Reading your own history needs a session, not a running agent,
   // so an analytics page is returned to at once; anything else once setup is done. Read after mount: during a client
   // navigation the new page renders before the address bar changes. Undefined until read, and nothing redirects before.
   const [next, setNext] = useState<string | null | undefined>(undefined);
   useEffect(() => setNext(safeReturnPath(new URLSearchParams(location.search).get('next'))), []);
   const readOnly = next?.startsWith('/analytics') ?? false;
-  const mustOnboard = me.data && next !== undefined && !onboarded && !readOnly && pathname !== '/app/onboarding';
+  // Not connected to Perpl yet: the key comes first, once, before any choice of what to run.
+  const mustOnboard = me.data && next !== undefined && !onboarded && !readOnly && pathname !== '/app/connect';
   const terminal = pathname === '/app' && onboarded;
 
   // Every change this tab asks for names the account it shows (see lib/api).
@@ -41,7 +43,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => showAccount(wallet), [wallet]);
 
   useEffect(() => {
-    if (mustOnboard) router.replace(`/app/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+    if (mustOnboard) router.replace(`/app/connect${next ? `?next=${encodeURIComponent(next)}` : ''}`);
   }, [mustOnboard, next, router]);
   useEffect(() => {
     if (me.data && next && (readOnly || (onboarded && pathname === '/app'))) router.replace(next);

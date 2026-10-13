@@ -101,8 +101,8 @@ export function draftProblems(d: PolicyDraft, caps: Caps | null, specs: Specs): 
 /** Ready to save: nothing the server would refuse and, when the balance is known, enough of it. */
 export const draftOk = (d: PolicyDraft, balance: number | null, caps: Caps | null, specs: Specs) => draftFits(d, balance) && !Object.keys(draftProblems(d, caps, specs)).length;
 
-const money = (v: number, digits = Number.isInteger(v) ? 0 : 2) => (Number.isFinite(v) ? usd(v, digits) : '-');
-const parse = (s: string) => (s.trim() === '' ? NaN : Number(s));
+export const money = (v: number, digits = Number.isInteger(v) ? 0 : 2) => (Number.isFinite(v) ? usd(v, digits) : '-');
+export const parse = (s: string) => (s.trim() === '' ? NaN : Number(s));
 
 /** The margin the draft is sized from: as typed, else the collateral its limits need. */
 export const draftMargin = (d: PolicyDraft) => (d.margin != null ? parse(d.margin) : balanceNeededUsd(d.limits, d.markets.length));
@@ -285,12 +285,12 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
   );
 }
 
-const num = (v: number) => (Number.isFinite(v) ? String(v) : '');
+export const num = (v: number) => (Number.isFinite(v) ? String(v) : '');
 
-const SEG = 'flex h-9 min-w-0 overflow-hidden rounded-sm border border-line-2';
+export const SEG = 'flex h-9 min-w-0 overflow-hidden rounded-sm border border-line-2';
 
 /** One option of a segmented control: a real radio or checkbox under the label, so keyboards and screen readers get the native behaviour. */
-function Chip({ type, name, checked, disabled, boxed, onChange, children }: { type: 'radio' | 'checkbox'; name: string; checked: boolean; disabled?: boolean; boxed?: boolean; onChange: () => void; children: ReactNode }) {
+export function Chip({ type, name, checked, disabled, boxed, onChange, children }: { type: 'radio' | 'checkbox'; name: string; checked: boolean; disabled?: boolean; boxed?: boolean; onChange: () => void; children: ReactNode }) {
   return (
     <label className={cx('num flex min-w-0 items-center justify-center px-2 text-[12.5px] has-focus-visible:outline-2 has-focus-visible:-outline-offset-2', boxed ? 'h-8 rounded-sm border border-line-2' : 'flex-1 border-l border-line-2 first:border-l-0', checked ? 'bg-accent/12 font-semibold text-accent' : 'text-fg-2', disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer', !checked && !disabled && 'hover:bg-raised-2 hover:text-fg')}>
       <input type={type} name={name} className="sr-only" checked={checked} disabled={disabled} onChange={onChange} />
@@ -299,7 +299,7 @@ function Chip({ type, name, checked, disabled, boxed, onChange, children }: { ty
   );
 }
 
-function Choices({ legend, note, error, wide, grid, children }: { legend: string; note: ReactNode; error?: string; wide?: boolean; grid?: boolean; children: ReactNode }) {
+export function Choices({ legend, note, error, wide, grid, children }: { legend: string; note: ReactNode; error?: string; wide?: boolean; grid?: boolean; children: ReactNode }) {
   return (
     <fieldset className={cx('min-w-0', wide && '@2xl:col-span-2')}>
       <legend className="mb-2 text-[12.5px] font-medium">{legend}</legend>
@@ -309,7 +309,7 @@ function Choices({ legend, note, error, wide, grid, children }: { legend: string
   );
 }
 
-function Row({ id, label, value, note, error, className, children }: { id: string; label: string; value?: string; note: ReactNode; error?: string; className?: string; children: ReactNode }) {
+export function Row({ id, label, value, note, error, className, children }: { id: string; label: string; value?: string; note: ReactNode; error?: string; className?: string; children: ReactNode }) {
   return (
     <div className={cx('flex min-w-0 flex-col gap-2', className)}>
       <div className="flex items-baseline justify-between gap-3">
@@ -323,7 +323,7 @@ function Row({ id, label, value, note, error, className, children }: { id: strin
 }
 
 /** Leverage marks that stay readable on a linear scale: the common steps, dropped where they would crowd, and the cap. */
-function levTicks(max: number): number[] {
+export function levTicks(max: number): number[] {
   const out: number[] = [];
   for (const x of [1, 2, 3, 5, 10, 20, 25, 50, max]) {
     if (x > max || out.includes(x)) continue;
@@ -337,7 +337,7 @@ function levTicks(max: number): number[] {
 }
 
 /** A native range input (keyboard and screen readers for free) with the filled track and clickable marks under it. */
-function Slider({ id, min, max, step, value, unit, ticks = [], onChange }: { id: string; min: number; max: number; step: number; value: number; unit: string; ticks?: number[]; onChange: (v: number) => void }) {
+export function Slider({ id, min, max, step, value, unit, ticks = [], onChange }: { id: string; min: number; max: number; step: number; value: number; unit: string; ticks?: number[]; onChange: (v: number) => void }) {
   const v = Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
   const at = (x: number) => (max > min ? (x - min) / (max - min) : 0);
   return (
@@ -407,7 +407,7 @@ function TemplateMenu({ current, options, onPick }: { current: string; options: 
   );
 }
 
-function Money({ id, value, invalid, onChange }: { id: string; value: string; invalid: boolean; onChange: (s: string) => void }) {
+export function Money({ id, value, invalid, onChange }: { id: string; value: string; invalid: boolean; onChange: (s: string) => void }) {
   return (
     <div className="relative min-w-0">
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[13px] text-fg-3">$</span>
@@ -416,7 +416,7 @@ function Money({ id, value, invalid, onChange }: { id: string; value: string; in
   );
 }
 
-function Line({ k, v, tone }: { k: string; v: string; tone?: string }) {
+export function Line({ k, v, tone }: { k: string; v: string; tone?: string }) {
   return (
     <>
       <dt className="text-fg-3">{k}</dt>

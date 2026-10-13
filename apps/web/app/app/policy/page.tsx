@@ -116,7 +116,7 @@ export default function PolicyPage() {
       return setNote({ ok: false, text: e instanceof Error ? e.message : 'Could not disconnect.' });
     }
     await qc.invalidateQueries({ queryKey: ['me'] });
-    router.push('/app/onboarding');
+    router.push('/app/setup');
   };
 
   const ready = draftOk(draft, balance, caps, specs);

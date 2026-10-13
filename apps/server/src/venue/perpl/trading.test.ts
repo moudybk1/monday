@@ -65,7 +65,7 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
   const fill = { acc: 7, mkt: 16, oid: 9, t: 3, l: 1, p: 850000, s: 20000, f: '765000', at: { b: 5001, t: 1_700_000_000_000, txid: 'ab', l: 4 } };
   v.onFrame({ mt: 25, d: [fill] });
   v.onFrame({ mt: 25, d: [fill] }); // duplicate delivery
-  assert.deepEqual(fills, [{ id: 'perpl:7:ab:4:9', sym: 'BTC', side: 'ask', price: 85000, size: 0.2, feeUsd: 0.765, realizedUsd: 200, isMaker: true, ts: 1_700_000_000_000, external: true }]); // oid 9 was never Monday's
+  assert.deepEqual(fills, [{ id: 'perpl:7:ab:4:9', sym: 'BTC', side: 'ask', price: 85000, size: 0.2, feeUsd: 0.765, realizedUsd: 200, isMaker: true, ts: 1_700_000_000_000, external: true, orderKey: '16:9' }]); // oid 9 was never Monday's
   // Its position message has not landed: the position is what the fills say, so the 200 is not also still open, and the
   // venue says it is settling (the runner books no cash move and a flatten stays owed meanwhile).
   assert.deepEqual(v.position('BTC'), { size: 0.3, entryPrice: 84000 });
@@ -164,4 +164,51 @@ it("leaves orders Monday did not send alone: no adoption, no cancel, and their f
   v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 30, rq, st: 2, t: 2, p: 861000, os: 1000, fs: 0 }] });
   assert.deepEqual(v.quote('BTC', 'ask'), { price: 86100, size: 0.01 });
   assert.equal(v.quote('BTC', 'bid'), null);
+});
+
+it("a plan's orders: a stop rests on the position by lp and fires on the mark; never a quote, left by Stop, swept by Kill", async () => {
+  const sent: any[] = [];
+  const v = new PerplVenue(cfg, async () => ({}) as never, { wallet: '0x', accountId: 7, token: 't', secret: 's' }, { load: () => [], save() {} }) as any;
+  const btc = { id: 16, px: 10, sz: 1e5, ttlBlocks: 20, spec: { sym: 'BTC' } };
+  v.ctx = { markets: { BTC: btc }, byId: new Map([[16, btc]]), usd: 1e6, minDepositUsd: 100 };
+  v.link = { send: (f: any) => (sent.push(f), true), bounce() {}, ok() {}, stop() {} };
+  v.onFrame({ mt: 19, sn: 100, addr: '0x', as: [{ id: 7, lfr: 10, b: '900000000', fw: true }] });
+  v.onFrame({ mt: 23, d: [] });
+  v.onFrame({ mt: 26, d: [{ acc: 7, mkt: 16, pid: 3, st: 1, sd: 1, s: 50000, ep: 840000, c: '100000000' }] }); // 0.5 BTC long
+  v.onFrame({ mt: 100, sn: 101, h: 5000 });
+
+  // Stop loss: CloseLong on position 3 (lp), market (p 0, IOC) with 1% room, fired when the mark is at or under 82,000.
+  // lb 0: a trigger outlives any execution window.
+  const sl = v.placeOrder({ sym: 'BTC', side: 'ask', size: 0.5, leverage: 3, close: true, slippageBps: 100, trigger: { price: 82_000, when: 'lte' } });
+  await tick();
+  assert.deepEqual(sent[0], { mt: 22, sn: 1, rq: 11, acc: 7, mkt: 16, t: 3, s: 50000, p: 0, fl: 4, lv: 0, lp: 3, ms: 100, tp: 820000, tpc: 4, lb: 0 });
+  v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 30, rq: 11, st: 8, t: 3, tp: 820000, os: 50000, fs: 0 }] });
+  assert.equal(await sl, '16:30');
+  assert.equal(v.working('16:30'), true);
+  // A close must reduce: a buy against a long is refused before it is sent.
+  await assert.rejects(v.placeOrder({ sym: 'BTC', side: 'bid', size: 0.5, leverage: 3, close: true }), /No BTC position/);
+
+  // A plan's plain limit (a limit entry): OpenLong PostOnly, and still not a quote.
+  const entry = v.placeOrder({ sym: 'BTC', side: 'bid', size: 0.01, leverage: 3, price: 83_000, postOnly: true });
+  await tick();
+  assert.deepEqual([sent[1].t, sent[1].fl, sent[1].p, sent[1].lv], [1, 1, 830000, 300]);
+  v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: 31, rq: sent[1].rq, st: 2, t: 1, p: 830000, os: 1000, fs: 0 }] });
+  assert.equal(await entry, '16:31');
+  assert.equal(v.quote('BTC', 'bid'), null);
+
+  // Stop (cancel Monday's own) leaves both; Kill sweeps both.
+  await v.cancelAll(true);
+  assert.equal(sent.length, 2);
+  const kill = v.cancelAll(false);
+  await tick();
+  assert.deepEqual(sent.slice(2).map((f) => [f.t, f.oid]).sort(), [[5, 30], [5, 31]]);
+  for (const f of sent.slice(2)) v.onFrame({ mt: 24, d: [{ acc: 7, mkt: 16, oid: f.oid, rq: f.rq, st: 5, r: true }] });
+  await kill;
+  assert.equal(v.working('16:30'), false);
+
+  // Its fills name the order, so the plan that placed it claims them.
+  const fills: any[] = [];
+  v.on('fill', (f: any) => fills.push(f));
+  v.onFrame({ mt: 25, d: [{ acc: 7, mkt: 16, oid: 31, t: 1, l: 1, p: 830000, s: 1000, f: '0', at: { b: 5002, t: 1, txid: 'cd', l: 0 } }] });
+  assert.equal(fills[0].orderKey, '16:31');
 });

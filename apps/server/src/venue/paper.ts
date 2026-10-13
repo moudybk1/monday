@@ -60,6 +60,7 @@ export class PaperVenue extends SimVenue {
 
   /** Between prints: the opposite best crossing an order fills it, and a level that shrank moves the order forward. */
   sweep(): void {
+    this.checkOrders();
     for (const sym of MARKETS) {
       const snap = this.feed.snapshot(sym);
       if (!snap) continue;

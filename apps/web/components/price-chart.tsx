@@ -142,7 +142,10 @@ function indicatorPoints(bars: Candle[], on: readonly Ind[], p: Palette): Record
  * viewer picked. History comes from /api/candles; the live mark keeps the last candle (and every indicator's last
  * point) moving.
  */
-export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sym: MarketSym; m: MarketState; fills: Fill[]; now: number; className?: string; wheel?: boolean }) {
+/** A price the chart marks with a labelled line: a plan's entry, stop loss and take profit. */
+export interface ChartLevel { price: number; label: string; tone: 'bid' | 'ask' | 'accent' }
+
+export function PriceChart({ sym, m, fills, now, levels = [], className, wheel = true }: { sym: MarketSym; m: MarketState; fills: Fill[]; now: number; levels?: ChartLevel[]; className?: string; wheel?: boolean }) {
   const [frame, setFrame] = useState<Frame>('1m');
   const [on, setOn] = useState<Ind[]>(DEFAULT_IND);
   const box = useRef<HTMLDivElement>(null);
@@ -164,6 +167,8 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
   const pal = useRef<Palette | null>(null);
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const lines = useRef<{ bid: IPriceLine | null; ask: IPriceLine | null }>({ bid: null, ask: null });
+  const levelLines = useRef<IPriceLine[]>([]);
+  const levelPrices = useRef<number[]>([]);
   const bars = useRef<Candle[]>([]); // history plus the live candle
   const points = useRef<Record<string, Pt[]>>({});
   const offers = useRef<number[]>([]);
@@ -295,8 +300,10 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
         // Keep Monday's offers on screen: the price scale stretches to include them, not just the candles.
         autoscaleInfoProvider: (base: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
           const r = base();
-          if (!r || !offers.current.length) return r;
-          return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...offers.current), maxValue: Math.max(r.priceRange.maxValue, ...offers.current) } };
+          // Monday's quotes and a running plan's levels stay in view: a stop loss off the chart is a stop loss nobody sees.
+          const keep = [...offers.current, ...levelPrices.current];
+          if (!r || !keep.length) return r;
+          return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...keep), maxValue: Math.max(r.priceRange.maxValue, ...keep) } };
         },
       });
       const theme = () => {
@@ -356,6 +363,7 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
       watermark.current = band.current = null;
       ind.current.clear();
       lines.current = { bid: null, ask: null };
+      levelLines.current = [];
     };
   }, [wheel]);
 
@@ -544,6 +552,21 @@ export function PriceChart({ sym, m, fills, now, className, wheel = true }: { sy
       }
     }
   }, [ready, m.quotes]);
+
+  // A plan's levels: redrawn only when one of them changes, not every second.
+  const levelsKey = levels.map((l) => `${l.label}:${l.price}`).join('|');
+  useEffect(() => {
+    const s = series.current;
+    const mod = lw.current;
+    if (!s || !mod || !box.current) return;
+    const p = palette(box.current);
+    for (const l of levelLines.current) s.removePriceLine(l);
+    levelPrices.current = levels.map((l) => l.price);
+    levelLines.current = levels.map((l) => s.createPriceLine({
+      price: l.price, color: p[l.tone], lineWidth: 1, lineStyle: l.tone === 'accent' ? mod.LineStyle.Dotted : mod.LineStyle.Solid, axisLabelVisible: true, title: l.label,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, levelsKey]);
 
   const tradesKey = m.trades[0] ? m.trades[0].hash + m.trades[0].action : '';
 

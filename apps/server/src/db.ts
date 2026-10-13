@@ -91,6 +91,13 @@ create table if not exists chain_jobs (
   tx_hash text, attempts integer not null default 0, error text, created_at integer not null, updated_at integer not null
 );
 create index if not exists chain_jobs_status on chain_jobs (status, id);
+-- Agentic Trade and TWAP plans: what the user asked for (input), how far it got (state), and how it ended.
+create table if not exists plans (
+  id integer primary key autoincrement, user_id integer not null references users(id), kind text not null, sym text not null,
+  input text not null, state text not null, status text not null, outcome text, target_size real not null,
+  created_at integer not null, ended_at integer
+);
+create index if not exists plans_user on plans (user_id, status);
 `);
 // Columns added after the first deploy. SQLite has no "add column if not exists".
 const added = [
@@ -98,6 +105,8 @@ const added = [
   ['fills', 'external', 'integer'], ['fills', 'quote_event_id', 'integer'], ['fills', 'ctx', 'text'],
   ['agents', 'session_sl', 'real'], ['agents', 'session_tp', 'real'], ['agents', 'session_equity', 'real'], ['agents', 'owed', 'text'], ['agents', 'own_orders', 'text'],
   ['decisions', 'llm_ms', 'real'], ['decisions', 'llm_cost', 'real'], ['pnl_snapshots', 'balance', 'real'], ['users', 'signed_out_at', 'integer'],
+  // A plan's fill: the plan's result, never the market maker's.
+  ['fills', 'plan_id', 'integer'],
 ];
 for (const [table, col, type] of added) {
   try {
