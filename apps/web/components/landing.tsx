@@ -121,7 +121,7 @@ function scene(step: number): MarketState {
     bids: lv([85_180.4, 85_168.9, 85_157.2, 85_146.1], [0.024, 0.031, 0.049, 0.061]),
     fundingRate: 0, dataAgeMs: 200, sigma1mBps: 2.4, book: 0, hlMid: null,
     quotes: { bid: { price: 85_162.1, size: 0.00117 }, ask: pulled ? null : { price: 85_237.9, size: 0.00117 } },
-    model: null, position: { size: 0, entryPrice: 0, notionalUsd: 0, unrealizedUsd: 0 },
+    model: null, position: { size: 0, entryPrice: 0, notionalUsd: 0, marginUsd: null, unrealizedUsd: 0 },
     params: { market: 'BTC', enabled: true, spread_mult: 1, skew_bias_bps: 0, size_mult: 1, max_inventory_usd: 500, ttl_min: 15, regime: 'calm', reason: '' },
     paramsSource: 'fallback',
     reflex: pulled ? { side: 'ask', action: 'pull', until: T0 + 300_000, z: 2.9, triggerHashes: [] } : null,

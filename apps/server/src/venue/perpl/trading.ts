@@ -189,7 +189,7 @@ export class PerplVenue implements Venue {
       if (b && this.pendingPosition(m.id)) return { ...b };
       for (const p of this.positions.values()) {
         // `epr` is the Q16 fractional residue of the entry price.
-        if (p.mkt === m.id) return { size: ((p.sd === 1 ? 1 : -1) * p.s) / m.sz, entryPrice: (p.ep + (p.epr ?? 0) / 65536) / m.px };
+        if (p.mkt === m.id) return { size: ((p.sd === 1 ? 1 : -1) * p.s) / m.sz, entryPrice: (p.ep + (p.epr ?? 0) / 65536) / m.px, marginUsd: Number(p.c ?? 0) / (this.ctx?.usd ?? 1) };
       }
     }
     return { ...FLAT };

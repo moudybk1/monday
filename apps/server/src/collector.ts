@@ -114,6 +114,10 @@ export class Collector {
   private lags: number[] = [];
   private timer: NodeJS.Timeout | null = null;
   lastError: string | null = null;
+  /** True while no Monday needs the signal: Nansen is then not called, which saves its credits. */
+  private idle: () => boolean = () => false;
+  private lastPollAt = 0;
+  private polling = false;
 
   constructor(world: SimWorld | null) {
     this.source = this.kind === 'nansen' ? nansenSource() : this.kind === 'sim' && world ? simSource(world) : null;
@@ -136,16 +140,35 @@ export class Collector {
       this.lastOkAt = Date.now();
       this.lastError = null;
     }, (e) => this.fail(e));
-    const everyMs = this.kind === 'sim' ? 3_000 : config.nansen.pollSeconds * 1000;
-    this.timer = setInterval(() => void this.poll(), everyMs);
+    this.lastPollAt = Date.now();
+    // Every minute: call Nansen when a poll is due, or at once when a Monday starts quoting again after a pause.
+    this.timer = setInterval(() => void this.tick(), this.kind === 'sim' ? 3_000 : 60_000);
+  }
+  pauseWhen(idle: () => boolean) {
+    this.idle = idle;
+  }
+  private async tick() {
+    if (this.kind === 'sim') return this.poll();
+    if (this.polling || this.idle()) return;
+    const sinceMs = Date.now() - this.lastPollAt;
+    if (sinceMs < Math.min(config.nansen.pollSeconds * 1000, 60 * MIN)) return; // a poll covers the last hour
+    this.polling = true;
+    try {
+      // Back after more than the hour a poll covers: every hour missed, as at boot, so the 7-day baseline has no hole.
+      const missedH = Math.ceil(sinceMs / (60 * MIN));
+      await this.poll(missedH > 1 ? Math.min(WEEK_MIN / 60, missedH + 1) : 0);
+    } finally {
+      this.polling = false;
+    }
   }
   stop() {
     if (this.timer) clearInterval(this.timer);
   }
 
-  private async poll() {
+  private async poll(backfillHours = 0) {
+    this.lastPollAt = Date.now();
     try {
-      this.ingest(await this.source!.poll(), false);
+      this.ingest(await (backfillHours ? this.source!.backfill(backfillHours) : this.source!.poll()), backfillHours > 0);
       this.lastOkAt = Date.now();
       this.lastError = null;
     } catch (e) {

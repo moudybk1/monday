@@ -76,6 +76,8 @@ export interface VenueAccount {
 export interface VenuePosition {
   size: number; // signed base units, long positive
   entryPrice: number;
+  /** Collateral the venue holds for this position, when it reports one (Perpl does); its leverage is notional over this. */
+  marginUsd?: number;
 }
 
 export interface VenueFill {

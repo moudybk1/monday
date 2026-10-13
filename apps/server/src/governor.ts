@@ -161,7 +161,7 @@ async function askAnthropic(user: string): Promise<Answer> {
   return { text: text.text, costUsd: null }; // tokens are billed by the provider; the price is not known here
 }
 
-async function askOpenAiCompatible(user: string): Promise<Answer> {
+async function askOpenAiCompatible(user: string, quick: boolean): Promise<Answer> {
   const res = await fetch(`${config.llm.baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${config.llm.apiKey}` },
@@ -169,6 +169,8 @@ async function askOpenAiCompatible(user: string): Promise<Answer> {
       model,
       messages: [{ role: 'system', content: `${SYSTEM}\n\nReply with a single JSON object matching this schema: ${JSON.stringify(OUTPUT_SCHEMA)}` }, { role: 'user', content: user }],
       response_format: { type: 'json_object' },
+      // An early review answers in seconds without Kimi's reasoning, at about an eighth of the cost; scheduled ones think.
+      ...(quick && /^kimi/i.test(model) ? { thinking: { type: 'disabled' } } : {}),
     }),
     // Kimi on b.ai answers a full snapshot in 30 to 90 s (measured 2026-10-10). The runner still applies an answer up to
     // LATE_DECISION_MS (120 s) after asking, so wait just short of that; the rules hold the book meanwhile.
@@ -244,14 +246,15 @@ export function fallbackDecision(ctx: Pick<GovernorContext, 'market' | 'signal' 
   return { params: { ...p, reason }, source: 'fallback', llmModel: null };
 }
 
-export async function decide(ctx: GovernorContext): Promise<GovernorResult> {
+/** `quick`: an early review, asked without the model's reasoning where the provider allows it (Kimi). */
+export async function decide(ctx: GovernorContext, quick = false): Promise<GovernorResult> {
   if (!llmEnabled) return fallbackDecision(ctx);
   const t0 = Date.now();
   try {
     const user = JSON.stringify(snapshot(ctx));
     const { text, costUsd } = anthropic ? await askAnthropic(user)
       : config.llm.provider === 'claude-code' ? await askClaudeCode(user)
-      : await askOpenAiCompatible(user);
+      : await askOpenAiCompatible(user, quick);
     // Some OpenAI-compatible models wrap the object in a markdown fence despite JSON mode, write more after it,
     // or write the market as "SOL-PERP". Take the object itself; the schema and clampParams still bound every value.
     const raw = firstJsonObject(text);

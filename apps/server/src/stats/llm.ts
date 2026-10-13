@@ -18,8 +18,15 @@ const anthropic = llmReady && provider === 'anthropic' ? new Anthropic({ apiKey,
  * model, the messages and, for Kimi, thinking off. Callers that want JSON ask for it in the prompt and the parser accepts fenced replies; the
  * prompts themselves keep the answers short.
  */
+// The per-address limits stop one visitor; this stops many. Past it the pages answer from the rules, as when the
+// model is down (2026-10-13: the project runs on one prepaid Kimi balance until 4 Nov).
+let spent = { day: 0, n: 0 };
+
 export async function ask(system: string, user: string, { maxTokens = 300, timeoutMs = 25_000, model: which = model } = {}): Promise<string> {
   if (!llmReady) throw new Error('No model configured');
+  const day = Math.floor(Date.now() / 86_400_000);
+  if (spent.day !== day) spent = { day, n: 0 };
+  if (++spent.n > config.stats.llmDailyCap) throw new Error(`daily model budget of ${config.stats.llmDailyCap} answers used`);
   if (anthropic) {
     const res = await anthropic.messages.create({ model: which, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }, { timeout: timeoutMs });
     const text = res.content.find((b) => b.type === 'text');

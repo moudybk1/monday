@@ -982,7 +982,8 @@ export class Runner {
       rt.paramsUntil = 0;
     }
     if (rt.govBusy) return;
-    if (now < rt.nextGovAt && !(rt.govAsap && now - rt.lastGovAt > 60_000)) return;
+    const early = now < rt.nextGovAt;
+    if (early && !(rt.govAsap && now - rt.lastGovAt > config.governorEarlyGapMin * 60_000)) return;
     rt.govBusy = true;
     rt.govAsap = false;
     rt.lastGovAt = now;
@@ -992,14 +993,14 @@ export class Runner {
     rt.nextGovAt = now + config.governorIntervalMin * 60_000;
     const policyAtAsk = this.policyHash;
     const evidence = {
-      at: now, strategy: STRATEGY_VERSION, policyHash: policyAtAsk, lean: ctx.lean,
+      at: now, strategy: STRATEGY_VERSION, policyHash: policyAtAsk, lean: ctx.lean, review: early ? 'early' : 'scheduled',
       signal: { S: sig.S, z5m: sig.w5.z, z15m: sig.w15.z, z60m: sig.w60.z, net5m: sig.w5.netUsd, net15m: sig.w15.netUsd, net60m: sig.w60.netUsd, stale: sig.stale, ageMs: Number.isFinite(this.deps.collector.ageMs) ? this.deps.collector.ageMs : null },
       smartTraderTx: this.deps.collector.recentTrades(rt.sym, now - 15 * 60_000).map((t) => t.hash),
       market: { mark: snap.mark, oracle: snap.oracle, bestBid: snap.bestBid, bestAsk: snap.bestAsk, sigma1mBps: ctx.sigma1mBps, fundingRate: snap.fundingRate, dataAgeMs: ctx.feedAgeMs },
       inventoryUsd: ctx.inventoryUsd, inventoryStage: rt.stage, results1h: { fills: ctx.fills1h, markout1mBps: ctx.avgMarkout1mBps, quotedPct: ctx.quotedPct1h },
       rules: ctx.proposal,
     };
-    void decide(ctx)
+    void decide(ctx, early)
       .then((res) => {
         if (this.status !== 'quoting') return;
         // An answer to a question that no longer stands (the policy changed, or it took too long) is not applied.
@@ -1434,7 +1435,7 @@ export class Runner {
         model: quoting && rt.model ? { ref: rt.model.ref, center: rt.model.center, halfBps: rt.model.halfBps, skewInvBps: rt.model.skewInvBps, skewNanBps: rt.model.skewNanBps, skewBookBps: rt.model.skewBookBps, skewTrendBps: rt.model.skewTrendBps, q: rt.model.q, blendBps: rt.model.blendBps, sizeCapUsd: rt.model.sizeCapUsd } : null, book: rt.book,
         trend5mBps: this.trendBps(rt, now, snap.mark),
         hlMid: this.hlShown(sym, snap.mark),
-        position: { size: pos.size, entryPrice: pos.entryPrice, notionalUsd: pos.size * snap.mark, unrealizedUsd: pos.size ? pos.size * (snap.mark - pos.entryPrice) : 0 },
+        position: { size: pos.size, entryPrice: pos.entryPrice, notionalUsd: pos.size * snap.mark, marginUsd: pos.marginUsd ?? null, unrealizedUsd: pos.size ? pos.size * (snap.mark - pos.entryPrice) : 0 },
         params: rt.params, paramsSource: rt.paramsSource, reflex: quoting && rt.reflex && rt.reflex.until > now ? rt.reflex : null,
         signal: this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(sym), trades: this.deps.collector.latestTrades(sym, 14),
         inPolicy: this.policy.markets.includes(sym), stage: rt.stage, why: rt.why, quotedPct: this.quotedPct(rt), quoteAgeMs: { bid: ageOf('bid'), ask: ageOf('ask') },

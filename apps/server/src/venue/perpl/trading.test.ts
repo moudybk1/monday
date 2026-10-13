@@ -32,7 +32,7 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
   assert.equal(v.connected(), true);
   assert.deepEqual(v.quote('BTC', 'bid'), { price: 85000, size: 0.01 });
   assert.equal(v.quote('BTC', 'ask'), null);
-  assert.deepEqual(v.position('BTC'), { size: 0.5, entryPrice: 84000 });
+  assert.deepEqual(v.position('BTC'), { size: 0.5, entryPrice: 84000, marginUsd: 100 }); // c is the position's collateral
   assert.deepEqual(v.account(), { accountId: 7, balanceUsd: 1000, canTrade: true }); // 900 free + 100 position collateral
   assert.deepEqual(sent.map((f) => [f.t, f.oid, f.rq, f.sn]), [[5, 6, 42, 1]]); // Monday's stray cancelled, the user's bid not; rq seeded from lfr 41
   v.onFrame({ mt: 100, sn: 101, h: 5000 });
@@ -79,7 +79,7 @@ it('adoption, change-not-cancel, dedupe, fills, positions, balance', async () =>
 
   // Inversion: the long closes and a short opens under a new position id, delivered open-first.
   v.onFrame({ mt: 27, d: [{ acc: 7, mkt: 16, pid: 4, st: 1, sd: 2, s: 10000, ep: 851000, c: '20000000' }, { acc: 7, mkt: 16, pid: 3, st: 2, sd: 1, s: 0, ep: 840000, c: '0' }] });
-  assert.deepEqual(v.position('BTC'), { size: -0.1, entryPrice: 85100 });
+  assert.deepEqual(v.position('BTC'), { size: -0.1, entryPrice: 85100, marginUsd: 20 });
   assert.equal(v.settling(), false);
 
   // flatten -> CloseShort, market (p 0) IOC, linked to the position; resolves on the first non-failure status.
