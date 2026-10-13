@@ -1,6 +1,6 @@
 import { ArrowRightIcon, ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon, PlusIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
 import { MARKETS, PRESETS, balanceNeededUsd, usd, type AppConfig, type DashboardState, type MarketSym, type Policy } from '@monday/core';
-import { AgentDiagram } from '@/components/agent-diagram';
+import { ModesDiagram } from '@/components/agent-diagram';
 import { CloseField, CountUp, LiveProvider, PerplStats, Reveal, Spotlight, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ButtonLink, Mark, Tag, cx } from '@/components/ui';
@@ -110,13 +110,13 @@ export default async function Landing() {
                   <p className="enter max-w-[40ch] text-[17px] leading-relaxed text-fg-2" style={{ '--d': '420ms' } as React.CSSProperties}>
                     Make markets, scalp a bias, or build a position in slices, from your own Perpl account and inside your limits.
                   </p>
-                  <div className="enter mt-6 flex flex-wrap gap-2.5" style={{ '--d': '540ms' } as React.CSSProperties}>
-                    <Launch />
+                  {/* Launch app lives in the header; the hero only points down to the modes. */}
+                  <div className="enter mt-6" style={{ '--d': '540ms' } as React.CSSProperties}>
                     <ButtonLink href="#modes" size="lg" variant="ghost" className="h-12 px-5 text-[16px]">Compare the modes</ButtonLink>
                   </div>
                 </div>
               </div>
-              <AgentDiagram onchain={onchain} className="enter mt-14 [--d:640ms] lg:mt-20" />
+              <ModesDiagram className="enter mt-14 [--d:640ms] lg:mt-20" />
               <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
                 <Fact n={<CountUp value={marketCount} />} k="Perpl markets, every one it lists" />
                 <Fact n="1 s" k="engine tick. A reflex acts on the next one" />

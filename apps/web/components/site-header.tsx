@@ -1,3 +1,4 @@
+import { ArrowRightIcon } from '@phosphor-icons/react/dist/ssr';
 import Link from 'next/link';
 import { NetworkNote } from './network-note';
 import { SiteMenu, SiteNav } from './site-menu';
@@ -25,7 +26,17 @@ export function SiteHeader() {
         <SiteNav links={LINKS} />
         <div className="flex items-center gap-1 md:justify-self-end">
           <span className="hidden md:contents"><ThemeToggle /></span>
-          <ButtonLink href={at('/app')} size="sm" className="ml-1 h-9 px-4 text-[14px] md:ml-2">Launch app</ButtonLink>
+          {/* The one call to action on the public pages: a label and an arrow box that nudges forward, with an amber
+              halo on hover. */}
+          <ButtonLink
+            href={at('/app')} size="sm" style={{ transitionProperty: 'filter, box-shadow' }}
+            className="group ml-1 h-9 gap-3 pl-3.5 pr-1 text-[14px] font-semibold duration-300 hover:shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent)_20%,transparent),0_8px_24px_-8px_color-mix(in_oklab,var(--accent)_55%,transparent)] md:ml-2"
+          >
+            Launch app
+            <span aria-hidden className="grid size-7 place-items-center rounded-xs bg-accent-fg text-accent transition-transform duration-300 ease-out group-hover:translate-x-0.5">
+              <ArrowRightIcon size={13} weight="bold" />
+            </span>
+          </ButtonLink>
           <SiteMenu links={LINKS} />
         </div>
       </div>
