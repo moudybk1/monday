@@ -4,7 +4,7 @@ import { PlayIcon, StopIcon, XCircleIcon } from '@phosphor-icons/react';
 import { usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
 import { fmtBps, fmtPrice, fmtSigned, fmtTime, fmtUsd } from '@/lib/format';
 import { Diverging } from './charts';
-import { Button, Tag, cx } from './ui';
+import { Button, ButtonLink, Tag, cx } from './ui';
 
 /**
  * Session stop loss and take profit as typed. Empty means none; anything that is not a positive amount blocks Start.
@@ -102,6 +102,9 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
             <Button size="sm" variant="ghost" className="flex-1" onClick={onPause} disabled={busy} title="Cancel Monday's orders and stop the bot. Open positions and orders you placed yourself stay as they are, and Monday stops watching them."><StopIcon size={12} weight="fill" /> Stop</Button>
             <Button size="sm" variant="danger" className="flex-1" onClick={onKill} disabled={busy}><XCircleIcon size={12} weight="fill" /> Kill and flatten</Button>
           </div>
+        ) : state.status === 'killed' && !state.closing ? (
+          // A kill ends everything: the market maker starts again from Setup, like any other mode.
+          <ButtonLink href="/app/setup" size="sm" className="w-full">Set up again</ButtonLink>
         ) : (
           <div className="grid gap-1.5">
             <div className="grid grid-cols-2 gap-1.5">

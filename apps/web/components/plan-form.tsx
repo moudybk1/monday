@@ -105,7 +105,7 @@ export function PlanWizard({ kind }: { kind: Kind }) {
 
   const specs = cfg?.specs ?? {};
   const running = (plans.data ?? []).filter((p) => p.status !== 'done');
-  const makerMarkets = me.policy?.markets ?? [];
+  const makerMarkets = me.makerMarkets;
   const planMarkets = running.map((p) => p.input.sym);
   const balance = account.data?.balanceUsd ?? null;
   const input = toInput(kind, draft);

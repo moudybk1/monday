@@ -48,9 +48,11 @@ it('a kill while Perpl is unreachable cancels and flattens once it is back', asy
   const policy: Policy = { mode: 'maker', markets: ['BTC'], preset: 'balanced', ...PRESETS.balanced };
   const r = new Runner(upsertUser('0xabc'), '0xabc', 1, policy, { driver, collector: {} as never, k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xabc', accountId: 1, token: 't', secret: 's' }) });
   await r.start();
+  expect(r.makerMarkets()).toEqual(['BTC']);
   v.up = false;
   await r.kill('stale_data');
   expect([v.orders, v.size]).toEqual([2, 0.01]); // nothing reached Perpl
+  expect(r.makerMarkets()).toEqual(['BTC']); // the position is still open: no plan may take BTC yet
 
   v.up = true;
   r.tick();
@@ -61,6 +63,7 @@ it('a kill while Perpl is unreachable cancels and flattens once it is back', asy
   r.tick();
   await settle();
   expect([v.orders, v.size]).toEqual([0, 0]);
+  expect(r.makerMarkets()).toEqual([]); // flat and killed: BTC is free for a plan
 });
 
 it('resume is refused while a kill still owes its flatten, and allowed once the position is closed', async () => {

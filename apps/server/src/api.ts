@@ -301,10 +301,11 @@ export async function buildApi(deps: ApiDeps) {
     const p = policyRow(s.uid);
     const r = deps.runnerFor(s.uid);
     if (r) r.lastSeenAt = Date.now();
+    const policy = p?.json ? (JSON.parse(p.json) as Policy) : null;
     return {
       wallet: s.w, demo: s.demo, accountId: c?.account_id ?? null, hasKey: c?.status === 'active', keyStatus: c?.status ?? null,
-      policy: p?.json ? (JSON.parse(p.json) as Policy) : null, policyHash: p?.policy_hash ?? null, policyTx: p?.onchain_tx ?? null,
-      policyPending: Boolean(p?.pending_json), status: r?.status ?? 'idle',
+      policy, policyHash: p?.policy_hash ?? null, policyTx: p?.onchain_tx ?? null,
+      policyPending: Boolean(p?.pending_json), status: r?.status ?? 'idle', makerMarkets: r?.makerMarkets() ?? policy?.markets ?? [],
     };
   });
 
@@ -474,7 +475,7 @@ export async function buildApi(deps: ApiDeps) {
       if (n.lossUsd > caps.maxDailyLossUsd) throw new HttpError(400, 'over_cap', `A stop loss may risk at most ${usd(caps.maxDailyLossUsd)} on this server while it trades real funds.`, input.kind === 'trade' ? 'lossLimitPct' : 'stopLossPct');
     }
     try {
-      return r.plans.create(input, r.policy.markets);
+      return r.plans.create(input, r.makerMarkets());
     } catch (e) {
       return planError(e);
     }
