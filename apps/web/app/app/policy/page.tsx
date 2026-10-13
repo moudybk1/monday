@@ -132,10 +132,10 @@ export default function PolicyPage() {
           : bot && <Button size="lg" className="w-full" onClick={() => void botAction('start')} disabled={busy !== null || bot.closing != null}>{busy ?? 'Start bot'}</Button>;
 
   return (
-    <div className="grid gap-5 py-8">
+    <div className="page-in grid gap-5 py-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="display text-2xl">Setup</h1>
+          <h1 className="display text-[1.75rem] font-medium">Setup</h1>
           <p className="mt-1 text-[13px] text-fg-2">The rules Monday trades by. They stay in force until you change them.</p>
         </div>
         {me.accountId != null && <Tag>Perpl account {me.accountId}</Tag>}

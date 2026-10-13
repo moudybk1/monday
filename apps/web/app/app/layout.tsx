@@ -143,9 +143,9 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
 
   return (
     // Centred both ways in the space under the 45px header: one compact block, not two columns pushed to the edges.
-    <div className="mx-auto grid min-h-[calc(100dvh-3rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
+    <div className="page-in mx-auto grid min-h-[calc(100dvh-3rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
       <div>
-        <h1 className="display text-4xl md:text-5xl">Connect your wallet</h1>
+        <h1 className="display text-4xl font-medium md:text-5xl">Connect your wallet</h1>
         <p className="mt-4 max-w-[52ch] text-[15px] text-fg-2">
           Monday signs you in with a message from your wallet on {chain.name}. It costs no gas and moves no funds. Your wallet key never leaves your browser.
           {realFunds && ' This server trades real funds.'}

@@ -60,6 +60,39 @@ it('signing out ends that account\'s live stream', async () => {
   await app.close();
 });
 
+it('SIWE: fresh unrelated nonces, the message\'s own validity window, and signing out voids a copied cookie', async () => {
+  const { app } = await harness();
+  const { privateKeyToAccount, generatePrivateKey } = await import('viem/accounts');
+  const { createSiweMessage } = await import('viem/siwe');
+  const { config } = await import('./config');
+  const account = privateKeyToAccount(generatePrivateKey());
+  const nonce = async () => (await app.inject({ method: 'POST', url: '/api/auth/nonce' })).json().nonce as string;
+  const signIn = async (extra: Partial<Parameters<typeof createSiweMessage>[0]> = {}) => {
+    const message = createSiweMessage({
+      address: account.address, chainId: config.chain.chainId, domain: new URL(config.webOrigin).host, nonce: await nonce(),
+      uri: config.webOrigin, version: '1', ...extra,
+    });
+    return app.inject({ method: 'POST', url: '/api/auth/verify', payload: { message, signature: await account.signMessage({ message }) } });
+  };
+  const [a, b] = [await nonce(), await nonce()];
+  expect(a.slice(1)).not.toBe(b.slice(0, -1)); // viem's nonces overlapped like this
+  expect((await signIn({ expirationTime: new Date(Date.now() - 1000) })).json().error).toBe('bad_time');
+  expect((await signIn({ notBefore: new Date(Date.now() + 60_000) })).json().error).toBe('bad_time');
+  expect((await signIn({ issuedAt: new Date('2020-01-01') })).json().error).toBe('bad_time');
+  const first = await signIn();
+  expect(first.statusCode).toBe(200);
+  const cookie = String(first.headers['set-cookie']).split(';')[0];
+  expect((await app.inject({ method: 'GET', url: '/api/me', headers: { cookie } })).statusCode).toBe(200);
+  await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { cookie } });
+  // The browser dropped it; a copy kept elsewhere must not work either.
+  expect((await app.inject({ method: 'GET', url: '/api/me', headers: { cookie } })).statusCode).toBe(401);
+  expect((await app.inject({ method: 'GET', url: '/api/ws-ticket', headers: { cookie } })).statusCode).toBe(401);
+  await new Promise((ok) => setTimeout(ok, 2)); // a new cookie is issued after the sign-out, not in the same millisecond
+  const again = String((await signIn()).headers['set-cookie']).split(';')[0];
+  expect((await app.inject({ method: 'GET', url: '/api/me', headers: { cookie: again } })).statusCode).toBe(200);
+  await app.close();
+});
+
 it('refuses a leverage that is not a whole number, and says which field', async () => {
   const { app, signIn } = await harness();
   const { cookie } = await signIn();

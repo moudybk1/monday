@@ -39,6 +39,8 @@
   --ind-2: #d55181;
   /* The landing hero's amber light behind the terminal. */
   --glow: color-mix(in oklab, var(--accent) 22%, transparent);
+  /* The landing's order-book field: how strongly its blurred copy lights the page. */
+  --field-glow: 0.6;
   /* Market series on the analytics charts, in assignment order (validated: adjacent pairs stay apart under
      colour-blind simulation on this surface). Past five, markets fold into a grey "Other". */
   --cat-1: #4a8ee6;
@@ -74,6 +76,7 @@
   --ind-1: #2a78d6;
   --ind-2: #df6d99;
   --glow: color-mix(in oklab, var(--accent) 10%, transparent); /* on a warm page more amber turns muddy */
+  --field-glow: 0.22;
   --cat-1: #2a78d6;
   --cat-2: #c43f6f;
   --cat-3: #8a6d00;
@@ -102,8 +105,8 @@
   --color-bid-fg: var(--bid-fg);
   --color-ask-fg: var(--ask-fg);
   --color-warn: var(--warn);
-  --font-sans: var(--font-mona), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: var(--font-text), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-figures), ui-monospace, "SF Mono", Menlo, monospace;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -139,6 +142,7 @@
   dialog::backdrop {
     background: rgb(0 0 0 / 0.65);
   }
+  :root { interpolate-size: allow-keywords; }
 }
 
 @layer components {
@@ -160,9 +164,9 @@
   }
   .display {
     font-family: var(--font-sans);
-    font-weight: 600;
-    letter-spacing: -0.035em;
-    line-height: 1.03;
+    font-weight: 550;
+    letter-spacing: -0.032em;
+    line-height: 1.04;
     text-wrap: balance;
   }
   .panel {
@@ -228,10 +232,67 @@
     border-radius: 4px;
     background: var(--canvas);
   }
+  /* The site header: clear over the top of a page, solid once it scrolls (see the scroll-driven rule below). */
+  .site-header {
+    background-color: color-mix(in oklab, var(--void) 86%, transparent);
+    border-color: var(--line);
+  }
+  /* A link whose underline draws in from the left on hover, and stays for the current page. */
+  .navlink { position: relative; }
+  .navlink::after {
+    content: "";
+    position: absolute;
+    inset: auto 0.75rem 0.25rem;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s var(--ease-out-expo);
+  }
+  .navlink:hover::after,
+  .navlink[aria-current="page"]::after { transform: scaleX(1); }
+  /* A card lit from the pointer: a soft amber circle follows it (Spotlight sets --mx and --my). */
+  .spot { position: relative; isolation: isolate; }
+  .spot::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklab, var(--accent) 10%, transparent), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+  }
+  .spot:hover::before { opacity: 1; }
+  /* Reading progress along the top of a long page, driven by the scroll position itself. */
+  .progress { transform: scaleX(0); transform-origin: 0 50%; }
+  /* A headline line that rises out of its own mask. The padding keeps descenders inside the mask. */
+  .line { display: block; overflow: hidden; overflow: visible clip; padding-bottom: 0.1em; margin-bottom: -0.1em; } /* clip only vertically: a wide line is never cut */
+  .line > span { display: block; }
   /* A side that has been pulled: hatched, like a struck line. */
   .hatch {
     background-image: repeating-linear-gradient(-45deg, transparent 0 5px, var(--line-2) 5px 6px);
   }
+  /* The hero's drawing of Monday (AgentDiagram): hairline wires, and packets of data travelling along them. */
+  .wire { position: absolute; overflow: hidden; pointer-events: none; }
+  .wire::before { content: ""; position: absolute; background: color-mix(in oklab, var(--fg-3) 55%, transparent); }
+  .wire-x { height: 7px; margin-top: -3px; }
+  .wire-x::before { inset: 3px 0 auto; height: 1px; }
+  .wire-y { width: 7px; margin-left: -3px; }
+  .wire-y::before { inset: 0 auto 0 3px; width: 1px; }
+  .packet { position: absolute; inset: 0; }
+  .packet::before { content: ""; position: absolute; border-radius: 1px; }
+  .wire-x .packet::before { top: 2px; left: -22px; width: 22px; height: 3px; background: linear-gradient(90deg, transparent, var(--c)); }
+  .wire-y .packet::before { left: 2px; top: -22px; width: 3px; height: 22px; background: linear-gradient(180deg, transparent, var(--c)); }
+  /* Where a wire meets a part: a small hollow pin at each end, drawn over the packets passing through it. */
+  .pin { position: absolute; z-index: 1; width: 7px; height: 7px; border: 1px solid var(--fg-3); border-radius: 1px; background: var(--void); }
+  .wire-x .pin { top: 0; left: 0; }
+  .wire-x .pin + .pin { left: auto; right: 0; }
+  .wire-y .pin { top: 0; left: 0; }
+  .wire-y .pin + .pin { top: auto; bottom: 0; }
+  .paused .packet,
+  .paused .beat { animation-play-state: paused; }
 }
 
 @keyframes flash-row {
@@ -252,10 +313,47 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
+/* The hero's entrance, timed after MotionSites' "Data Signal": lines first, then copy, call to action and card. */
+@keyframes line-in {
+  from { transform: translate3d(0, 110%, 0) skewY(2deg); }
+  to { transform: none; }
+}
+@keyframes enter {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+/* A page arriving: a short fade and lift, so a route change reads as one motion instead of a cut. */
+@keyframes page-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+}
+/* The live terminal settling into place: tipped back, then flat, as if set down on the page. */
+@keyframes tilt-in {
+  from { opacity: 0; transform: perspective(1600px) rotateX(9deg) translate3d(0, 28px, 0) scale(0.975); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes header-clear {
+  from { background-color: transparent; border-color: transparent; }
+}
+@keyframes progress-grow {
+  to { transform: scaleX(1); }
+}
 @keyframes pulse-dot {
   50% { opacity: 0.3; }
 }
-/* Motion only confirms that something changed. Nothing loops except the one live indicator. */
+/* A packet crossing its wire: it enters at one end and leaves past the other (the wire clips it). */
+@keyframes travel-x {
+  to { transform: translateX(calc(100% + 22px)); }
+}
+@keyframes travel-y {
+  to { transform: translateY(calc(100% + 22px)); }
+}
+/* One bar of the engine's one-second clock: lit for its second, then fading as the next one lights. */
+@keyframes beat {
+  0%, 6% { background-color: var(--accent); }
+  30%, 100% { background-color: var(--line-2); }
+}
+/* Motion only confirms that something changed. Nothing loops except the one live indicator and the hero's drawing of
+   Monday, which explains a process, plays only on screen, and has a pause button. */
 @media (prefers-reduced-motion: no-preference) {
   .flash { animation: flash-row 0.7s var(--ease-out-expo); }
   .flash-num { animation: flash-num 0.9s var(--ease-out-expo); }
@@ -263,4 +361,23 @@
   .flash-down { animation: flash-down 0.9s var(--ease-out-expo); }
   .rise { animation: rise 0.6s var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 60ms); }
   .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+  .line > span { animation: line-in 0.82s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: var(--d, 0ms); }
+  .enter { animation: enter 0.6s var(--ease-out-expo) both; animation-delay: var(--d, 0ms); }
+  .page-in { animation: page-in 0.5s var(--ease-out-expo) both; }
+  .tilt-in { animation: tilt-in 1.15s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: var(--d, 0ms); transform-origin: 50% 0; }
+  .wire-x .packet { animation: travel-x var(--dur, 1.6s) linear var(--delay, 0s) infinite; }
+  .wire-y .packet { animation: travel-y var(--dur, 1.6s) linear var(--delay, 0s) infinite; }
+  .packet.once { animation-iteration-count: 1; animation-fill-mode: both; }
+  .beat { animation: beat 12s linear infinite; animation-delay: calc(var(--i) * 1s - 12s); }
+  details.smooth::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition: block-size 0.4s var(--ease-out-expo), content-visibility 0.4s allow-discrete;
+  }
+  details.smooth[open]::details-content { block-size: auto; }
+}
+/* Scroll-linked, so it follows the reader rather than playing by itself: the header firms up, the progress bar fills. */
+@supports (animation-timeline: scroll()) {
+  .site-header { animation: header-clear linear both; animation-timeline: scroll(root); animation-range: 0 96px; }
+  .progress { animation: progress-grow linear both; animation-timeline: scroll(root); }
 }

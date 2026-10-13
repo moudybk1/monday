@@ -1,14 +1,16 @@
 'use client';
 
-import { PauseIcon, PlayIcon, ArrowCounterClockwiseIcon } from '@phosphor-icons/react';
-import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Decision, MarketState, MarketSym } from '@monday/core';
+import { ArrowCounterClockwiseIcon, PauseIcon, PlayIcon } from '@phosphor-icons/react';
+import { AnimatePresence, animate, motion, useInView, useReducedMotion } from 'motion/react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { type DashboardState, type Decision, type MarketState, type MarketSym, type PxOverview } from '@monday/core';
 import { fmtPrice, fmtTime } from '@/lib/format';
+import { fieldTargets, type Mine } from '@/lib/field';
 import { useLive } from '@/lib/live';
 import { OrderBook } from './book';
 import { PriceChart } from './price-chart';
 import { FlowBars, SmartTape } from './smart-money';
+import { Num, money, pct, price, tone } from './stats-ui';
 import { Panel, Skeleton, Tag, cx } from './ui';
 
 /** A block that rises into place as it scrolls into view. Still under reduced motion. */
@@ -24,10 +26,15 @@ export function Reveal({ children, className, delay = 0 }: { children: ReactNode
   );
 }
 
-const pct = (c: number) => `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
+const pctText = (c: number) => `${c >= 0 ? '+' : ''}${c.toFixed(2)}%`;
 
-/** The product itself, in the hero: the house account's terminal on the live market. */
-export function LiveMarket() {
+// ---- One live stream for the whole landing page ----
+
+interface Live { state: DashboardState | null; connected: boolean; overdue: boolean }
+const LiveContext = createContext<Live>({ state: null, connected: false, overdue: false });
+
+/** The house account's state, streamed once and shared by every live part of the page (the terminal, the closing field). */
+export function LiveProvider({ children }: { children: ReactNode }) {
   const { state, connected } = useLive('public');
   // A first snapshot takes a moment: say "connecting" until it is clearly overdue.
   const [overdue, setOverdue] = useState(false);
@@ -35,73 +42,352 @@ export function LiveMarket() {
     const t = setTimeout(() => setOverdue(true), 8_000);
     return () => clearTimeout(t);
   }, []);
+  return <LiveContext.Provider value={{ state, connected, overdue }}>{children}</LiveContext.Provider>;
+}
+
+/** The terminal under the hero headline: a ticker rail of every market Perpl lists, then book, chart and Smart Trader flow. */
+export function HeroTerminal({ className }: { className?: string }) {
+  const { state, connected, overdue } = useContext(LiveContext);
   const [picked, setPicked] = useState<MarketSym>('BTC');
-  // The hero shows the first three markets (BTC, ETH, SOL); the terminal lists every one Perpl has.
-  const syms = state ? (Object.keys(state.markets) as MarketSym[]).slice(0, 3) : [];
+  const syms = state ? (Object.keys(state.markets) as MarketSym[]) : [];
   const sym = syms.includes(picked) ? picked : syms[0];
   const m = sym ? state?.markets[sym] : undefined;
-
-  if (!state || !m) {
-    return (
-      <div className="rounded-lg border border-line bg-canvas p-1">
-        <Skeleton className="h-[420px] lg:h-[560px]" />
-        <p className="px-2 py-2 text-[12px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough below shows what Monday does.' : 'Connecting to the live market.'}</p>
-      </div>
-    );
-  }
-  const quoting = state.status === 'quoting';
-  const venue = state.sim ? 'simulated book' : state.paper ? 'paper on Perpl' : 'Perpl';
+  const grid = 'lg:h-[clamp(22rem,calc(100dvh_-_28rem),36rem)]';
   return (
-    <figure>
-      <div className="flex flex-col gap-1 rounded-lg border border-line bg-void p-1">
-        <div className="panel flex-row flex-wrap items-stretch">
-          {/* Phones: the three tabs share the row and the day's change waits for a wider screen. */}
-          <div role="tablist" aria-label="Market" className="flex w-full sm:w-auto">
-            {syms.map((s) => {
-              const x = state.markets[s]!;
-              const c = x.day.changePct;
+    <figure className={cx('tilt-in relative', className)} style={{ '--d': '520ms' } as React.CSSProperties}>
+      {/* The page's one light: an amber horizon on the terminal's top edge, glowing up into the headline. */}
+      <div aria-hidden className="pointer-events-none absolute -inset-x-24 -top-56 h-56 bg-[radial-gradient(50%_80%_at_50%_100%,var(--glow),transparent_72%)]" />
+      <div aria-hidden className="pointer-events-none absolute inset-x-[8%] -top-px z-[1] h-px bg-[linear-gradient(90deg,transparent,var(--accent)_22%,var(--accent)_78%,transparent)]" />
+      <div className="relative flex flex-col gap-1 rounded-lg border border-line bg-void p-1 shadow-[0_30px_80px_-30px_rgb(0_0_0/0.6)]">
+        {!state || !m || !sym ? (
+          <>
+            <Skeleton className="h-12" />
+            <Skeleton className={cx('h-[420px]', grid)} />
+            <p className="px-2 py-1.5 text-[12px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough below shows what Monday does.' : 'Connecting to the live market.'}</p>
+          </>
+        ) : (
+          <>
+            <div role="tablist" aria-label="Market" className="no-bar panel flex-row overflow-x-auto">
+              {syms.map((s) => {
+                const x = state.markets[s]!;
+                const c = x.day.changePct;
+                return (
+                  <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-12 min-w-[6.5rem] flex-1 flex-col justify-center whitespace-nowrap border-r border-line px-2.5 text-left transition-colors last:border-r-0', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
+                    <span className="flex items-baseline justify-between gap-2 text-[12px] font-semibold leading-tight">
+                      {s}
+                      {c != null && <span className={cx('num text-[11px] font-medium', c >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{pctText(c)}</span>}
+                    </span>
+                    <span className="num text-[11.5px] leading-tight text-fg-2">{fmtPrice(x.mark, x.spec)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1">
+              {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: Smart Traders {m.reflex.side === 'ask' ? 'buying' : 'selling'}</Tag>
+                : state.status === 'quoting' ? <Tag tone="accent">Monday is quoting</Tag> : <Tag>book only</Tag>}
+              {state.status === 'quoting' && <Tag>{m.params.regime} regime</Tag>}
+              {/* The one live indicator on the page: real state, not decoration. */}
+              <span className="num ml-auto inline-flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.04em] text-fg-2">
+                <span aria-hidden className={cx('size-1.5 rounded-full', connected ? 'live-dot bg-bid' : 'bg-warn')} />
+                {connected ? `Live, ${state.sim ? 'simulated book' : state.paper ? 'paper on Perpl' : 'Perpl'}` : 'Reconnecting'}
+              </span>
+            </div>
+            <div className={cx('grid gap-1 lg:grid-cols-[292px_minmax(0,1fr)_340px]', grid)}>
+              <Panel title="Order book" aside={<span>Perpl</span>} bodyClassName="!overflow-hidden">
+                <OrderBook m={m} rows={10} now={state.at} />
+              </Panel>
+              <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[320px] lg:h-auto" />
+              <Panel title="Smart Traders on Hyperliquid" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
+                <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
+                <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={20} /></div>
+              </Panel>
+            </div>
+          </>
+        )}
+      </div>
+      {state && m && (
+        // "Live" only while the stream is: a frozen book must say it is frozen.
+        <figcaption className={cx('mt-3 text-[12.5px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
+          {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
+            : state.sim ? "Monday's house account quoting on a simulated book, streaming from its server. Pick a market. "
+            : state.paper ? "Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
+            : `Perpl's live order book${m.signal ? ' and Smart Trader flow' : ''}, streaming from Monday's server. Not an illustration. `}
+          {!state.sim && !state.paper && "Monday's own quotes appear in your terminal once you start it."}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+/** The live book under the closing call to action, in the band's own ink. BTC, the deepest book. */
+export function CloseField({ className }: { className?: string }) {
+  const { state } = useContext(LiveContext);
+  return <BookField m={state?.markets.BTC} className={className} />;
+}
+
+/**
+ * Pointer light for the cards inside: sets --mx and --my on the `.spot` under the pointer, straight on the element, so
+ * moving the mouse never re-renders anything. Touch and reduced motion get the cards without the light.
+ */
+export function Spotlight({ children, className }: { children: ReactNode; className?: string }) {
+  const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
+    const el = (e.target as HTMLElement).closest<HTMLElement>('.spot');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    el.style.setProperty('--my', `${e.clientY - r.top}px`);
+  };
+  return <div className={className} onPointerMove={move}>{children}</div>;
+}
+
+/** A whole number that counts up from zero the first time it scrolls into view. Static under reduced motion. */
+export function CountUp({ value, className }: { value: number; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const seen = useInView(ref, { once: true, amount: 0.6 });
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !seen || reduce) return;
+    const c = animate(0, value, { duration: 1.4, ease: [0.16, 1, 0.3, 1], onUpdate: (v) => { el.textContent = Math.round(v).toLocaleString('en-US'); } });
+    return () => c.stop();
+  }, [seen, reduce, value]);
+  // Server and first paint show the real figure; the count only replays it once the reader gets there.
+  return <span ref={ref} className={className}>{value.toLocaleString('en-US')}</span>;
+}
+
+// ---- The field: Perpl's order book drawn as a mosaic of cells. ----
+
+/** Cell grid: 7px columns with 2px gaps, 4px rows with 2px gaps. */
+const PX = 9, CW = 7, PY = 6, GAP = 2;
+
+interface Geo { w: number; h: number; cx: number; rows: number; L: number; R: number }
+
+/** The whole box: the mid in the centre, columns rising from the bottom edge to just under the top. */
+function geometry(w: number, h: number): Geo {
+  const cx = Math.round(w / 2);
+  return { w, h, cx, rows: Math.max(1, Math.floor((h - 28) / PY)), L: Math.floor(cx / PX), R: Math.floor((w - cx) / PX) };
+}
+
+const rgba = (hex: string, a: number) => {
+  const h = hex.trim().replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return hex;
+  const n = parseInt(h, 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+};
+
+/**
+ * Perpl's live order book as a field of cells, drawn in the ink of the band it sits on (--accent-fg): every column is
+ * real cumulative depth, bids left of the mid and asks right, Monday's own quotes as full-height lines. It rises from the
+ * mid outward on first paint and eases toward each new book. Still under reduced motion; idle while off screen.
+ * After the pixel mosaic in MotionSites' "Data Signal", drawn from data instead of a video.
+ */
+function BookField({ m, className }: { m?: MarketState; className?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const main = useRef<HTMLCanvasElement>(null);
+  const reduce = useReducedMotion();
+  const latest = useRef(m);
+  latest.current = m;
+  const push = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const el = box.current, c = main.current;
+    const ctx = c?.getContext('2d');
+    if (!el || !c || !ctx) return;
+    let g: Geo | null = null;
+    let dpr = 1;
+    let raf = 0;
+    let last = 0;
+    let visible = false;
+    let born = 0; // when the band first came on screen: the growth wave is timed from it
+    let seeded = false; // the field has been drawn from a book once
+    let cur: Float32Array = new Float32Array(0);
+    let tgt: Float32Array = new Float32Array(0);
+    let delay: Float32Array = new Float32Array(0);
+    let mine: Mine[] = [];
+
+    const paint = () => {
+      if (!g) return;
+      const mk = latest.current;
+      const css = getComputedStyle(el);
+      const ink = css.getPropertyValue('--accent-fg');
+      const mono = css.getPropertyValue('--font-figures').trim() || 'ui-monospace, monospace';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, g.w, g.h);
+      const top = g.h - g.rows * PY;
+      const x = (i: number) => (i < g!.L ? g!.cx - (i + 1) * PX : g!.cx + (i - g!.L) * PX) + GAP / 2;
+      // Bids a shade stronger than asks, so the two sides read apart in one colour.
+      for (const [from, to, a] of [[0, g.L, 0.34], [g.L, g.L + g.R, 0.22]] as const) {
+        const grad = ctx.createLinearGradient(0, g.h, 0, top);
+        grad.addColorStop(0, rgba(ink, a));
+        grad.addColorStop(1, rgba(ink, a * 0.25));
+        ctx.fillStyle = grad;
+        for (let i = from; i < to; i++) if (cur[i] > 0.01) ctx.fillRect(x(i), g.h - cur[i] * PY, CW, cur[i] * PY);
+        ctx.fillStyle = rgba(ink, a + 0.2);
+        for (let i = from; i < to; i++) if (cur[i] > 0.6) ctx.fillRect(x(i), g.h - cur[i] * PY, CW, PY - GAP);
+      }
+      for (let r = 0; r <= g.rows; r++) ctx.clearRect(0, g.h - r * PY - GAP, g.w, GAP);
+      if (!mk) return;
+      ctx.font = `500 11px ${mono}`;
+      ctx.fillStyle = rgba(ink, 0.45);
+      ctx.fillRect(g.cx - 0.5, top, 1, g.h - top);
+      ctx.fillStyle = rgba(ink, 0.85);
+      ctx.textAlign = 'center';
+      ctx.fillText(`${mk.sym}  ${fmtPrice(mk.mark, mk.spec)}`, g.cx, top - 8);
+      ctx.font = `600 10.5px ${mono}`;
+      for (const q of mine) {
+        const qx = x(q.col) + CW / 2;
+        ctx.fillStyle = rgba(ink, 0.9);
+        ctx.fillRect(qx - 0.5, top + 14, 1, g.h - top - 14);
+        ctx.textAlign = q.side === 'bid' ? 'right' : 'left';
+        ctx.fillText(`MONDAY ${q.side.toUpperCase()}`, qx + (q.side === 'bid' ? -7 : 7), top + 22);
+      }
+    };
+
+    const frame = (now: number) => {
+      raf = 0;
+      const dt = last ? Math.min(64, now - last) : 16;
+      last = now;
+      const k = 1 - Math.exp(-dt / 170);
+      let moving = false;
+      for (let i = 0; i < cur.length; i++) {
+        if (now < born + delay[i]) { moving = true; continue; }
+        const d = tgt[i] - cur[i];
+        if (Math.abs(d) > 0.02) { cur[i] += d * k; moving = true; } else cur[i] = tgt[i];
+      }
+      paint();
+      if (moving && visible) raf = requestAnimationFrame(frame);
+      else last = 0;
+    };
+    const kick = () => {
+      if (reduce) { cur = tgt.slice(); paint(); return; }
+      if (!raf && visible) raf = requestAnimationFrame(frame);
+    };
+    const retarget = () => {
+      const mk = latest.current;
+      if (!g || !mk) return;
+      const r = fieldTargets(mk, g);
+      mine = r.mine;
+      if (cur.length !== r.t.length) {
+        // The first book grows from the mid outward once the band is on screen; after a resize the field stays as it was.
+        cur = seeded ? r.t.slice() : new Float32Array(r.t.length);
+        delay = new Float32Array(r.t.length);
+        if (!seeded) for (let i = 0; i < delay.length; i++) delay[i] = (i < g.L ? i : i - g.L) * 5;
+        seeded = true;
+      }
+      tgt = r.t;
+    };
+    const resize = () => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      g = geometry(r.width, r.height);
+      c.width = Math.round(r.width * dpr);
+      c.height = Math.round(r.height * dpr);
+      cur = new Float32Array(0);
+      retarget();
+      paint();
+      kick();
+    };
+    push.current = () => { retarget(); kick(); };
+    const ro = new ResizeObserver(resize);
+    ro.observe(el);
+    // The growth starts when the band first comes into view, not while it waits off screen at the bottom of the page.
+    const io = new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible && born === 0) born = performance.now();
+      if (visible) kick();
+    }, { threshold: 0.2 });
+    io.observe(el);
+    return () => {
+      ro.disconnect();
+      io.disconnect();
+      cancelAnimationFrame(raf);
+      push.current = () => {};
+    };
+  }, [reduce]);
+
+  useEffect(() => push.current(), [m]);
+
+  return (
+    <div ref={box} aria-hidden className={cx('pointer-events-none', className)}>
+      <canvas ref={main} className="absolute inset-0 size-full" />
+    </div>
+  );
+}
+
+// ---- Perpl by the numbers: the analytics product, live, on the landing page. ----
+
+const int = (n: number) => Math.round(n).toLocaleString('en-US');
+const apr = (r: { fundingRate: number; fundingIntervalMin: number; fundingUnknown?: true }) =>
+  r.fundingUnknown ? null : r.fundingRate * ((365 * 24 * 60) / Math.max(1, r.fundingIntervalMin)) * 100;
+
+/** A labelled figure that counts to its value and tints when it changes. */
+function Big({ k, n, format, sub }: { k: string; n: number | null; format: (v: number) => string; sub?: ReactNode }) {
+  return (
+    <div className="bg-canvas px-4 py-4">
+      <dt className="label">{k}</dt>
+      <dd className="num mt-2.5 text-[26px] font-medium leading-none tracking-tight">{n == null ? 'n/a' : <Num value={n} format={format} />}</dd>
+      {sub && <dd className="mt-2 truncate text-[11.5px] leading-none text-fg-3">{sub}</dd>}
+    </div>
+  );
+}
+
+/** Headline figures and the busiest markets from Monday's own Perpl indexer, refreshed every half minute. */
+export function PerplStats() {
+  const [o, setO] = useState<PxOverview | null | undefined>(undefined); // undefined: loading; null: not reachable
+  useEffect(() => {
+    let stopped = false;
+    const load = () => fetch('/api/stats/overview').then((r) => (r.ok ? (r.json() as Promise<PxOverview>) : null)).then((d) => { if (!stopped) setO(d); }).catch(() => { if (!stopped) setO(null); });
+    void load();
+    const t = setInterval(load, 30_000);
+    return () => { stopped = true; clearInterval(t); };
+  }, []);
+  if (o === undefined) return <Skeleton className="h-[22rem]" />;
+  if (!o) return <p className="text-[13px] text-fg-3">The Perpl figures are not reachable from this server right now.</p>;
+  const h = o.headline;
+  const rows = [...o.markets].sort((a, b) => b.volume24hUsd - a.volume24hUsd).slice(0, 6);
+  const since = o.indexer.since ? new Date(o.indexer.since).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : null;
+  return (
+    <div className="grid gap-1 rounded-md border border-line bg-void p-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <dl className="panel grid grid-cols-2 gap-px bg-line md:grid-cols-3 lg:grid-cols-2">
+        <Big k="Volume 24h" n={h.volume24hUsd} format={money} sub={`${money(h.volume7dUsd)} in 7 days`} />
+        <Big k="Open interest" n={h.openInterestUsd} format={money} sub="one side, at mark" />
+        <Big k="TVL" n={h.tvlUsd} format={money} sub="held by the Exchange" />
+        <Big k="Fees 24h" n={h.fees24hUsd} format={(v) => money(v, true)} sub={h.fees24hUsd != null && h.volume24hUsd ? `${((h.fees24hUsd / h.volume24hUsd) * 1e4).toFixed(2)} bps of volume` : undefined} />
+        <Big k="Traders 24h" n={h.activeTraders24h} format={int} sub={`${int(h.accounts)} accounts all time`} />
+        <Big k="Volume all time" n={h.volumeAllUsd} format={money} sub={since ? `since ${since}` : undefined} />
+      </dl>
+      <Panel title="Markets" aside={<span>24h, busiest first</span>}>
+        <table className="w-full table-fixed text-[12px]">
+          <thead>
+            <tr className="label h-7 text-left [&>th]:font-normal">
+              <th className="w-[5.5rem] pl-3">Market</th>
+              <th className="text-right">Mark</th>
+              <th className="w-[4.5rem] text-right">24h</th>
+              <th className="text-right">Volume</th>
+              <th className="hidden text-right sm:table-cell">Open interest</th>
+              <th className="hidden w-[6.5rem] pr-3 text-right sm:table-cell">Funding APR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const a = apr(r);
               return (
-                <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-12 flex-1 flex-col justify-center border-r border-line px-3 text-left sm:min-w-[7.5rem] sm:flex-none', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
-                  <span className="text-[12px] font-semibold leading-tight">{s} <span className="font-normal text-fg-3">perp</span></span>
-                  <span className="num text-[11.5px] leading-tight text-fg-2">
-                    {fmtPrice(x.mark, x.spec)}
-                    {c != null && <span className={cx('ml-1.5 hidden sm:inline', c >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{pct(c)}</span>}
-                  </span>
-                </button>
+                <tr key={r.sym} className="num h-9 border-t border-line">
+                  <td className="pl-3 font-sans font-semibold">{r.sym}</td>
+                  <td className="text-right">{price(r.mark)}</td>
+                  <td className={cx('text-right', tone(r.change24hPct))}>{pct(r.change24hPct, 2)}</td>
+                  <td className="text-right">{money(r.volume24hUsd)}</td>
+                  <td className="hidden text-right text-fg-2 sm:table-cell">{money(r.openInterestUsd)}</td>
+                  <td className={cx('hidden pr-3 text-right sm:table-cell', a == null ? 'text-fg-3' : tone(a))}>{a == null ? 'n/a' : pct(a, 1)}</td>
+                </tr>
               );
             })}
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-1.5 px-2.5 py-2">
-            {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: Smart Traders {m.reflex.side === 'ask' ? 'buying' : 'selling'}</Tag>
-              : quoting ? <Tag tone="accent">Monday is quoting</Tag> : <Tag>book only</Tag>}
-            {quoting && <Tag>{m.params.regime} regime</Tag>}
-            {/* The one live indicator on the page: real state, not decoration. */}
-            <span className="num ml-1 inline-flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.04em] text-fg-2">
-              <span aria-hidden className={cx('size-1.5 rounded-full', connected ? 'live-dot bg-bid' : 'bg-warn')} />
-              {connected ? `Live, ${venue}` : 'Reconnecting'}
-            </span>
-          </div>
-        </div>
-        <div className="grid gap-1 lg:h-[520px] lg:grid-cols-[292px_minmax(0,1fr)_340px]">
-          <Panel title="Order book" aside={<span>Perpl</span>} bodyClassName="!overflow-hidden">
-            <OrderBook m={m} rows={10} now={state.at} />
-          </Panel>
-          <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[320px] lg:h-auto" />
-          <Panel title="Smart Traders on Hyperliquid" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
-            <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
-            <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={20} /></div>
-          </Panel>
-        </div>
-      </div>
-      {/* "Live" only while the stream is: a frozen book must say it is frozen. */}
-      <figcaption className={cx('mt-2.5 text-[12.5px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
-        {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
-          : state.sim ? "Monday's house account quoting on a simulated book, streaming from its server. Pick a market. "
-          : state.paper ? "Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
-          : `Perpl's live order book${m.signal ? ' and Smart Trader flow' : ''}, streaming from Monday's server. Not an illustration. `}
-        {!state.sim && !state.paper && "Monday's own quotes appear in your terminal once you start it."}
-      </figcaption>
-    </figure>
+          </tbody>
+        </table>
+      </Panel>
+    </div>
   );
 }
 
@@ -214,7 +500,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           <p className="text-[12px] text-fg-3">Example data, drawn with the terminal&apos;s own components. In the product the reflex acts within a second and the governor every 15 minutes.</p>
         </div>
       </div>
-      <div className="grid gap-1 self-start rounded-lg border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
+      <div className="grid gap-1 self-start rounded-md border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
         <Panel title="Order book" aside={<span>BTC perp</span>} bodyClassName="!overflow-hidden">
           <OrderBook m={m} rows={6} now={T0} />
         </Panel>
