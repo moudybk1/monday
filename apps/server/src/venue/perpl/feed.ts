@@ -1,10 +1,10 @@
 // Public market data: a few sockets, one subscription frame each, a local L2 book per
 // market, and 1-minute candles over REST.
 
-import type { BookLevel, MarketSpec, MarketSym } from '@monday/core';
+import { candleScale, type BookLevel, type MarketSpec, type MarketSym } from '@monday/core';
 import type { Candle, MarketFeed, MarketSnapshot, TapeTrade } from '../types';
 import type { PerplConfig } from './index';
-import { getJson, type PerplContext } from './rest';
+import { getJson, type PerplContext, type PerplMarket } from './rest';
 import { openLink, type Link } from './socket';
 
 const DEPTH = 15;
@@ -35,6 +35,7 @@ interface WireState { orl: number; mrk: number; oi: number }
 
 export class PerplFeed implements MarketFeed {
   private ctx: PerplContext | null = null;
+  private scales = new Map<number, { at: number; k: Promise<number> }>(); // market id -> candle volume calibration
   private shards: Shard[] = [];
   private shardOf = new Map<number, Shard>(); // market id -> its socket
   private tradeCbs: ((t: TapeTrade) => void)[] = [];
@@ -128,6 +129,28 @@ export class PerplFeed implements MarketFeed {
   async candles(sym: MarketSym, fromMs: number, toMs: number, resSec = 60): Promise<Candle[]> {
     const m = this.ctx?.markets[sym];
     if (!m) return [];
+    const [cs, k] = await Promise.all([this.rawCandles(m, fromMs, toMs, resSec), this.volumeScale(m)]);
+    return k === 1 ? cs : cs.map((c) => ({ ...c, v: (c.v ?? 0) / k }));
+  }
+
+  /**
+   * Some markets' candle `v` runs a power of ten off Perpl's own 24h ticker (ETH: 10x), so it is calibrated against the
+   * ticker the way the stats side does (candleScale). Refreshed every 10 minutes; a failed check keeps the last answer.
+   */
+  private volumeScale(m: PerplMarket): Promise<number> {
+    const hit = this.scales.get(m.id);
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.k;
+    const now = Date.now();
+    const k = Promise.all([
+      this.rawCandles(m, now - 86_400_000, now, 3600),
+      getJson(`${this.cfg.apiUrl}/v1/market-data/ticker`) as Promise<{ d?: Record<string, { dva?: string }> }>,
+    ]).then(([cs, t]) => candleScale(cs.reduce((s, c) => s + (c.v ?? 0), 0), Number(t.d?.[m.id]?.dva ?? 0) / (this.ctx?.usd ?? 1)))
+      .catch(() => hit?.k ?? 1);
+    this.scales.set(m.id, { at: now, k });
+    return k;
+  }
+
+  private async rawCandles(m: PerplMarket, fromMs: number, toMs: number, resSec: number): Promise<Candle[]> {
     const step = resSec * 1000;
     const out: Candle[] = [];
     for (let from = Math.floor(fromMs / step) * step; from < toMs; from += MAX_CANDLES * step) {

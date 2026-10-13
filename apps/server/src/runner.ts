@@ -354,11 +354,14 @@ export class Runner {
     // A Stop or Kill pressed while Perpl was connecting wins; so does a second Start that got there first.
     // (The status is read again: TypeScript's narrowing from the first line does not survive the await.)
     if (epoch !== this.epoch || (this.status as AgentStatus) === 'quoting') return;
-    // A Start the user pressed: the plans' margins are spoken for (a boot resume carries on as it was).
+    // A Start the user pressed must fit the balance, less the plans' margins (a boot resume carries on as it was).
+    // Starting short would trip the margin kill on the first tick, and a kill closes every position on the account.
     const { plansUsd } = this.committed();
     const free = (this.venue?.account().balanceUsd ?? 0) - plansUsd, need = balanceNeededUsd(this.policy, this.policy.markets.length);
-    if (limits && plansUsd > 0 && free < need) {
-      throw new VenueError('rejected', `Running plans hold ${usd(plansUsd)} of margin, which leaves ${usd(Math.max(0, free))}; this market maker needs ${usd(need)}. Lower its limits in Setup, or let a plan finish.`);
+    if (limits && free < need) {
+      throw new VenueError('rejected', plansUsd > 0
+        ? `Running plans hold ${usd(plansUsd)} of margin, which leaves ${usd(Math.max(0, free))}; this market maker needs ${usd(need)}. Lower its limits in Setup, or let a plan finish.`
+        : `The account has ${usd(Math.max(0, free))} on Perpl; this market maker needs ${usd(need)}. Deposit on Perpl, or lower its limits in Setup.`);
     }
     this.resumeAt = 0;
     this.trackCash(Date.now(), true);

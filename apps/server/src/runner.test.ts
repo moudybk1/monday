@@ -92,6 +92,23 @@ it('resume is refused while a kill still owes its flatten, and allowed once the 
   expect(r.status).toBe('quoting');
 });
 
+it('a Start the balance cannot carry is refused before it quotes, with no plans running too', async () => {
+  const v = {
+    balance: 20, size: 0.01,
+    connect: async () => v.account(), close() {}, on() {}, connected: () => true, quote: () => null, setQuote: async () => {},
+    account: () => ({ accountId: 1, balanceUsd: v.balance, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+    cancelAll: async () => {}, flatten: async () => { v.size = 0; },
+  };
+  const driver = { kind: 'perpl', open: () => v, feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] } } as never;
+  const r = new Runner(upsertUser('0xpoor'), '0xpoor', 1, POLICY, { driver, collector: {} as never, k: () => 0, notify: () => {}, creds: () => ({ wallet: '0xpoor', accountId: 1, token: 't', secret: 's' }) });
+  await expect(r.start({ stopLossUsd: null, takeProfitUsd: null })).rejects.toThrow(/has \$20 on Perpl; this market maker needs/);
+  expect(r.status).not.toBe('quoting');
+  expect(v.size).toBe(0.01); // nothing was killed or closed
+  v.balance = 1_000;
+  await r.start({ stopLossUsd: null, takeProfitUsd: null });
+  expect(r.status).toBe('quoting');
+});
+
 it('a stopped agent leaves its position alone, even past the daily loss limit', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   const v = {
