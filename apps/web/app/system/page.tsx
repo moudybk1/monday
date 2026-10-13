@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
+import { Toc } from '@/components/toc';
 import { ButtonLink, Tag, cx } from '@/components/ui';
 import { at } from '@/lib/hosts';
 
@@ -9,7 +10,8 @@ export const metadata: Metadata = {
   description: 'How Monday works: the engine, the reflexes, Kimi as the risk governor, the risk controls, the Perpl analytics and Ask Monday.',
 };
 
-const WRAP = 'mx-auto max-w-[1320px] px-4 sm:px-8';
+// One centred column pair: the contents on the left, the article beside it, nothing left empty on the right.
+const WRAP = 'mx-auto max-w-[63rem] px-4 sm:px-8 lg:box-content';
 const P = 'mt-4 text-[15.5px] leading-relaxed text-fg-2';
 const H3 = 'mt-10 text-[19px] font-semibold tracking-tight';
 
@@ -49,22 +51,25 @@ export default function SystemPage() {
   return (
     <>
       <SiteHeader />
-      <main className="overflow-x-clip">
+      {/* How far through the page the reader is, filled by the scroll position itself. */}
+      <div aria-hidden className="progress fixed inset-x-0 top-12 z-30 h-0.5 bg-accent" />
+      <main className="page-in overflow-x-clip">
         <header className={`${WRAP} pt-14 md:pt-20`}>
+          <div className="lg:ml-[17rem]">
           <p className="label">System</p>
-          <h1 className="display mt-3 max-w-[20ch] text-[2.5rem] sm:text-5xl lg:text-6xl">How Monday works, part by part.</h1>
-          <p className="mt-6 max-w-[62ch] text-[17px] text-fg-2 md:text-[19px]">
+          <h1 className="display mt-3 max-w-[20ch] text-[2.5rem] font-medium sm:text-5xl lg:text-[3.5rem]">How Monday works, part by part.</h1>
+          <p className="mt-6 max-w-[62ch] text-[17px] leading-relaxed text-fg-2 md:text-[18px]">
             Monday is an AI agent that market-makes on Perpl, the on-chain order book on Monad, from the user&apos;s own account. Code quotes and protects; Kimi, Moonshot AI&apos;s model, decides how carefully to quote and says why. Alongside it runs a public analytics dashboard for all of Perpl, with a chat that answers from real on-chain data.
           </p>
+          </div>
         </header>
 
         <div className={`${WRAP} mt-14 grid gap-12 pb-24 lg:mt-20 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16`}>
           <nav aria-label="On this page" className="hidden lg:block">
-            <ol className="sticky top-20 grid gap-1.5 border-l border-line-2 pl-4 text-[13px]">
-              {TOC.map((t) => (
-                <li key={t.id}><a href={`#${t.id}`} className={cx('text-fg-3 hover:text-fg', t.id === 'kimi' && 'font-medium text-fg-2')}>{t.label}</a></li>
-              ))}
-            </ol>
+            <div className="sticky top-20">
+              <p className="label mb-3">On this page</p>
+              <Toc items={TOC} />
+            </div>
           </nav>
 
           <article className="min-w-0 max-w-[48rem]">

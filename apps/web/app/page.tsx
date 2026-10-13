@@ -1,54 +1,50 @@
-import { ArrowLeftIcon, ArrowsLeftRightIcon, CaretDownIcon, HandPalmIcon, KeyIcon, SealCheckIcon, SignOutIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
-import type { AppConfig } from '@monday/core';
-import { LiveMarket, Reveal, Story } from '@/components/landing';
+import { ArrowRightIcon, PlusIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
+import { MARKETS, PRESETS, balanceNeededUsd, usd, type AppConfig, type DashboardState, type MarketSym, type Policy } from '@monday/core';
+import { AgentDiagram } from '@/components/agent-diagram';
+import { CloseField, CountUp, LiveProvider, PerplStats, Reveal, Spotlight, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ButtonLink, Mark, Tag, cx } from '@/components/ui';
 import { at } from '@/lib/hosts';
 
 const WRAP = 'mx-auto max-w-[1320px] px-4 sm:px-8';
-const H2 = 'display text-[2.25rem] md:text-5xl';
-const LEAD = 'mt-5 max-w-[58ch] text-[16px] text-fg-2 md:text-[17px]';
+const H2 = 'display text-[2.25rem] md:text-[3.25rem]';
+const LEAD = 'mt-5 max-w-[54ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]';
 
+// Measured on the live decision log (Monad mainnet, kimi-k3, 10 to 12 Oct). The System page carries the whole account.
+const KIMI = { decisions: 167, looser: 0 };
+
+// The loops, with what feeds them and what comes out. Same facts as the System page, one line each.
+const INPUTS = [
+  ['Perpl', 'Order book, trades, mark and funding, over the market-data socket.'],
+  ['Hyperliquid', 'Mid prices and the trade tape, because Perpl follows Hyperliquid.'],
+  ['Smart Traders', 'Trades by wallets with a consistent profit record on Hyperliquid.'],
+  ['Your limits', 'Markets, margin, leverage and a daily stop loss, set in Setup.'],
+] as const;
 const LOOPS = [
-  {
-    name: 'Engine', cadence: 'every second', marks: 'dense',
-    text: 'Computes fair price, spread and skew, then changes only the quotes that moved enough to matter. Pure functions, unit tested.',
-  },
-  {
-    name: 'Reflex', cadence: 'next tick after a burst', marks: 'burst',
-    text: 'Pulls or widens the threatened side for five minutes. No model in the loop, so a burst never waits for one.',
-  },
-  {
-    name: 'Governor', cadence: 'every 15 minutes', marks: 'sparse',
-    text: 'Kimi picks a regime inside hard bounds and explains it. If it fails or answers out of range, rules take over.',
-  },
+  { name: 'Engine', when: 'every second', who: 'code', text: 'Prices both quotes from the book, Hyperliquid and the position, and changes only what moved enough to matter.' },
+  { name: 'Reflex', when: 'the next tick', who: 'code', text: 'Pulls or widens the side about to be run over: a Smart Trader burst, a Hyperliquid move, a fill on its own quote.' },
+  { name: 'Governor', when: 'every 15 minutes', who: 'Kimi', text: 'Reads the whole situation, sets how carefully Monday quotes inside hard bounds, and says why in plain words. Never places an order.' },
 ] as const;
+const outputs = (onchain: boolean) => [
+  ['Maker orders', 'Post-only, on your own Perpl account. They never cross the book.'],
+  ['A public record', onchain ? 'Every decision with its reason, and a hash of it and its evidence logged on Monad.' : 'Every decision with its reason, and a hash of the data behind it, open to anyone.'],
+];
 
-/** Who holds what. Monday never touches the money: it only ever reaches the account through a key that cannot move funds. */
-const NODES = [
-  { icon: WalletIcon, title: 'You', text: 'Your wallet signs in, deposits and withdraws on Perpl, and can stop, kill or revoke at any time.' },
-  { icon: VaultIcon, title: 'Your Perpl account', text: 'Holds the collateral. Every order and fill settles here, on Monad.', funds: true },
-  { icon: Mark, title: 'Monday', text: 'Quotes through a trade-scoped API key. Perpl never lets any API key withdraw or transfer funds.' },
-] as const;
-
-const custody = (onchain: boolean) => [
-  { icon: KeyIcon, title: 'A key that can only trade', text: 'Monday holds a trade-scoped Perpl API key. Perpl never lets any API key withdraw or transfer funds, whatever its scope.' },
-  { icon: HandPalmIcon, title: 'Stop and kill, one click each', text: 'Stop cancels Monday\'s orders and leaves your position and your own orders to you. Kill cancels every order, then closes positions with reduce-only orders.' },
-  { icon: SignOutIcon, title: 'Leave without asking', text: 'Withdraw on Perpl from your own wallet. Revoke the key there and Monday loses access at once, notices, and stops.' },
-  // Only claim the Monad registry while one is configured on this server.
-  onchain
-    ? { icon: SealCheckIcon, title: 'Limits you sign, decisions you can check', text: 'Your wallet publishes the policy to a registry on Monad. The agent logs a hash of every decision and its evidence there.' }
-    : { icon: SealCheckIcon, title: 'Decisions you can check', text: 'Every decision is stored with its reason in plain words and a hash of the data behind it, so it can be checked later.' },
+/** Who holds what. Monday never touches the money: it reaches the account only through a key that cannot move funds. */
+const PARTIES = [
+  { icon: WalletIcon, title: 'You', can: 'deposit, withdraw, revoke', lines: ['Sign in with your wallet: a signed message, no gas.', 'Deposit and withdraw on Perpl, from your own wallet.', 'Stop, kill, or revoke the key at any time.'] },
+  { icon: VaultIcon, title: 'Your Perpl account', can: 'funds stay here', funds: true, lines: ['Holds the collateral.', 'Every order and fill settles here, on Monad.', 'Only your wallet can withdraw.'] },
+  { icon: Mark, title: 'Monday', can: 'trade-only key', lines: ['Quotes through a trade-scoped Perpl API key, stored encrypted.', 'Perpl never lets any API key withdraw or transfer funds.', 'Revoke the key and Monday loses access at once, and stops.'] },
 ];
 
 const CONTROLS = [
-  { k: 'Position limit', v: 'The most Monday may hold in each market. Margin and leverage set it, or you type it.' },
-  { k: 'Stop loss', v: 'You set it, as a share of your margin: at this loss Monday stops quoting and closes positions for the day. Fast markets can overshoot it.' },
-  { k: 'Stop and kill', v: 'Stop pulls Monday\'s orders. Kill also closes positions. Both are one click in the terminal.' },
+  ['Position limit', 'The most Monday may hold in each market. Margin and leverage set it, or you type it.'],
+  ['Stop loss', 'A share of your margin. At this loss Monday stops quoting and closes positions for the day. Fast markets can overshoot it.'],
+  ['Stop and kill', 'Stop pulls Monday\'s orders and leaves positions to you. Kill also closes them. One click each, in the terminal.'],
 ];
 
 // Answers follow what the code does today (runner, stale-data limits, cleanup); keep them in step with it.
-const faq = (onchain: boolean) => [
+const questions = (onchain: boolean) => [
   { q: 'What do I need to use Monday?', a: 'A wallet to sign in with, a Perpl account with collateral, and a Perpl API key that can trade. The app walks you through each step before anything is quoted.' },
   { q: 'Where are my funds held?', a: 'In your own Perpl account. Monday trades with an API key that Perpl never lets withdraw or transfer funds, and you withdraw on Perpl yourself.' },
   { q: 'Can Monday lose money?', a: 'Yes. Market making carries inventory and execution risk, Smart Trader signals can be wrong or late, and fees count against every fill. The stop loss you set halts Monday for the day, but a fast market can overshoot it.' },
@@ -62,193 +58,277 @@ const faq = (onchain: boolean) => [
   },
 ];
 
-/** Whether this server has a Monad registry, read once a minute so the page stays static. Unreachable: claim nothing. */
-async function registryOn(): Promise<boolean> {
+const API = process.env.API_URL ?? 'http://localhost:3001';
+/** One fact from the server, read once a minute so the page stays static. Unreachable: claim nothing. */
+async function read<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${process.env.API_URL ?? 'http://localhost:3001'}/api/config`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(2_000) });
-    return Boolean(((await res.json()) as AppConfig).registry);
+    const res = await fetch(`${API}${path}`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(2_000) });
+    return res.ok ? ((await res.json()) as T) : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 export default async function Landing() {
-  const onchain = await registryOn();
+  const [config, preview] = await Promise.all([read<AppConfig>('/api/config'), read<DashboardState>('/api/public/preview')]);
+  const onchain = Boolean(config?.registry);
+  const marketCount = config ? Object.keys(config.specs).length : MARKETS.length;
+  const policy = preview?.policy ?? null;
   return (
     <>
       <SiteHeader />
-      {/* Clip, not hidden: the hero glow reaches past the edges without scrolling the page sideways, and nothing becomes a scroll container. */}
-      <main className="overflow-x-clip">
-        {/* Hero: the claim, then the product itself on the live market. */}
-        <section className={`${WRAP} pt-14 md:pt-20`}>
-          <h1 className="display rise text-[2.6rem] sm:text-5xl lg:text-6xl xl:text-[5rem]">
-            Quotes both sides.<br />
-            <span className="text-accent">Steps aside</span> for Smart Traders.
-          </h1>
-          <div className="mt-7 flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-10">
-            <p className="rise max-w-[46ch] text-[17px] text-fg-2 md:text-[19px]" style={{ '--i': 1 } as React.CSSProperties}>
-              An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.
-            </p>
-            <div className="rise flex flex-none flex-wrap gap-2.5" style={{ '--i': 2 } as React.CSSProperties}>
-              <ButtonLink href={at('/app')} size="lg" className="px-6">Launch app</ButtonLink>
-              <ButtonLink href="#how" size="lg" variant="ghost">How it works</ButtonLink>
-            </div>
-          </div>
-          <div className="relative mt-12 md:mt-16">
-            {/* Amber light behind the terminal: the one place the page glows. */}
-            <div aria-hidden className="pointer-events-none absolute -inset-x-24 -top-[22rem] h-[24rem] bg-[radial-gradient(55%_75%_at_50%_100%,var(--glow),transparent_72%)]" />
-            <div className="rise relative" style={{ '--i': 3 } as React.CSSProperties}>
-              <LiveMarket />
-            </div>
-          </div>
-        </section>
-
-        {/* How it works: one burst played step by step, then the three loops behind it. */}
-        <section id="how" className="mt-14 scroll-mt-12 border-t border-line bg-canvas md:mt-20">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <Reveal>
-              <h2 className={`${H2} max-w-[22ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
-              <p className={LEAD}>Watch one Smart Trader burst from the first quote to the written reason, on the same panels the terminal uses.</p>
-            </Reveal>
-            <div className="mt-12">
-              <Story onchain={onchain} />
-            </div>
-            <Reveal className="mt-20 md:mt-24">
-              <h3 className="text-[22px] font-semibold tracking-tight">Three loops, three clocks</h3>
-              <ol className="mt-6 border-t border-line-2">
-                {LOOPS.map((l) => (
-                  <li key={l.name} className="grid gap-x-10 gap-y-3 border-b border-line-2 py-6 md:grid-cols-[12rem_minmax(0,1fr)_minmax(0,26rem)] md:items-center">
-                    <div>
-                      <p className="text-xl font-semibold tracking-tight">{l.name}</p>
-                      <p className="num mt-1 text-[12px] text-fg-3">{l.cadence}</p>
-                    </div>
-                    <Rhythm kind={l.marks} />
-                    <p className="text-[14px] text-fg-2">{l.text}</p>
-                  </li>
-                ))}
-              </ol>
-              <p className="mt-6 text-[14px] text-fg-2">
-                Every part in detail, and what Kimi decided on mainnet: <a href={at('/system')} className="font-medium text-fg underline underline-offset-2 hover:text-accent">System</a>.
-              </p>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* Custody: one statement, the picture of who holds what, four facts. */}
-        <section id="custody" className="scroll-mt-12 border-t border-line">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <Reveal>
-              <h2 className="display max-w-[17ch] text-4xl md:text-6xl">
-                Your funds <span className="text-accent">never leave</span> your Perpl account.
-              </h2>
-            </Reveal>
-            <Reveal className="mt-12" delay={0.1}>
-              <Custody />
-            </Reveal>
-            <dl className="mt-14 grid gap-x-12 gap-y-9 md:grid-cols-2">
-              {custody(onchain).map((c) => (
-                <div key={c.title} className="grid grid-cols-[2.25rem_1fr]">
-                  <c.icon size={22} weight="regular" aria-hidden className="mt-0.5 text-accent" />
-                  <div>
-                    <dt className="text-[17px] font-semibold tracking-tight">{c.title}</dt>
-                    <dd className="mt-1.5 max-w-[52ch] text-[14px] text-fg-2">{c.text}</dd>
+      {/* Clip, not hidden: the terminal's light reaches past the edges without scrolling the page sideways. */}
+      <main className="page-in overflow-x-clip">
+        <LiveProvider>
+          {/* The claim beside the call to action, then how Monday works, drawn, inside the first screen. */}
+          <section>
+            <div className={`${WRAP} pt-10 md:pt-12`}>
+              <div className="grid items-end gap-x-12 gap-y-7 lg:grid-cols-12">
+                <h1 className="display font-medium text-[clamp(2.4rem,9.2vw,3.5rem)] lg:col-span-8 lg:whitespace-nowrap lg:text-[calc((min(100vw,82.5rem)_-_4rem)*0.0495)] dark:[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]">
+                  <span className="line"><span style={{ '--d': '120ms' } as React.CSSProperties}>Quotes both sides.</span></span>
+                  <span className="line"><span style={{ '--d': '240ms' } as React.CSSProperties}><span className="text-accent">Steps aside</span> for Smart Traders.</span></span>
+                </h1>
+                <div className="lg:col-span-4 lg:pb-1.5">
+                  <p className="enter max-w-[40ch] text-[17px] leading-relaxed text-fg-2" style={{ '--d': '420ms' } as React.CSSProperties}>
+                    An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.
+                  </p>
+                  <div className="enter mt-6 flex flex-wrap gap-2.5" style={{ '--d': '540ms' } as React.CSSProperties}>
+                    <Launch />
+                    <ButtonLink href="#how" size="lg" variant="ghost" className="h-12 px-5 text-[15px]">How it works</ButtonLink>
                   </div>
                 </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
-        {/* Limits: what each control does, in the words the app uses. */}
-        <section className="border-t border-line bg-canvas">
-          <div className={`${WRAP} py-20 md:py-28`}>
-            <Reveal>
-              <h2 className={`${H2} max-w-[18ch]`}>You set the limits. Monday stops when one is hit.</h2>
-              <p className={LEAD}>Pick a margin and a leverage in Setup and Monday sizes the rest. The agent and the LLM are both held to these numbers on every order.</p>
-            </Reveal>
-            <dl className="mt-12 grid gap-8 md:grid-cols-3 md:gap-10">
-              {CONTROLS.map((c) => (
-                <div key={c.k} className="border-t border-line-2 pt-5">
-                  <dt className="text-[17px] font-semibold tracking-tight">{c.k}</dt>
-                  <dd className="mt-2 text-[14px] text-fg-2">{c.v}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
-        {/* Questions: native disclosures, readable without JavaScript. */}
-        <section className="border-t border-line bg-canvas">
-          <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14`}>
-            <h2 className={`${H2} max-w-[14ch]`}>Questions before you start</h2>
-            <div className="border-t border-line-2">
-              {faq(onchain).map((f) => (
-                <details key={f.q} className="group border-b border-line-2">
-                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-3 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
-                    {f.q}
-                    <CaretDownIcon size={16} aria-hidden className="flex-none text-fg-3 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <p className="max-w-[62ch] pb-5 text-[14px] text-fg-2">{f.a}</p>
-                </details>
-              ))}
+              </div>
+              <AgentDiagram onchain={onchain} className="enter mt-14 [--d:640ms] lg:mt-20" />
+              <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
+                <Fact n={<CountUp value={marketCount} />} k="markets quoted on Perpl, every one it lists" />
+                <Fact n="1 s" k="engine tick. A reflex acts on the next one" />
+                <Fact n={<CountUp value={KIMI.decisions} />} k="Kimi decisions on Monad mainnet, 10 to 12 Oct" href={at('/system#kimi')} />
+                <Fact n={String(KIMI.looser)} k="of them looser than the rules would have been" />
+              </dl>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="border-t border-line">
-          <div className={`${WRAP} flex flex-col items-start gap-8 py-24 md:flex-row md:items-end md:justify-between md:py-36`}>
-            <Reveal>
-              <h2 className="display max-w-[16ch] text-4xl md:text-6xl xl:text-7xl">Quote both sides without betting on direction.</h2>
-            </Reveal>
-            <ButtonLink href={at('/app')} size="lg" className="px-6">Launch app</ButtonLink>
-          </div>
-        </section>
+          {/* How it works: one burst, played step by step on the terminal's own panels. */}
+          <section id="how" className="mt-16 scroll-mt-14 border-t border-line bg-canvas md:mt-20">
+            <div className={`${WRAP} py-20 md:py-28`}>
+              <Reveal>
+                <h2 className={`${H2} max-w-[22ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
+                <p className={LEAD}>One Smart Trader burst, from the first quote to the written reason.</p>
+              </Reveal>
+              <div className="mt-12">
+                <Story onchain={onchain} />
+              </div>
+            </div>
+          </section>
+
+          {/* The system: what goes in, the three loops, what comes out. One hairline grid, read left to right. */}
+          <section className="border-t border-line">
+            <div className={`${WRAP} py-20 md:py-28`}>
+              <Reveal>
+                <h2 className={`${H2} max-w-[20ch]`}>Three loops, three clocks.</h2>
+                <p className={LEAD}>The fast loops are plain code, so nothing urgent ever waits for a model. The slow one is where judgement pays.</p>
+              </Reveal>
+              <Reveal className="mt-12" delay={0.1}>
+                <Spotlight className="grid gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-[minmax(0,3fr)_minmax(0,5fr)_minmax(0,4fr)]">
+                  <Column label="In">
+                    {INPUTS.map(([k, v]) => (
+                      <div key={k} className="spot bg-canvas px-5 py-4">
+                        <p className="text-[15px] font-semibold tracking-tight">{k}</p>
+                        <p className="mt-1 text-[13.5px] text-fg-2">{v}</p>
+                      </div>
+                    ))}
+                  </Column>
+                  <Column label="Loops">
+                    {LOOPS.map((l) => (
+                      <div key={l.name} className={cx('spot bg-canvas px-5 py-5', l.who === 'Kimi' && 'shadow-[inset_2px_0_0_var(--accent)]')}>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <p className="text-[19px] font-semibold tracking-tight">{l.name}</p>
+                          <p className="num text-[12px] text-fg-3">{l.when}</p>
+                        </div>
+                        <p className="mt-2 max-w-[48ch] text-[14px] text-fg-2">{l.text}</p>
+                        <Tag tone={l.who === 'Kimi' ? 'accent' : 'neutral'} className="mt-3">{l.who}</Tag>
+                      </div>
+                    ))}
+                  </Column>
+                  <Column label="Out">
+                    {outputs(onchain).map(([k, v]) => (
+                      <div key={k} className="spot bg-canvas px-5 py-5">
+                        <p className="text-[15px] font-semibold tracking-tight">{k}</p>
+                        <p className="mt-1 text-[13.5px] text-fg-2">{v}</p>
+                      </div>
+                    ))}
+                  </Column>
+                </Spotlight>
+              </Reveal>
+              <p className="mt-6 text-[14px] text-fg-2">
+                Every part in detail, and what Kimi decided on mainnet: <a href={at('/system')} className="font-medium text-fg underline decoration-line-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent">System</a>.
+              </p>
+            </div>
+          </section>
+
+          {/* Custody: one statement, then the three parties side by side with the money in the middle. */}
+          <section id="custody" className="scroll-mt-14 border-t border-line bg-canvas">
+            <div className={`${WRAP} py-20 md:py-28`}>
+              <Reveal>
+                <h2 className={`${H2} max-w-[18ch]`}>Your funds <span className="text-accent">never leave</span> your Perpl account.</h2>
+              </Reveal>
+              <Reveal className="mt-12" delay={0.1}>
+                <Spotlight className="grid gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)]">
+                  {PARTIES.map((p) => (
+                    <div key={p.title} className={cx('spot p-6 md:p-7', p.funds ? 'bg-raised' : 'bg-void')}>
+                      <div className="flex items-center justify-between gap-3">
+                        <p.icon size={26} className={p.funds ? 'text-accent' : 'text-fg-2'} />
+                        <Tag tone={p.funds ? 'accent' : 'neutral'}>{p.can}</Tag>
+                      </div>
+                      <p className="mt-6 text-[21px] font-semibold tracking-tight">{p.title}</p>
+                      <ul className="mt-3 grid gap-1.5 text-[14px] text-fg-2">
+                        {p.lines.map((l) => <li key={l}>{l}</li>)}
+                      </ul>
+                    </div>
+                  ))}
+                </Spotlight>
+              </Reveal>
+            </div>
+          </section>
+
+          {/* Limits: what each control does, and the house account's own limits as set in Setup. */}
+          <section className="border-t border-line">
+            <div className={`${WRAP} grid gap-12 py-20 md:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start lg:gap-16`}>
+              <Reveal>
+                <h2 className={`${H2} max-w-[16ch]`}>You set the limits. Monday stops when one is hit.</h2>
+                <p className={LEAD}>Pick a margin and a leverage in Setup and Monday sizes the rest. The agent and the LLM are held to these numbers on every order.</p>
+                <dl className="mt-10 grid gap-5">
+                  {CONTROLS.map(([k, v]) => (
+                    <div key={k} className="border-l-2 border-line-2 pl-4">
+                      <dt className="text-[15px] font-semibold tracking-tight">{k}</dt>
+                      <dd className="mt-1 max-w-[50ch] text-[14px] text-fg-2">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Reveal>
+              <Reveal delay={0.1}>
+                <Limits policy={policy} />
+              </Reveal>
+            </div>
+          </section>
+
+          {/* Analytics: the second product, with its live figures. */}
+          <section className="border-t border-line bg-canvas">
+            <div className={`${WRAP} py-20 md:py-28`}>
+              <Reveal>
+                <h2 className={`${H2} max-w-[18ch]`}>Every Perpl trade since launch, indexed.</h2>
+                <p className={LEAD}>Volume, open interest, funding, liquidations and who makes money, for all of Perpl. Open to anyone, no wallet needed, with a chat that answers from the live figures.</p>
+              </Reveal>
+              <Reveal className="mt-10" delay={0.1}>
+                <PerplStats />
+              </Reveal>
+              <div className="mt-8">
+                <ButtonLink href={at('/analytics')} size="lg" variant="ghost" className="h-12 px-5 text-[15px]">Open the analytics</ButtonLink>
+              </div>
+            </div>
+          </section>
+
+          {/* Questions: the heading holds the left, the answers read down the right. Native disclosures, readable without JavaScript. */}
+          <section id="faq" className="scroll-mt-14 border-t border-line">
+            <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-12 lg:gap-12`}>
+              <div className="lg:col-span-4">
+                <h2 className={`${H2} max-w-[12ch]`}>Questions before you start</h2>
+                <p className="mt-5 max-w-[34ch] text-[15px] text-fg-2">
+                  Anything not here is on the <a href={at('/system')} className="font-medium text-fg underline decoration-line-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent">System</a> page, part by part.
+                </p>
+              </div>
+              <div className="border-t border-line-2 lg:col-span-8">
+                {questions(onchain).map((f) => (
+                  <details key={f.q} className="smooth group border-b border-line-2">
+                    <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-6 py-4 text-[16px] font-semibold tracking-tight transition-colors hover:text-accent [&::-webkit-details-marker]:hidden">
+                      {f.q}
+                      <PlusIcon size={18} aria-hidden className="flex-none text-fg-3 transition-transform duration-300 group-open:rotate-45" />
+                    </summary>
+                    <p className="max-w-[64ch] pb-6 text-[15px] leading-relaxed text-fg-2">{f.a}</p>
+                  </details>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* The close, in Monday's own colour, over the live book drawn in the band's ink. */}
+          <section className="relative isolate overflow-hidden bg-accent text-accent-fg">
+            <CloseField className="absolute inset-x-0 bottom-0 -z-10 h-40 md:h-60" />
+            <div className={`${WRAP} flex flex-col items-start gap-8 pb-52 pt-20 md:flex-row md:items-start md:justify-between md:pb-80 md:pt-28`}>
+              <Reveal>
+                <h2 className="display max-w-[15ch] text-[2.75rem] font-medium md:text-[4.5rem]">Quote both sides without betting on direction.</h2>
+              </Reveal>
+              <Launch inverse />
+            </div>
+          </section>
+        </LiveProvider>
       </main>
       <SiteFooter />
     </>
   );
 }
 
-/** Who holds what: you, your Perpl account in the middle with the money, Monday reaching it through a key that cannot move funds. */
-function Custody() {
-  // Left to right on wide screens, top to bottom on phones: the arrows turn with the layout.
-  const links = [
-    { icon: ArrowsLeftRightIcon, text: 'deposit, withdraw, revoke' },
-    { icon: ArrowLeftIcon, text: 'trade-only key' },
-  ];
+/** The one call to action: a label and an arrow box that nudges forward on hover. */
+function Launch({ inverse = false }: { inverse?: boolean }) {
   return (
-    <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-0">
-      {NODES.map((n, i) => (
-        <div key={n.title} className="contents">
-          {i > 0 && (
-            <div className="flex items-center justify-center gap-2 py-1 text-fg-3 lg:w-44 lg:flex-col lg:px-3">
-              {(() => { const Arrow = links[i - 1].icon; return <Arrow size={18} aria-hidden className="rotate-90 lg:rotate-0" />; })()}
-              <span className="label text-center">{links[i - 1].text}</span>
-            </div>
-          )}
-          <div className={cx('panel p-5 md:p-6', 'funds' in n && 'border-accent/50')}>
-            <div className="flex items-center justify-between gap-3">
-              <n.icon size={26} weight="regular" aria-hidden className={'funds' in n ? 'text-accent' : 'text-fg-2'} />
-              {'funds' in n && <Tag tone="accent">funds stay here</Tag>}
-            </div>
-            <p className="mt-5 text-[19px] font-semibold tracking-tight">{n.title}</p>
-            <p className="mt-1.5 text-[14px] text-fg-2">{n.text}</p>
-          </div>
-        </div>
-      ))}
+    <ButtonLink href={at('/app')} size="lg" variant={inverse ? 'inverse' : 'primary'} className="group h-12 gap-5 pl-5 pr-1.5 text-[15px]">
+      Launch app
+      <span aria-hidden className={cx('grid size-9 place-items-center rounded-xs transition-transform duration-300 ease-out group-hover:translate-x-0.5', inverse ? 'bg-accent text-accent-fg' : 'bg-accent-fg text-accent')}>
+        <ArrowRightIcon size={16} weight="bold" />
+      </span>
+    </ButtonLink>
+  );
+}
+
+/** One measured figure in the hairline grid under the terminal. */
+function Fact({ n, k, href }: { n: React.ReactNode; k: string; href?: string }) {
+  return (
+    <div className="flex flex-col-reverse bg-void px-5 py-5 md:px-6 md:py-6">
+      <dt className="mt-3 max-w-[24ch] text-[13.5px] text-fg-2">{href ? <a href={href} className="underline decoration-line-2 underline-offset-4 transition-colors hover:text-fg hover:decoration-accent">{k}</a> : k}</dt>
+      <dd className="num text-[2.25rem] font-medium leading-none tracking-tight md:text-[2.75rem]">{n}</dd>
     </div>
   );
 }
 
-/** Cadence as rhythm: how often each loop acts. The marks are the row's time axis, not decoration. */
-function Rhythm({ kind }: { kind: 'dense' | 'burst' | 'sparse' }) {
-  const marks = kind === 'dense' ? Array.from({ length: 60 }, (_, i) => i / 59) : kind === 'burst' ? [0.34, 0.345, 0.36, 0.375, 0.38, 0.4, 0.86, 0.87, 0.885] : [0.02, 0.5, 0.98];
+/** A column of the system grid: a head, then its cells; the last cell takes the slack so the hairlines stay even. */
+function Column({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="relative h-7 min-w-0" aria-hidden>
-      <span className="absolute inset-x-0 top-1/2 h-px bg-line-2" />
-      {marks.map((x) => (
-        <span key={x} className={kind === 'sparse' ? 'absolute top-0 h-full w-1 bg-accent' : kind === 'burst' ? 'absolute top-1 bottom-1 w-0.5 bg-ask' : 'absolute top-2 bottom-2 w-px bg-fg-2'} style={{ left: `${x * 100}%` }} />
-      ))}
+    <div className="flex flex-col gap-px bg-line [&>*:last-child]:flex-1">
+      <p className="label flex h-9 items-center bg-canvas px-5">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+/** The house account's limits as Setup holds them; without a reachable server, the balanced preset Setup starts from. */
+function Limits({ policy }: { policy: Policy | null }) {
+  const p = policy ?? { ...PRESETS.balanced, markets: ['BTC', 'ETH', 'SOL'] as MarketSym[], preset: 'balanced' as const };
+  const rows: [string, React.ReactNode][] = [
+    ['Markets', <span key="m" className="flex flex-wrap gap-1">{p.markets.map((s) => <Tag key={s} tone="solid">{s}</Tag>)}</span>],
+    ['Quote size', `${usd(p.quoteSizeUsd)} each side`],
+    ['Position limit', `${usd(p.maxInventoryUsd)} per market`],
+    ['Stop loss', `${usd(p.maxDailyLossUsd)} a day`],
+    ['Leverage', `${p.maxLeverage}x`],
+    ['Minimum half spread', `${p.minHalfSpreadBps} bps`],
+  ];
+  return (
+    <div className="panel rounded-lg">
+      <header className="flex h-10 items-center justify-between gap-3 border-b border-line px-4">
+        <h3 className="text-[13px] font-semibold">{policy ? 'The house account\'s limits' : 'The balanced preset'}</h3>
+        <span className="text-[12px] text-fg-3">{policy ? 'as set in Setup' : 'what Setup starts from'}</span>
+      </header>
+      <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-3">
+        {rows.map(([k, v]) => (
+          <div key={k} className="bg-canvas px-4 py-4">
+            <dt className="label">{k}</dt>
+            <dd className="num mt-3 min-h-[22px] text-[20px] font-medium leading-none tracking-tight">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-[12.5px] text-fg-3">
+        <span>Collateral this needs: <span className="num text-fg">{usd(balanceNeededUsd(p, p.markets.length))}</span>, so the stop loss fires while the margin is intact.</span>
+        <span className="num">{p.preset} preset</span>
+      </footer>
     </div>
   );
 }

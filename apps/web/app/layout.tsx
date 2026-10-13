@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
-import { JetBrains_Mono, Mona_Sans } from 'next/font/google';
+import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
 import './globals.css';
 
-// Sentences in Mona Sans, every number in JetBrains Mono.
-const sans = Mona_Sans({ subsets: ['latin'], variable: '--font-mona', display: 'swap' });
-const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' });
+// Sentences in Instrument Sans, every number in IBM Plex Mono (the same character width as the mono it replaced, so
+// price columns keep their alignment).
+const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-text', display: 'swap' });
+const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-figures', display: 'swap' });
 
 export const metadata: Metadata = {
   title: { default: 'Monday', template: '%s - Monday' },

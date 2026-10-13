@@ -2,6 +2,7 @@
 
 import { ArrowSquareOutIcon, CheckIcon } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion, useReducedMotion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ComponentProps } from 'react';
 import { policySummary, safeReturnPath, usd } from '@monday/core';
@@ -33,11 +34,19 @@ export default function Onboarding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.data?.exists]);
   const current = Math.min(step, reachable);
+  const reduce = useReducedMotion();
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['me'] }), qc.invalidateQueries({ queryKey: ['policy'] })]);
 
   return (
-    <div className="grid gap-10 py-10 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-16 md:py-16">
+    <div className="page-in mx-auto grid max-w-[66rem] gap-10 py-10 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-16 md:py-16">
       <nav aria-label="Setup steps">
+        {/* How far through setup: fills as each step is done. */}
+        <div className="mb-5 hidden md:block">
+          <div className="flex items-baseline justify-between text-[12px] text-fg-3"><span>Setup</span><span className="num">{current + 1} of {STEPS.length}</span></div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-raised-2">
+            <motion.div className="h-full rounded-full bg-accent" initial={false} animate={{ width: `${((current + 1) / STEPS.length) * 100}%` }} transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 160, damping: 26 }} />
+          </div>
+        </div>
         <ol className="flex gap-1 overflow-x-auto md:block md:space-y-1">
           {STEPS.map((label, i) => {
             const done = i < current || (i === 0);
@@ -46,7 +55,7 @@ export default function Onboarding() {
               <li key={label} className="shrink-0">
                 <button
                   type="button" disabled={i === 0 || i > reachable} onClick={() => setStep(i)} aria-current={active ? 'step' : undefined}
-                  className={cx('flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left text-sm disabled:cursor-default', active ? 'bg-raised font-semibold' : 'text-fg-2', i <= reachable && i > 0 && !active && 'hover:bg-raised')}
+                  className={cx('flex w-full items-center gap-3 rounded-sm px-2.5 py-2.5 text-left text-[14px] transition-colors disabled:cursor-default', active ? 'bg-raised font-semibold' : 'text-fg-2', i <= reachable && i > 0 && !active && 'hover:bg-raised')}
                 >
                   <span className={cx('num grid size-6 shrink-0 place-items-center rounded-sm border text-[12px]', done && !active ? 'border-fg bg-fg text-canvas' : active ? 'border-transparent bg-accent text-accent-fg' : 'border-line-2 text-fg-3')}>
                     {done && !active ? <CheckIcon size={12} weight="bold" /> : i + 1}
@@ -60,7 +69,8 @@ export default function Onboarding() {
         <p className="mt-6 hidden text-[13px] text-fg-3 md:block">Signed in {me.demo ? 'with a demo account' : <>as <span className="num text-fg-2">{shortAddr(me.wallet)}</span></>}. Setup takes about five minutes.</p>
       </nav>
 
-      <div className="max-w-[46rem]">
+      {/* Each step slides in when it opens: keyed by step, so moving between steps reads as moving forward. */}
+      <motion.div key={current} className="max-w-[46rem]" initial={reduce ? false : { opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
         {current === 1 && <AccountStep wallet={me.demo ? null : me.wallet} account={account.data} loading={account.isLoading} error={account.error} retry={() => void account.refetch()} next={() => setStep(2)} />}
         {current === 2 && <KeyStep sim={Boolean(cfg?.sim || cfg?.paper)} paper={Boolean(cfg?.paper)} perplUrl={cfg?.perplAppUrl ?? ''} hasKey={me.hasKey} revoked={me.keyStatus === 'revoked'} next={async () => { await Promise.all([refresh(), account.refetch()]); setLinked(true); setStep(3); }} />}
         {current === 3 && (
@@ -72,7 +82,7 @@ export default function Onboarding() {
           />
         )}
         {current === 4 && <ReviewStep view={policy.data} demo={me.demo} explorerUrl={cfg?.explorerUrl ?? ''} realFunds={Boolean(cfg?.realFunds)} networkName={cfg?.networkName ?? ''} registryAt={cfg?.registry ?? null} agent={cfg?.agentAddress ?? null} refresh={refresh} />}
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -80,8 +90,8 @@ export default function Onboarding() {
 function Heading({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <>
-      <h1 className="display text-3xl md:text-4xl">{title}</h1>
-      <p className="mt-3 max-w-[60ch] text-fg-2">{children}</p>
+      <h1 className="display text-3xl font-medium md:text-[2.5rem]">{title}</h1>
+      <p className="mt-4 max-w-[60ch] text-[15px] leading-relaxed text-fg-2">{children}</p>
     </>
   );
 }
