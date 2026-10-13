@@ -49,16 +49,23 @@ export function OpenOrders({ state }: { state: DashboardState }) {
   );
 }
 
+/**
+ * A position's leverage: notional at mark over the margin Perpl holds for it. Until Perpl reports that margin (seconds
+ * after a fill) and on simulated venues, the policy's leverage, which Monday sends with every order.
+ */
+const leverageOf = (p: MarketState['position'], policy: Policy) =>
+  p.marginUsd != null && p.marginUsd > 0 ? { x: Math.abs(p.notionalUsd) / p.marginUsd, from: 'perpl' as const } : { x: policy.maxLeverage, from: 'policy' as const };
+
 /** One row per market in the policy: what Monday holds, at what entry, and how it is doing at the live mark. */
 export function Positions({ state }: { state: DashboardState }) {
   const rows = Object.values(state.markets).filter((m): m is MarketState => Boolean(m) && (m!.inPolicy || m!.position.size !== 0));
   const open = rows.filter((m) => Math.abs(m.position.notionalUsd) >= 0.5);
   const total = open.reduce((a, m) => a + m.position.unrealizedUsd, 0);
   return (
-    <table className="w-full min-w-[640px] text-[11.5px]">
+    <table className="w-full min-w-[700px] text-[11.5px]">
       <thead>
         <tr className={HEAD}>
-          <th className="pl-2.5">Market</th><th>Side</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Entry</th><th className="text-right">Mark</th><th className="text-right">Open PnL</th><th className="pr-2.5 text-right" title="Share of your inventory limit this position uses">Of limit</th>
+          <th className="pl-2.5">Market</th><th>Side</th><th title="Notional at mark over the margin Perpl holds for the position">Leverage</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Entry</th><th className="text-right">Mark</th><th className="text-right">Open PnL</th><th className="pr-2.5 text-right" title="Share of your inventory limit this position uses">Of limit</th>
         </tr>
       </thead>
       <tbody className="num">
@@ -71,6 +78,10 @@ export function Positions({ state }: { state: DashboardState }) {
             <tr key={m.sym} className={cx('h-[24px] border-t border-line', flat && 'text-fg-3')}>
               <td className="pl-2.5 font-sans font-semibold text-fg">{m.sym} <span className="font-normal text-fg-3">perp</span></td>
               <td className={cx('font-sans', !flat && (long ? 'text-bid-fg' : 'text-ask-fg'))}>{flat ? 'Flat' : long ? 'Long' : 'Short'}</td>
+              <td>{flat ? '-' : (() => {
+                const l = leverageOf(p, state.policy);
+                return <span title={l.from === 'perpl' ? `${fmtUsd(Math.abs(p.notionalUsd))} at mark on ${fmtUsd(p.marginUsd!)} of margin` : 'Your policy\'s leverage, sent with every order. Perpl\'s own figure shows once it confirms the position.'}><span className={l.from === 'policy' ? 'text-fg-3' : undefined}>{l.x.toFixed(1)}x</span></span>;
+              })()}</td>
               <td className="text-right">{flat ? '-' : `${fmtSize(Math.abs(p.size), m.spec)} ${m.sym}`}</td>
               <td className="text-right">{flat ? '-' : fmtUsd(Math.abs(p.notionalUsd))}</td>
               <td className="text-right">{flat ? '-' : fmtPrice(p.entryPrice, m.spec)}</td>
@@ -84,7 +95,7 @@ export function Positions({ state }: { state: DashboardState }) {
       {open.length > 0 && (
         <tfoot className="num">
           <tr className="h-[24px] border-t border-line-2">
-            <td colSpan={6} className="pl-2.5 font-sans text-fg-2">Total open PnL</td>
+            <td colSpan={7} className="pl-2.5 font-sans text-fg-2">Total open PnL</td>
             <td className={cx('text-right', tone(total))}>{fmtSigned(total)}</td>
             <td />
           </tr>

@@ -230,7 +230,8 @@ export interface MarketState {
   hlMid: number | null;
   /** Smoothed top-5-level size imbalance of Perpl's book, -1 (asks) to +1 (bids), Monday's own quotes excluded. */
   book: number;
-  position: { size: number; entryPrice: number; notionalUsd: number; unrealizedUsd: number };
+  /** marginUsd: the collateral Perpl holds for the position; null until it reports one, and on simulated venues. */
+  position: { size: number; entryPrice: number; notionalUsd: number; marginUsd: number | null; unrealizedUsd: number };
   params: GovernorParams;
   paramsSource: DecisionSource;
   reflex: ReflexState | null;
