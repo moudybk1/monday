@@ -1,11 +1,11 @@
 'use client';
 
 import { PlusIcon, XIcon } from '@phosphor-icons/react';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import type { PxWallet } from '@monday/core';
+import type { PxTrader, PxWallet } from '@monday/core';
 import { LineChart, Share, type Tone } from '@/components/charts';
 import { money, profitText, sameWallet, shortAddress, signedMoney, tone, useStatsNetwork, useWatchlist, walletKey } from '@/components/stats-ui';
 import { Button, INPUT, Notice, Panel, Skeleton, cx } from '@/components/ui';
@@ -100,7 +100,7 @@ function Compare() {
       </section>
 
       {!ws.length ? (
-        <Notice>Add up to four wallets to compare them: type an address or account number in the Add to comparison box above, use the Watch button on any wallet, or pick an account from the leaderboard.</Notice>
+        <Empty onAdd={(qs) => set(qs.slice(0, MAX))} />
       ) : (
         <>
           {failed.length > 0 && (
@@ -157,5 +157,32 @@ function Compare() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Nothing to compare yet: say how to add wallets, and offer the week's four most profitable accounts (the leaderboard's
+ * own query, so the Perpl tab and this share one cache) as a one-click start.
+ */
+function Empty({ onAdd }: { onAdd: (qs: string[]) => void }) {
+  const top = useQuery({ queryKey: ['stats-traders', 7, 'net'], queryFn: () => api<PxTrader[]>('/stats/traders?days=7&sort=net'), refetchInterval: 60_000 });
+  const four = (top.data ?? []).slice(0, MAX);
+  return (
+    <section className="panel rise items-center px-6 py-16 text-center">
+      <h2 className="display text-[1.75rem] font-medium">Compare up to four wallets</h2>
+      <p className="mt-3 max-w-[60ch] text-[13px] leading-relaxed text-fg-2">
+        Type an address or account number in the box above, press Watch on any wallet, or start with this week&apos;s most profitable accounts on Perpl.
+      </p>
+      <div className="mt-7 flex flex-wrap justify-center gap-2">
+        {top.isLoading ? Array.from({ length: MAX }, (_, i) => <Skeleton key={i} className="h-9 w-36" />)
+          : four.map((t) => (
+            <button key={t.account} type="button" onClick={() => onAdd([String(t.account)])} className="num inline-flex h-9 items-center gap-2.5 rounded-sm border border-line-2 px-3 text-[12px] transition-colors hover:border-accent/60 hover:bg-accent/8">
+              #{t.account}<span className={tone(t.netUsd)}>{signedMoney(t.netUsd)}</span>
+            </button>
+          ))}
+      </div>
+      {four.length > 1 && <Button className="mt-5" onClick={() => onAdd(four.map((t) => String(t.account)))}>Compare these {four.length}</Button>}
+      {top.isError && <p className="mt-4 text-[12px] text-fg-3">The leaderboard is not reachable right now. Adding a wallet by address still works.</p>}
+    </section>
   );
 }

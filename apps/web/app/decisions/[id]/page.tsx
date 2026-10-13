@@ -30,7 +30,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-[960px] px-4 pb-24 pt-12 sm:px-8">
+      <main className="page-in mx-auto max-w-[960px] px-4 pb-24 pt-12 sm:px-8 md:pt-16">
         {d === null ? (
           <div className="grid gap-4"><Skeleton className="h-10 w-64" /><Skeleton className="h-64" /></div>
         ) : d === 'missing' ? (
@@ -45,7 +45,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
               <Tag tone={d.regime === 'storm' ? 'accent' : 'neutral'}>{d.regime}</Tag>
               <span className="num">{new Date(d.at).toISOString().replace('T', ' ').slice(0, 19)} UTC</span>
             </div>
-            <h1 className="display mt-4 text-3xl md:text-4xl">Decision {d.id}</h1>
+            <h1 className="display mt-4 text-3xl font-medium md:text-[2.75rem]">Decision {d.id}</h1>
             <p className="mt-4 max-w-[62ch] text-xl leading-snug">{d.reason}</p>
             <p className="mt-3 text-[13px] text-fg-3">
               For account owner <span className="num">{shortAddr(d.wallet)}</span>{d.llmModel ? <>, written by <span className="num">{d.llmModel}</span></> : ', written by deterministic rules'}.

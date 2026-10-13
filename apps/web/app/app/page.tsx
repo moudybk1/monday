@@ -181,7 +181,8 @@ export default function Terminal() {
                     </button>
                   ))}
                 </div>
-                <span className="hidden text-[11.5px] text-fg-3 lg:block">
+                {/* One line, cut short when the tabs need the room: it never wraps into the tab row. */}
+                <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[11.5px] text-fg-3 lg:block">
                   {tab === 'orders' ? 'queue: what must trade before each order does'
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')

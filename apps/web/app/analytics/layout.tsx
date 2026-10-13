@@ -30,7 +30,7 @@ export default function AnalyticsLayout({ children }: { children: React.ReactNod
     <QueryClientProvider client={qc}>
       <div className="flex min-h-[100dvh] flex-col">
         <Header />
-        <main className="mx-auto w-full max-w-[1480px] flex-1 px-1 pb-6 sm:px-2">
+        <main className="page-in mx-auto w-full max-w-[1480px] flex-1 px-1.5 pb-8 sm:px-3">
           <SubNav />
           {children}
         </main>
@@ -67,9 +67,9 @@ function SubNav() {
   const reduce = useReducedMotion();
   return (
     <div className="panel mt-1 flex-row flex-wrap items-stretch justify-between overflow-visible">
-      <div role="tablist" aria-label="Analytics" className="flex h-9">
+      <div role="tablist" aria-label="Analytics" className="no-bar flex h-10 overflow-x-auto">
         {TABS.map((t) => (
-          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex items-center px-3 text-[12.5px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
+          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex flex-none items-center px-3.5 text-[13px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
             {t.label}
             {t.on(pathname) && <motion.span layoutId="analytics-tab" aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
           </Link>

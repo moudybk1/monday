@@ -11,6 +11,8 @@ const VARIANT = {
   ghost: 'border border-line-2 text-fg not-disabled:hover:bg-raised-2',
   quiet: 'text-fg-2 not-disabled:hover:bg-raised not-disabled:hover:text-fg',
   danger: 'border border-ask/70 text-ask-fg not-disabled:hover:bg-ask-deep not-disabled:hover:text-white',
+  /** On an accent surface: the page colours swapped, so the button still reads as the one thing to press. */
+  inverse: 'bg-accent-fg text-accent not-disabled:hover:opacity-90',
 } as const;
 const SIZE = { xs: 'h-6 px-2 text-[11.5px]', sm: 'h-7 px-2.5 text-[12px]', md: 'h-9 px-3.5 text-[13px]', lg: 'h-11 px-5 text-[14px]' } as const;
 
@@ -44,9 +46,9 @@ const SPREAD = 'M36 0H82V20L32 70V80H20C8.9543 80 0 71.0457 0 60V36C0 16.1177 16
  * The mark: two equal quote forms, bid and ask, rotated about one centre with the spread open between them.
  * Compact canvas from the Spread v2 kit, the one meant for 16-48 px.
  */
-export function Mark({ size = 20 }: { size?: number }) {
+export function Mark({ size = 20, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="-10 -22 148 148" fill="#FFA630" aria-hidden>
+    <svg width={size} height={size} viewBox="-10 -22 148 148" fill="#FFA630" className={className} aria-hidden>
       <path d={SPREAD} />
       <path d={SPREAD} transform="rotate(180 64 52)" />
     </svg>
