@@ -11,7 +11,7 @@ import { OrderBook } from '@/components/book';
 import { Diverging, LineChart } from '@/components/charts';
 import { Guide } from '@/components/guide';
 import { draftFrom, toBody } from '@/components/policy-form';
-import { PlanList, planLevels } from '@/components/plans';
+import { MakerRow, PlanList, planLevels } from '@/components/plans';
 import { PriceChart } from '@/components/price-chart';
 import { FlowBars, SmartTape } from '@/components/smart-money';
 import { Tape } from '@/components/tape';
@@ -54,6 +54,7 @@ export default function Terminal() {
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<SessionDraft>({ sl: '', tp: '' });
   const killDialog = useRef<HTMLDialogElement>(null);
+  const blotter = useRef<HTMLElement>(null);
   const guide = useRef<HTMLDialogElement>(null);
   const chartArea = useRef<HTMLDivElement>(null);
   const ready = Boolean(state);
@@ -112,6 +113,10 @@ export default function Terminal() {
   };
 
   const quoting = state.status === 'quoting';
+  const showPlans = () => {
+    setTab('plans');
+    blotter.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // on a phone the blotter sits below
+  };
   const start = () => {
     const stopLossUsd = sessionUsd(session.sl), takeProfitUsd = sessionUsd(session.tp);
     // A mistyped limit must not quietly become "no limit".
@@ -136,7 +141,7 @@ export default function Terminal() {
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
   const TABS: [Tab, string, number | null][] = [
-    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length], ['fills', 'History', state.fills.length + ended.length],
+    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length + (quoting ? 1 : 0)], ['fills', 'History', state.fills.length + ended.length],
     ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote model', null],
   ];
 
@@ -198,7 +203,7 @@ export default function Terminal() {
           <div ref={chartArea} className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-span-2">
             <PriceChart sym={sym} m={m} fills={state.fills} now={now} levels={planLevels(running.find((p) => p.input.sym === sym))} className="h-[360px] flex-none xl:h-auto xl:flex-[3]" />
 
-            <section className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
+            <section ref={blotter} className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
               <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
                 <div role="tablist" aria-label="Blotter" className="scroll flex h-full overflow-x-auto">
                   {TABS.map(([id, label, n]) => (
@@ -211,7 +216,7 @@ export default function Terminal() {
                 <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[11.5px] text-fg-3 lg:block">
                   {tab === 'orders' ? "the market maker's quotes; a plan's orders show under Plans"
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
-                    : tab === 'plans' ? `Agentic Trade and TWAP; stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
+                    : tab === 'plans' ? `everything that trades; plan stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
                     : tab === 'fills' ? (past === 'fills' ? "the market maker's fills; markout is the move after, positive is good" : 'Agentic Trade and TWAP that have ended')
                     : tab === 'model' ? `${sym}, this tick` : `since ${state.equity[0] ? fmtTime(state.equity[0].t, false) : 'start'}`}
@@ -220,7 +225,12 @@ export default function Terminal() {
               <div className={cx('scroll min-h-0 flex-1', tab === 'equity' && 'p-1.5')}>
                 {tab === 'orders' && <OpenOrders state={state} onPick={pick} />}
                 {tab === 'positions' && <Positions state={state} onPick={pick} />}
-                {tab === 'plans' && <PlanList plans={running} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick} />}
+                {tab === 'plans' && (
+                  <PlanList
+                    plans={running} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick}
+                    maker={quoting ? <MakerRow state={state} busy={busy !== null} onStop={() => void act('/agent/pause')} onKill={() => killDialog.current?.showModal()} onPick={pick} /> : undefined}
+                  />
+                )}
                 {tab === 'fills' && (
                   <>
                     <div role="group" aria-label="History" className="flex gap-1 border-b border-line px-2.5 py-1.5">
@@ -272,7 +282,7 @@ export default function Terminal() {
             {state.policy.markets.length ? (
               <AgentConsole
                 state={state} sym={sym} onPick={pick} session={session} onSession={setSession} busy={busy !== null}
-                onStart={start} onPause={() => act('/agent/pause')} onKill={() => killDialog.current?.showModal()}
+                onStart={start} onKill={() => killDialog.current?.showModal()} onShowPlans={showPlans}
               />
             ) : (
               <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} />

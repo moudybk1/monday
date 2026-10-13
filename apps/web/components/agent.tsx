@@ -1,6 +1,6 @@
 'use client';
 
-import { PlayIcon, StopIcon, XCircleIcon } from '@phosphor-icons/react';
+import { PlayIcon, XCircleIcon } from '@phosphor-icons/react';
 import { KIND_LABEL, planPnl, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
 import { fmtBps, fmtPrice, fmtSigned, fmtTime, fmtUsd } from '@/lib/format';
 import { Diverging } from './charts';
@@ -40,7 +40,7 @@ export function quoteStanding(m: MarketState, side: Side): { label: string; good
  * The column where a manual terminal keeps its order ticket. Monday trades for you, so this is the agent: the money,
  * the controls, and one row per market showing where its quotes stand in line and what they have earned.
  */
-export function AgentConsole({ state, sym, onPick, session, onSession, busy, onStart, onPause, onKill }: {
+export function AgentConsole({ state, sym, onPick, session, onSession, busy, onStart, onKill, onShowPlans }: {
   state: DashboardState;
   sym: MarketSym;
   onPick: (s: MarketSym) => void;
@@ -48,8 +48,8 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
   onSession: (s: SessionDraft) => void;
   busy: boolean;
   onStart: () => void;
-  onPause: () => void;
   onKill: () => void;
+  onShowPlans: () => void;
 }) {
   const { pnl, policy } = state;
   const quoting = state.status === 'quoting';
@@ -112,11 +112,12 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
 
       <div className="border-t border-line px-2.5 py-2">
         {quoting ? (
-          <div className="flex gap-1.5">
-            <Button size="sm" variant="ghost" className="flex-1" onClick={onPause} disabled={busy} title="Cancel Monday's orders and stop the bot. Open positions and orders you placed yourself stay as they are, and Monday stops watching them."><StopIcon size={12} weight="fill" /> Stop</Button>
-            <Button size="sm" variant="danger" className="flex-1" onClick={onKill} disabled={busy}><XCircleIcon size={12} weight="fill" /> Kill and flatten</Button>
+          // A running market maker is stopped where the plans are: one place for everything that trades.
+          <div className="flex items-center justify-between gap-2 text-[11.5px] text-fg-3">
+            <span>Quoting. Stop it under Plans.</span>
+            <Button size="xs" variant="ghost" onClick={onShowPlans}>Open Plans</Button>
           </div>
-        ) : state.status === 'killed' && !state.closing ? (
+        ) :  state.status === 'killed' && !state.closing ? (
           // A kill ends everything: the market maker starts again from Setup, like any other mode.
           <ButtonLink href="/app/setup" size="sm" className="w-full">Set up again</ButtonLink>
         ) : (
