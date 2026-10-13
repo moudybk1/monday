@@ -1,7 +1,7 @@
 'use client';
 
 import { PlayIcon, StopIcon, XCircleIcon } from '@phosphor-icons/react';
-import { usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
+import { KIND_LABEL, planPnl, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
 import { fmtBps, fmtPrice, fmtSigned, fmtTime, fmtUsd } from '@/lib/format';
 import { Diverging } from './charts';
 import { Button, ButtonLink, Tag, cx } from './ui';
@@ -16,6 +16,12 @@ export const sessionUsd = (s: string): number | null => (s.trim() === '' ? null 
 export const STATUS = { quoting: 'Quoting', paused: 'Stopped', killed: 'Killed', idle: 'Not started' } as const;
 /** The agent's state in one word, with cleanup Perpl has not confirmed yet taking precedence. */
 export const statusText = (s: DashboardState) => (s.closing === 'flatten' ? 'Closing' : s.closing === 'cancel' ? 'Cancelling' : STATUS[s.status]);
+/** The Terminal's status: what trades now. With the market maker stopped or killed, a running plan is what trades. */
+export const terminalStatus = (s: DashboardState): { text: string; live: boolean } => {
+  const n = s.plans.filter((p) => p.status !== 'done').length;
+  if (!s.closing && s.status !== 'quoting' && n) return { text: `${n} plan${n > 1 ? 's' : ''} running`, live: true };
+  return { text: statusText(s), live: s.status === 'quoting' };
+};
 /** What fmtSigned shows as non-zero gets a colour. */
 export const tone = (n: number) => (n >= 0.00005 ? 'text-bid-fg' : n <= -0.00005 ? 'text-ask-fg' : 'text-fg');
 
@@ -48,6 +54,9 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
   const { pnl, policy } = state;
   const quoting = state.status === 'quoting';
   const live = quoting ? state.session : null;
+  const status = terminalStatus(state);
+  const plans = state.plans.filter((p) => p.status !== 'done');
+  const plansPnl = plans.reduce((a, p) => a + planPnl(p), 0);
   const used = Math.min(100, Math.max(0, pnl.lossLimitUsedPct));
   const m = state.markets[sym];
   const cell = 'min-w-0 bg-canvas px-2.5 py-2';
@@ -57,7 +66,7 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
     <section className="panel flex-none" aria-label="Agent">
       <header className="flex h-8 flex-none items-center justify-between border-b border-line px-2.5">
         <h2 className="text-[12px] font-semibold">Agent</h2>
-        <Tag tone={state.closing ? 'warn' : quoting ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{statusText(state)}</Tag>
+        <Tag tone={state.closing ? 'warn' : status.live ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{status.text}</Tag>
       </header>
 
       <dl className="grid grid-cols-2 gap-px bg-line">
@@ -76,11 +85,16 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
         <div className={cell}>
           <dt className="label">Session</dt>
           <dd className="num mt-1.5 text-[12px]">
-            {live ? <><span className={tone(live.pnlUsd)}>{fmtSigned(live.pnlUsd)}</span> <span className="text-fg-3">since {fmtTime(live.startedAt, false)}</span></> : <span className="text-fg-3">not running</span>}
+            {live ? <><span className={tone(live.pnlUsd)}>{fmtSigned(live.pnlUsd)}</span> <span className="text-fg-3">since {fmtTime(live.startedAt, false)}</span></>
+              // The market maker is not quoting, but Agentic Trade or TWAP is: their session is the one running.
+              : plans.length ? <><span className={tone(plansPnl)}>{fmtSigned(plansPnl)}</span> <span className="text-fg-3">{plans.length === 1 ? `${plans[0].input.sym} ${KIND_LABEL[plans[0].input.kind]}` : `${plans.length} plans`}</span></>
+              : <span className="text-fg-3">not running</span>}
           </dd>
+          {!live && plans.length > 0 && <dd className="mt-1 text-[11px] text-fg-3">market maker not running, see Plans</dd>}
           {live && (
             <dd className="num mt-1 text-[11px] text-fg-3">
               stop {live.stopLossUsd != null ? <span className="text-ask-fg">-{usd(live.stopLossUsd)}</span> : 'none'} / target {live.takeProfitUsd != null ? <span className="text-bid-fg">+{usd(live.takeProfitUsd)}</span> : 'none'}
+              {plans.length > 0 && `, ${plans.length} plan${plans.length > 1 ? 's' : ''} too`}
             </dd>
           )}
         </div>

@@ -251,6 +251,10 @@ export function planProblems(p: PlanInput, spec: MarketSpec | undefined, ctx: Pl
 /** A sensible slice count for a duration: about one a minute, at most PLAN_RULES.maxSlices, at least two. */
 export const twapSlicesFor = (durationMin: number) => Math.max(PLAN_RULES.minSlices, Math.min(PLAN_RULES.maxSlices, Math.round(durationMin)));
 
+/** A plan's result so far: a scalping session's own count, else realized less fees plus the open position's. */
+export const planPnl = (p: PlanView) => p.scalp?.sessionPnl ?? p.realizedUsd - p.feesUsd + p.unrealizedUsd;
+
+export const KIND_LABEL: Record<PlanInput['kind'], string> = { trade: 'Agentic Trade', twap: 'TWAP' };
 export const BIAS_LABEL: Record<Bias, string> = { long: 'Long', short: 'Short' };
 export const STYLE_LABEL: Record<TwapStyle, string> = { passive: 'Passive', balanced: 'Balanced', aggressive: 'Aggressive' };
 export const OUTCOME_LABEL: Record<PlanOutcome, string> = {

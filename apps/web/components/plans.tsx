@@ -3,7 +3,7 @@
 import { ShieldCheckIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { MODE_LABEL, OUTCOME_LABEL, STYLE_LABEL, TREND_LABEL, priceAway, usd, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
+import { MODE_LABEL, OUTCOME_LABEL, STYLE_LABEL, TREND_LABEL, planPnl, priceAway, usd, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
 import { tone } from './agent';
 import type { ChartLevel } from './price-chart';
 import { Button, Tag, cx } from './ui';
@@ -16,7 +16,6 @@ const STATUS: Record<PlanView['status'], { label: string; tone: 'neutral' | 'acc
 };
 
 const what = (p: PlanView) => (p.input.kind === 'twap' ? `TWAP, ${STYLE_LABEL[p.input.style].toLowerCase()}` : `Scalping ${p.input.frame}`);
-const pnlOf = (p: PlanView) => p.scalp?.sessionPnl ?? p.realizedUsd - p.feesUsd + p.unrealizedUsd;
 
 /** Agentic Trade and TWAP plans: the running ones first, then the last few that ended. */
 export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[]; specs: Partial<Record<MarketSym, MarketSpec>>; sim: boolean; now: number; onError: (message: string) => void }) {
@@ -60,7 +59,7 @@ export function PlanList({ plans, specs, sim, now, onError }: { plans: PlanView[
           const spec = specs[p.input.sym];
           const long = p.input.bias === 'long';
           const live = p.status !== 'done';
-          const pnl = pnlOf(p);
+          const pnl = planPnl(p);
           const s = STATUS[p.status];
           const sc = p.scalp;
           const level = (price: number | null, onVenue: boolean, fallback: string) => price != null

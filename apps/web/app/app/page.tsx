@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_CONFIG, MARKETS, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
-import { AgentConsole, sessionUsd, statusText, type SessionDraft } from '@/components/agent';
+import { AgentConsole, sessionUsd, terminalStatus, type SessionDraft } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
 import { Diverging, LineChart } from '@/components/charts';
@@ -117,6 +117,7 @@ export default function Terminal() {
   };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const running = state.plans.filter((p) => p.status !== 'done');
+  const status = terminalStatus(state);
   const planMarkets = running.map((p) => p.input.sym);
   const openOrders = shown.reduce((n, s) => n + (state.markets[s]?.quotes.bid ? 1 : 0) + (state.markets[s]?.quotes.ask ? 1 : 0), 0);
   const stale = m && m.dataAgeMs > 5_000;
@@ -147,16 +148,17 @@ export default function Terminal() {
           <Button size="sm" variant="quiet" onClick={() => guide.current?.showModal()}><QuestionIcon size={12} weight="bold" /> <span className="max-[1399px]:sr-only">Guide</span></Button>
           <span className="flex items-center gap-1.5 text-[12px] font-medium">
             {/* The one status dot: it reflects real agent state. */}
-            <span aria-hidden className={cx('size-1.5 rounded-full', quoting ? 'live-dot bg-bid' : state.status === 'killed' ? 'bg-ask' : 'bg-fg-3')} />
+            <span aria-hidden className={cx('size-1.5 rounded-full', status.live ? 'live-dot bg-bid' : state.status === 'killed' ? 'bg-ask' : 'bg-fg-3')} />
             {/* Phones show the status in the Agent panel right below; here it keeps only the dot. */}
-            <span className="max-md:sr-only">{statusText(state)}</span>
+            <span className="max-md:sr-only">{status.text}</span>
           </span>
         </div>
       </div>
 
       <div className="grid flex-none gap-1 empty:hidden">
         {error && <Notice tone="warn">{error}</Notice>}
-        {state.status === 'killed' && (
+        {/* Once a plan runs again after the kill, the kill is old news. */}
+        {state.status === 'killed' && (state.closing || !running.length) && (
           // A kill ends everything: trading again starts from Setup, in any mode and any market.
           <Notice tone="ask" action={state.closing ? undefined : <ButtonLink href="/app/setup" size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15">Set up again</ButtonLink>}>
             <strong>{state.closing ? 'Killed, still closing.' : 'Killed.'}</strong> {state.killReason ? KILL_WHY[state.killReason] : ''}{' '}
