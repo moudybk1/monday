@@ -14,7 +14,7 @@ const VARIANT = {
   /** On an accent surface: the page colours swapped, so the button still reads as the one thing to press. */
   inverse: 'bg-accent-fg text-accent not-disabled:hover:opacity-90',
 } as const;
-const SIZE = { xs: 'h-6 px-2 text-[11.5px]', sm: 'h-7 px-2.5 text-[12px]', md: 'h-9 px-3.5 text-[13px]', lg: 'h-11 px-5 text-[14px]' } as const;
+const SIZE = { xs: 'h-6 px-2 text-[13px]', sm: 'h-7 px-2.5 text-[13px]', md: 'h-9 px-3.5 text-[14px]', lg: 'h-11 px-5 text-[15px]' } as const;
 
 type BtnProps = { variant?: keyof typeof VARIANT; size?: keyof typeof SIZE; className?: string; children: ReactNode };
 
@@ -34,9 +34,9 @@ const TONE = {
   warn: 'border-warn/50 text-warn',
 } as const;
 
-/** A state chip. Mono, small, uppercase: it reads as an instrument readout, not a decoration. */
+/** A state chip: small, medium weight, sentence case. It reads as an instrument readout, not a decoration. */
 export function Tag({ tone = 'neutral', children, className }: { tone?: keyof typeof TONE; children: ReactNode; className?: string }) {
-  return <span className={cx('num inline-flex h-[18px] items-center rounded-sm border px-1.5 text-[10.5px] font-medium uppercase leading-none tracking-[0.04em] whitespace-nowrap', TONE[tone], className)}>{children}</span>;
+  return <span className={cx('num inline-flex h-5 items-center rounded-sm border px-1.5 text-[12px] font-medium leading-none whitespace-nowrap', TONE[tone], className)}>{children}</span>;
 }
 
 /** A market in a table: a click opens it on the Terminal's chart and book. Plain text where nothing can open it. */
@@ -93,8 +93,8 @@ export function Panel({ title, aside, children, className, bodyClassName }: { ti
   return (
     <section className={cx('panel', className)}>
       <header className="flex h-8 flex-none items-center justify-between gap-3 border-b border-line px-2.5">
-        <h2 className="truncate text-[12px] font-semibold">{title}</h2>
-        {aside ? <div className="flex flex-none items-center gap-1.5 text-[11.5px] text-fg-3">{aside}</div> : null}
+        <h2 className="truncate text-[13px] font-semibold">{title}</h2>
+        {aside ? <div className="flex flex-none items-center gap-1.5 text-[13px] text-fg-3">{aside}</div> : null}
       </header>
       <div className={cx('scroll min-h-0 flex-1', bodyClassName)}>{children}</div>
     </section>
@@ -104,13 +104,13 @@ export function Panel({ title, aside, children, className, bodyClassName }: { ti
 export function Field({ label, hint, error, children, htmlFor }: { label: string; hint?: ReactNode; error?: string | null; children: ReactNode; htmlFor: string }) {
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={htmlFor} className="text-[12.5px] font-medium">{label}</label>
+      <label htmlFor={htmlFor} className="text-[13px] font-medium">{label}</label>
       {children}
-      {error ? <p role="alert" className="text-[12.5px] text-ask-fg">{error}</p> : hint ? <p className="text-[12.5px] text-fg-3">{hint}</p> : null}
+      {error ? <p role="alert" className="text-[13px] text-ask-fg">{error}</p> : hint ? <p className="text-[13px] text-fg-3">{hint}</p> : null}
     </div>
   );
 }
-export const INPUT = 'h-9 w-full rounded-sm border border-line-2 bg-raised px-3 text-[13px] text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none';
+export const INPUT = 'h-9 w-full rounded-sm border border-line-2 bg-raised px-3 text-[14px] text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none';
 
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cx('rounded-sm bg-raised motion-safe:animate-pulse', className)} aria-hidden />;
@@ -119,7 +119,7 @@ export function Skeleton({ className }: { className?: string }) {
 export function Notice({ tone = 'neutral', children, action }: { tone?: 'neutral' | 'warn' | 'ask'; children: ReactNode; action?: ReactNode }) {
   const t = { neutral: 'border-line-2 bg-raised text-fg-2', warn: 'border-warn/45 bg-warn/8 text-warn', ask: 'border-ask bg-ask-deep text-white' }[tone];
   return (
-    <div role={tone === 'neutral' ? 'status' : 'alert'} className={cx('flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-sm border px-3 py-1.5 text-[12.5px]', t)}>
+    <div role={tone === 'neutral' ? 'status' : 'alert'} className={cx('flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-sm border px-3 py-1.5 text-[13px]', t)}>
       <div className="min-w-0">{children}</div>
       {action}
     </div>

@@ -86,11 +86,11 @@ function Positioning({ group, sym, onGroup, onSym }: { group: FlowGroup; sym: st
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-2.5 py-1.5">
         <Segments label="Group" value={group} onChange={onGroup} options={GROUPS} />
-        <span className="text-[11px] text-fg-3">{g.hint}</span>
+        <span className="text-[12px] text-fg-3">{g.hint}</span>
       </div>
       {q.isError ? <div className="p-2"><Notice tone="warn">Could not load positioning. {q.error instanceof Error ? q.error.message : ''}</Notice></div> : !q.data ? <Skeleton className="m-2 h-72" /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-[11.5px]">
+          <table className="w-full min-w-[980px] text-[13px]">
             <thead>
               <tr className="label h-7 text-left [&>th]:font-normal">
                 <th className="pl-2.5">Market</th>
@@ -125,7 +125,7 @@ function Positioning({ group, sym, onGroup, onSym }: { group: FlowGroup; sym: st
               })}
             </tbody>
           </table>
-          <p className="border-t border-line px-2.5 py-1.5 text-[11px] text-fg-3">
+          <p className="border-t border-line px-2.5 py-1.5 text-[12px] text-fg-3">
             Net bought is the group&apos;s buys minus sells at fill prices, from Perpl&apos;s indexed fills. Positions are live from the Exchange. Across every account a market&apos;s longs equal its shorts, so this follows a group, chosen from the last 30 days of realised results. Click a market to filter the trades below.
           </p>
         </div>
@@ -161,13 +161,13 @@ function LiveTape({ group, min, sym, onGroup, onMin, onClearSym }: { group: Tape
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2.5 py-1.5">
         <Segments label="Traders" value={group} onChange={onGroup} options={TAPE_GROUPS} />
         <Segments label="Size" value={min} onChange={onMin} options={MINS} />
-        {sym && <button type="button" onClick={onClearSym} className="num flex items-center gap-1 rounded-sm border border-accent/40 px-1.5 py-0.5 text-[11px] text-accent hover:bg-accent/12" aria-label={`Show every market, not only ${sym}`}>{sym}<XIcon size={10} /></button>}
+        {sym && <button type="button" onClick={onClearSym} className="num flex items-center gap-1 rounded-sm border border-accent/40 px-1.5 py-0.5 text-[12px] text-accent hover:bg-accent/12" aria-label={`Show every market, not only ${sym}`}>{sym}<XIcon size={10} /></button>}
       </div>
       {q.isError ? <div className="p-2"><Notice tone="warn">Could not load trades. {q.error instanceof Error ? q.error.message : ''}</Notice></div> : !q.data ? <Skeleton className="m-2 h-72" /> : !q.data.rows.length ? (
-        <p className="px-2.5 py-4 text-[12px] text-fg-3">No {min >= 10_000 ? `${money(min)}+ ` : ''}trades{sym ? ` on ${sym}` : ''}{group !== 'all' ? ` by ${FLOW_GROUPS.find((x) => x.id === group)!.label.toLowerCase()}` : ''} in the last 24 hours. New ones appear here within seconds.</p>
+        <p className="px-2.5 py-4 text-[13px] text-fg-3">No {min >= 10_000 ? `${money(min)}+ ` : ''}trades{sym ? ` on ${sym}` : ''}{group !== 'all' ? ` by ${FLOW_GROUPS.find((x) => x.id === group)!.label.toLowerCase()}` : ''} in the last 24 hours. New ones appear here within seconds.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-[11.5px]">
+          <table className="w-full min-w-[980px] text-[13px]">
             <thead>
               <tr className="label h-7 text-left [&>th]:font-normal">
                 <th className="pl-2.5">Trader</th><th>Market</th><th>Side</th><th>Action</th><th title="Market: took liquidity. Limit: a resting order filled.">Type</th>
@@ -199,7 +199,7 @@ function LiveTape({ group, min, sym, onGroup, onMin, onClearSym }: { group: Tape
               ))}
             </tbody>
           </table>
-          <p className="border-t border-line px-2.5 py-1.5 text-[11px] text-fg-3">
+          <p className="border-t border-line px-2.5 py-1.5 text-[12px] text-fg-3">
             One line per order: an account&apos;s fills on one market and side in one block. Side is the position&apos;s side; Flip closes one side and opens the other. Exchange means a liquidation. Indexed from Perpl&apos;s Exchange contract, seconds behind the chain; the newest 100 shown.
           </p>
         </div>

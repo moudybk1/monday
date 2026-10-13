@@ -85,7 +85,7 @@ export function Delta({ now, prev, up = 'good', suffix, className }: { now: numb
   const good = up === 'none' ? null : (up === 'good') === d >= 0;
   const Icon = d >= 0 ? ArrowUpRightIcon : ArrowDownRightIcon;
   return (
-    <span className={cx('num inline-flex items-center gap-0.5 text-[11px]', good == null ? 'text-fg-2' : good ? 'text-bid-fg' : 'text-ask-fg', className)}>
+    <span className={cx('num inline-flex items-center gap-0.5 text-[12px]', good == null ? 'text-fg-2' : good ? 'text-bid-fg' : 'text-ask-fg', className)}>
       <Icon size={10} weight="bold" />{Math.abs(d) >= 100 ? d.toFixed(0) : Math.abs(d).toFixed(1)}%{suffix && <span className="font-sans text-fg-3"> {suffix}</span>}
     </span>
   );
@@ -105,7 +105,7 @@ export function Kpi({ k, v, n, format, sub, t, hint, delta, spark }: {
         {spark && <span className="h-6 w-16 min-w-0 opacity-80" aria-hidden>{spark}</span>}
       </dd>
       <dd className="flex min-w-0 truncate leading-none">{delta}</dd>
-      <dd className="truncate text-[11px] leading-none text-fg-3">{sub}</dd>
+      <dd className="truncate text-[12px] leading-none text-fg-3">{sub}</dd>
     </div>
   );
 }
@@ -117,7 +117,7 @@ export function Tabs<T extends string>({ value, options, onChange, label, size =
   return (
     <div role="tablist" aria-label={label} className={cx('no-bar flex min-w-0 overflow-x-auto', size === 'md' ? 'h-9 gap-0' : 'h-8 gap-2', className)}>
       {options.map(([v, text]) => (
-        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)} className={cx('relative flex flex-none items-center transition-colors duration-150', size === 'md' ? 'px-3 text-[12.5px]' : 'px-1 text-[12px]', v === value ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
+        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)} className={cx('relative flex flex-none items-center transition-colors duration-150', size === 'md' ? 'px-3 text-[13px]' : 'px-1 text-[13px]', v === value ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
           {text}
           {v === value && <motion.span layoutId={`${id}-u`} aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
         </button>
@@ -129,7 +129,7 @@ export function Tabs<T extends string>({ value, options, onChange, label, size =
 /** An account, by address when known: every one of them opens its wallet page. */
 export function AccountLink({ account, address, className }: { account: number; address?: string | null; className?: string }) {
   return (
-    <Link href={at(`/analytics/wallet/${address || account}`)} className={cx('num text-fg underline-offset-2 hover:text-accent hover:underline', className)}>
+    <Link href={at(`/analytics/wallet/${address || account}`)} className={cx(address ? 'font-mono' : 'num', 'text-fg underline-offset-2 hover:text-accent hover:underline', className)}>
       {address ? shortAddress(address) : `#${account}`}
     </Link>
   );
@@ -204,7 +204,7 @@ export function WatchButton({ wallet, network }: { wallet: WalletRef; network: s
   const w = useWatchlist(network);
   const on = w.has(wallet);
   return (
-    <button type="button" onClick={() => w.toggle(wallet)} aria-pressed={on} className={cx('inline-flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-[12px]', on ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>
+    <button type="button" onClick={() => w.toggle(wallet)} aria-pressed={on} className={cx('inline-flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-[13px]', on ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>
       <StarIcon size={12} weight={on ? 'fill' : 'regular'} /> {on ? 'Watching' : 'Watch'}
     </button>
   );
@@ -217,7 +217,7 @@ export function Segments<T extends string | number>({ value, options, onChange, 
   return (
     <div role="tablist" aria-label={label} className="flex rounded-sm border border-line-2 p-px">
       {options.map(([v, text]) => (
-        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)} className={cx('num relative h-[22px] whitespace-nowrap px-2 text-[11px] transition-colors duration-200', v === value ? 'text-canvas' : 'text-fg-2 hover:text-fg')}>
+        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)} className={cx('num relative h-[22px] whitespace-nowrap px-2 text-[12px] transition-colors duration-200', v === value ? 'text-canvas' : 'text-fg-2 hover:text-fg')}>
           {v === value && <motion.span layoutId={`${id}-p`} aria-hidden className="absolute inset-0 rounded-[3px] bg-fg" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 600, damping: 45 }} />}
           <span className="relative">{text}</span>
         </button>

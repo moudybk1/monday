@@ -10,7 +10,8 @@ const AREAS: [string, ReactNode][] = [
   ['Market strip', <>Pick a market. Beside it: price, 24-hour change and volume, and the regime Monday is in.</>],
   ['Chart', <>Candles show the market price. The dashed <Swatch tone="bid" /> line is Monday&apos;s offer to buy, <Swatch tone="ask" /> its offer to sell. Arrows mark its trades. Scroll to zoom, drag to move.</>],
   ['Order book', <>Every open offer on Perpl. The middle row is the spread, the gap Monday needs a few bps of to earn anything. Monday&apos;s own offers are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
-  ['Agent', <>Your money and the controls. <b>Stop</b> cancels Monday&apos;s offers and stops the bot; any position stays open and is yours to manage. <b>Kill and flatten</b> cancels everything and closes positions. While quoting, Monday kills itself when the stop loss you set for the day is reached.</>],
+  ['Agent', <>Your money: equity, today&apos;s result, the session and the day&apos;s stop loss. While quoting, Monday kills itself when that stop loss is reached. Once stopped, it starts again from Setup.</>],
+  ['Plans', <>Everything that trades, the market maker included, each with its own controls. <b>Stop</b> cancels Monday&apos;s offers and stops the bot; any position stays open and is yours to manage. <b>Kill and flatten</b> cancels everything and closes every position on the account.</>],
   ['Open orders', <>Where each of Monday&apos;s offers sits: at the best price or behind it, and what has to trade before it fills.</>],
   ['Smart Traders', <>Big trades by wallets with a record of consistent profit. When they rush one way, Monday steps aside on that side.</>],
   ['Decisions', <>Every change Monday makes, with the reason in plain words.</>],
@@ -21,10 +22,10 @@ export function Guide({ dialog, sim, paper }: { dialog: RefObject<HTMLDialogElem
   return (
     <dialog ref={dialog} aria-labelledby="guide-title" className="m-auto w-[min(94vw,34rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg backdrop:bg-black/60">
       <h2 id="guide-title" className="text-[17px] font-semibold tracking-tight">How to use Monday</h2>
-      <p className="mt-2 text-[13px] text-fg-2">
+      <p className="mt-2 text-[14px] text-fg-2">
         Monday trades for you. It keeps one offer to buy a little below the market price and one to sell a little above it. When other traders take those offers, it aims to earn the gap. It can also lose money if the price moves against what it holds, which is why your limits exist. While it runs, there is nothing you need to do.
       </p>
-      <dl className="mt-4 grid gap-2.5 border-t border-line pt-4 text-[13px]">
+      <dl className="mt-4 grid gap-2.5 border-t border-line pt-4 text-[14px]">
         {AREAS.map(([k, v]) => (
           <div key={k} className="grid grid-cols-[6.5rem_1fr] gap-3">
             <dt className="font-semibold">{k}</dt>
@@ -32,16 +33,16 @@ export function Guide({ dialog, sim, paper }: { dialog: RefObject<HTMLDialogElem
           </div>
         ))}
       </dl>
-      <p className="mt-4 border-t border-line pt-4 text-[13px] text-fg-2">
+      <p className="mt-4 border-t border-line pt-4 text-[14px] text-fg-2">
         Change your limits under <b>Setup</b>. Your funds stay in your own Perpl account, and you can withdraw there at any time.
       </p>
       {paper && (
-        <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[13px]">
+        <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[14px]">
           <b>Paper trading:</b> prices, the order book and Smart Trader trades are real. Monday&apos;s orders are simulated and never reach Perpl. An offer fills when the real market trades through its price.
         </p>
       )}
       {sim && (
-        <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[13px]">
+        <p className="mt-3 rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-[14px]">
           <b>Try it:</b> press <b>Buy burst</b> in the Smart Traders panel. Within a few seconds Monday pulls its sell offer, and the reason appears under Decisions.
         </p>
       )}

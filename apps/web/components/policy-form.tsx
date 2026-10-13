@@ -234,7 +234,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
             )}
 
             <details className="group border-t border-line pt-4 @2xl:col-span-2" open={bad.maxInventoryUsd || bad.quoteSizeUsd ? true : undefined}>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12.5px] [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] [&::-webkit-details-marker]:hidden">
                 <span className="font-medium">Order sizes</span>
                 <span className="num flex items-center gap-2 text-fg-3">{money(l.maxInventoryUsd)} per market, {money(l.quoteSizeUsd)} per side <CaretDownIcon size={12} className="transition-transform group-open:rotate-180" /></span>
               </summary>
@@ -251,7 +251,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
         </Panel>
 
         <Panel title="Pre-trade summary" aside={value.markets.join(', ')}>
-          <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
+          <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[13px]">
             <Line k="Free for the market maker" v={balance == null ? '-' : money(balance, 2)} />
             <Line k="Margin needed" v={money(need, 2)} tone={!fits ? 'text-ask-fg' : undefined} />
             <Line k="Max loss (stop loss)" v={money(l.maxDailyLossUsd)} />
@@ -262,19 +262,19 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
             <Line k="Participation" v={`${PARTICIPATIONS.find((p) => p.id === value.participation)?.label}, ${PARTICIPATION[value.participation] * 100}%`} />
           </dl>
           {balance != null && !fits && (
-            <p role="alert" className="mx-3 mb-3 text-[12px] text-ask-fg">
+            <p role="alert" className="mx-3 mb-3 text-[13px] text-ask-fg">
               These limits need <span className="num">{money(need, 2)}</span> and <span className="num">{money(balance, 2)}</span> is free.{' '}
               <button type="button" onClick={fit} className="font-medium text-fg underline underline-offset-2 hover:text-accent">Fit to my balance</button>
             </p>
           )}
           {shrunk && (
-            <p role="status" className="num mx-3 mb-3 text-[12px] text-fg-2">
+            <p role="status" className="num mx-3 mb-3 text-[13px] text-fg-2">
               <span className="font-sans">Fitted: </span>quote {money(shrunk.from.quoteSizeUsd)} to {money(shrunk.to.quoteSizeUsd)}, position {money(shrunk.from.maxInventoryUsd)} to {money(shrunk.to.maxInventoryUsd)}, stop loss {money(shrunk.from.maxDailyLossUsd)} to {money(shrunk.to.maxDailyLossUsd)}.
               <span className="font-sans text-fg-3"> Nothing is saved until you save.</span>
             </p>
           )}
           {caps && (
-            <p className="mx-3 mb-3 text-[12px] text-fg-3">
+            <p className="mx-3 mb-3 text-[13px] text-fg-3">
               Real funds: this server caps every policy at <span className="num">{usd(caps.quoteSizeUsd)}</span> per side, <span className="num">{usd(caps.maxInventoryUsd)}</span> per market and a <span className="num">{usd(caps.maxDailyLossUsd)}</span> stop loss.
             </p>
           )}
@@ -292,7 +292,7 @@ export const SEG = 'flex h-9 min-w-0 overflow-hidden rounded-sm border border-li
 /** One option of a segmented control: a real radio or checkbox under the label, so keyboards and screen readers get the native behaviour. */
 export function Chip({ type, name, checked, disabled, boxed, onChange, children }: { type: 'radio' | 'checkbox'; name: string; checked: boolean; disabled?: boolean; boxed?: boolean; onChange: () => void; children: ReactNode }) {
   return (
-    <label className={cx('num flex min-w-0 items-center justify-center px-2 text-[12.5px] has-focus-visible:outline-2 has-focus-visible:-outline-offset-2', boxed ? 'h-8 rounded-sm border border-line-2' : 'flex-1 border-l border-line-2 first:border-l-0', checked ? 'bg-accent/12 font-semibold text-accent' : 'text-fg-2', disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer', !checked && !disabled && 'hover:bg-raised-2 hover:text-fg')}>
+    <label className={cx('num flex min-w-0 items-center justify-center px-2 text-[13px] has-focus-visible:outline-2 has-focus-visible:-outline-offset-2', boxed ? 'h-8 rounded-sm border border-line-2' : 'flex-1 border-l border-line-2 first:border-l-0', checked ? 'bg-accent/12 font-semibold text-accent' : 'text-fg-2', disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer', !checked && !disabled && 'hover:bg-raised-2 hover:text-fg')}>
       <input type={type} name={name} className="sr-only" checked={checked} disabled={disabled} onChange={onChange} />
       {children}
     </label>
@@ -302,9 +302,9 @@ export function Chip({ type, name, checked, disabled, boxed, onChange, children 
 export function Choices({ legend, note, error, wide, grid, children }: { legend: string; note: ReactNode; error?: string; wide?: boolean; grid?: boolean; children: ReactNode }) {
   return (
     <fieldset className={cx('min-w-0', wide && '@2xl:col-span-2')}>
-      <legend className="mb-2 text-[12.5px] font-medium">{legend}</legend>
+      <legend className="mb-2 text-[13px] font-medium">{legend}</legend>
       <div className={grid ? 'grid grid-cols-4 gap-1 sm:grid-cols-6' : SEG}>{children}</div>
-      <p className={cx('mt-2 text-[12px]', error ? 'text-ask-fg' : 'text-fg-3')}>{error ?? note}</p>
+      <p className={cx('mt-2 text-[13px]', error ? 'text-ask-fg' : 'text-fg-3')}>{error ?? note}</p>
     </fieldset>
   );
 }
@@ -313,11 +313,11 @@ export function Row({ id, label, value, note, error, className, children }: { id
   return (
     <div className={cx('flex min-w-0 flex-col gap-2', className)}>
       <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={id} className="text-[12.5px] font-medium">{label}</label>
-        {value && <span className="num text-[13px] font-semibold text-accent">{value}</span>}
+        <label htmlFor={id} className="text-[13px] font-medium">{label}</label>
+        {value && <span className="num text-[14px] font-semibold text-accent">{value}</span>}
       </div>
       {children}
-      <p id={`${id}-note`} className={cx('text-[12px]', error ? 'text-ask-fg' : 'text-fg-3')}>{error ?? note}</p>
+      <p id={`${id}-note`} className={cx('text-[13px]', error ? 'text-ask-fg' : 'text-fg-3')}>{error ?? note}</p>
     </div>
   );
 }
@@ -347,7 +347,7 @@ export function Slider({ id, min, max, step, value, unit, ticks = [], onChange }
         <div className="relative h-4">
           {ticks.map((t) => (
             // The slider itself is the keyboard control; the marks are a shortcut for the pointer.
-            <button key={t} type="button" tabIndex={-1} onClick={() => onChange(t)} style={{ left: `calc(7px + (100% - 14px) * ${at(t)})` }} className={cx('num absolute -translate-x-1/2 text-[11px] leading-4', t === value ? 'font-semibold text-accent' : 'text-fg-3 hover:text-fg')}>
+            <button key={t} type="button" tabIndex={-1} onClick={() => onChange(t)} style={{ left: `calc(7px + (100% - 14px) * ${at(t)})` }} className={cx('num absolute -translate-x-1/2 text-[12px] leading-4', t === value ? 'font-semibold text-accent' : 'text-fg-3 hover:text-fg')}>
               {t}{unit}
             </button>
           ))}
@@ -381,7 +381,7 @@ function TemplateMenu({ current, options, onPick }: { current: string; options: 
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" aria-expanded={open} aria-controls="template-menu" onClick={() => setOpen((o) => !o)} className={cx('flex h-6 items-center gap-1.5 rounded-sm border bg-raised pl-1.5 pr-1 text-[12px] transition-colors', open ? 'border-accent' : 'border-line-2 hover:border-fg-3')}>
+      <button type="button" aria-expanded={open} aria-controls="template-menu" onClick={() => setOpen((o) => !o)} className={cx('flex h-6 items-center gap-1.5 rounded-sm border bg-raised pl-1.5 pr-1 text-[13px] transition-colors', open ? 'border-accent' : 'border-line-2 hover:border-fg-3')}>
         <SlidersHorizontalIcon size={13} className="text-accent" />
         <span className="text-fg-3">Template</span>
         <span className="font-medium text-fg">{current}</span>
@@ -389,15 +389,15 @@ function TemplateMenu({ current, options, onPick }: { current: string; options: 
       </button>
       {open && (
         <div id="template-menu" className="absolute right-0 top-full z-20 mt-1.5 w-[18.5rem] rounded-md border border-line-2 bg-raised p-1 shadow-[0_16px_40px_rgb(0_0_0/0.45)]">
-          <p className="px-2 pb-1.5 pt-1 text-[11.5px] text-fg-3">Fills the form. Nothing changes until you save.</p>
+          <p className="px-2 pb-1.5 pt-1 text-[13px] text-fg-3">Fills the form. Nothing changes until you save.</p>
           {options.map((o) => (
             <button
               key={o.id} type="button" disabled={!!o.short} onClick={() => { onPick(o.id); setOpen(false); }}
               className={cx('grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 rounded-sm px-2 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-40', o.on ? 'bg-accent/12 shadow-[inset_2px_0_0_var(--accent)]' : 'not-disabled:hover:bg-raised-2')}
             >
-              <span className={cx('text-[12.5px] font-medium', o.on ? 'text-accent' : 'text-fg')}>{o.label}</span>
-              <span className="num text-[11.5px] text-fg-2">{o.detail}</span>
-              <span className="text-[11.5px] text-fg-3">{o.short ?? o.note}</span>
+              <span className={cx('text-[13px] font-medium', o.on ? 'text-accent' : 'text-fg')}>{o.label}</span>
+              <span className="num text-[13px] text-fg-2">{o.detail}</span>
+              <span className="text-[13px] text-fg-3">{o.short ?? o.note}</span>
               {o.on ? <CheckIcon size={12} weight="bold" className="justify-self-end text-accent" /> : <span />}
             </button>
           ))}
@@ -410,7 +410,7 @@ function TemplateMenu({ current, options, onPick }: { current: string; options: 
 export function Money({ id, value, invalid, onChange }: { id: string; value: string; invalid: boolean; onChange: (s: string) => void }) {
   return (
     <div className="relative min-w-0">
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[13px] text-fg-3">$</span>
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[14px] text-fg-3">$</span>
       <input id={id} type="number" inputMode="decimal" min={0} step="any" value={value} aria-invalid={invalid || undefined} aria-describedby={`${id}-note`} onChange={(e) => onChange(e.target.value)} className={cx(INPUT, 'num pl-6', invalid && 'border-ask')} />
     </div>
   );

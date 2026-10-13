@@ -42,9 +42,9 @@ export default function MyMondayPage() {
   return (
     <div className="grid gap-1 pt-1">
       {me && cfg.data && (
-        <div className="panel flex-row flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1.5 text-[12px] text-fg-2" aria-label="Account">
+        <div className="panel flex-row flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1.5 text-[13px] text-fg-2" aria-label="Account">
           <span className="font-semibold text-fg">{me.accountId ? `Perpl account #${me.accountId}` : 'No Perpl account yet'}</span>
-          <span className="num">{me.demo ? 'Demo account' : shortAddr(me.wallet)}</span>
+          <span className={me.demo ? undefined : 'font-mono'}>{me.demo ? 'Demo account' : shortAddr(me.wallet)}</span>
           <Tag tone={cfg.data.realFunds ? 'bid' : cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>
             {cfg.data.realFunds ? cfg.data.networkName : cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}
           </Tag>
@@ -52,7 +52,7 @@ export default function MyMondayPage() {
         </div>
       )}
       <div className="panel flex-row flex-wrap items-center justify-between gap-2 px-2.5 py-1.5">
-        <p className="text-[12px] text-fg-2">
+        <p className="text-[13px] text-fg-2">
           <span className="font-semibold text-fg">Your agent&apos;s fills.</span> Net is realised PnL after fees, per dollar traded. Markout is how price moved after a fill: positive means the fill was good for you.
         </p>
         <Segments label="Range" value={days} onChange={setDays} options={RANGES.map((d) => [d, `${d}D`] as const)} />
@@ -91,7 +91,7 @@ function Body({ a }: { a: Analytics }) {
           <div key={k} className="bg-canvas px-3 py-2.5">
             <dt className="label">{k}</dt>
             <dd className={cx('num mt-1.5 text-[19px] font-medium leading-none tracking-tight', t == null ? 'text-fg' : tone(t))}>{v}</dd>
-            <dd className="mt-1.5 text-[11px] text-fg-3">{hint}</dd>
+            <dd className="mt-1.5 text-[12px] text-fg-3">{hint}</dd>
           </div>
         ))}
       </dl>
@@ -99,12 +99,12 @@ function Body({ a }: { a: Analytics }) {
       <div className="grid gap-1 lg:grid-cols-2">
         <Panel title="Markout after a maker fill" aside={<span>average, bps</span>} bodyClassName="p-2.5">
           {a.markouts.every((m) => m.bps == null) ? (
-            <p className="flex h-[200px] items-center justify-center text-[12px] text-fg-3">Markouts are saved five minutes after each maker fill.</p>
+            <p className="flex h-[200px] items-center justify-center text-[13px] text-fg-3">Markouts are saved five minutes after each maker fill.</p>
           ) : <SignedBars
             height={200} label="Average markout after a maker fill, by horizon" format={(v) => fmtBps(v)} lowLabel="1 s after" highLabel="5 min after"
             data={a.markouts.filter((m) => m.bps != null).map((m) => ({ key: m.horizon, v: m.bps!, tip: `${HORIZON[m.horizon]} after the fill: ${fmtBps(m.bps!, 2)} bps over ${m.n} fills` }))}
           />}
-          <p className="mt-2 text-[11.5px] text-fg-3">Falling below zero means takers knew where price was going. Wider quotes or a faster reflex are the fix.</p>
+          <p className="mt-2 text-[13px] text-fg-3">Falling below zero means takers knew where price was going. Wider quotes or a faster reflex are the fix.</p>
         </Panel>
         <Panel title="Net PnL per day" aside={<span>UTC</span>} bodyClassName="p-2.5">
           <SignedBars
@@ -129,7 +129,7 @@ function Buckets({ title, rows, unit = '' }: { title: string; rows: Bucket[]; un
   return (
     <Panel title={title} className="min-w-0">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[340px] text-[11.5px]">
+        <table className="w-full min-w-[340px] text-[13px]">
           <thead>
             <tr className="label h-6 text-left [&>th]:font-normal">
               <th className="pl-2.5" />
@@ -159,14 +159,14 @@ function Heatmap({ cells }: { cells: Analytics['hourly'] }) {
   return (
     <Panel title="When Monday makes or loses money" aside={<span>net bps by hour, UTC</span>}>
       <div className="overflow-x-auto p-2.5">
-        <div className="grid min-w-[640px] grid-cols-[2.5rem_repeat(24,minmax(0,1fr))] gap-px text-[10.5px]">
+        <div className="grid min-w-[640px] grid-cols-[2.5rem_repeat(24,minmax(0,1fr))] gap-px text-[12px]">
           <span />
           {Array.from({ length: 24 }, (_, h) => <span key={h} className="num text-center text-fg-3">{h % 3 === 0 ? String(h).padStart(2, '0') : ''}</span>)}
           {DAYS.map((d, dow) => (
             <Row key={d} day={d} cells={cells.filter((c) => c.dow === dow)} max={max} />
           ))}
         </div>
-        <p className="mt-2 text-[11.5px] text-fg-3">Teal hours made money after fees, vermilion hours lost it, blank hours had no fills. Hover a cell for the numbers.</p>
+        <p className="mt-2 text-[13px] text-fg-3">Teal hours made money after fees, vermilion hours lost it, blank hours had no fills. Hover a cell for the numbers.</p>
       </div>
     </Panel>
   );

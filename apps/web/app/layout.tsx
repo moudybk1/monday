@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
-import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
+import { Geist_Mono, Manrope } from 'next/font/google';
 import './globals.css';
 
-// Sentences in Instrument Sans, every number in IBM Plex Mono (the same character width as the mono it replaced, so
-// price columns keep their alignment).
-const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-text', display: 'swap' });
-const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-figures', display: 'swap' });
+// Text and numbers in Manrope (tall x-height, clear tabular figures at small sizes), chosen by the user on 2026-10-14
+// from a specimen against Geist, Plus Jakarta Sans and Inter. Geist Mono only for hashes and addresses.
+const sans = Manrope({ subsets: ['latin'], variable: '--font-text', display: 'swap' });
+const mono = Geist_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-figures', display: 'swap', preload: false });
 
 const description = 'An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.';
 export const metadata: Metadata = {

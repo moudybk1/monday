@@ -30,7 +30,7 @@ export default function Connect() {
   const found = account.data?.exists;
   return (
     <div className="mx-auto grid max-w-[46rem] gap-6 py-10 md:py-16">
-      <p className="num text-[12px] uppercase tracking-[0.06em] text-fg-3">Connect Perpl, step {found ? 2 : 1} of 2</p>
+      <p className="num text-[13px] font-medium text-fg-3">Connect Perpl, step {found ? 2 : 1} of 2</p>
       {!found ? (
         <AccountStep wallet={me.demo ? null : me.wallet} account={account.data} loading={account.isLoading} error={account.error} retry={() => void account.refetch()} next={() => void account.refetch()} />
       ) : (

@@ -24,7 +24,7 @@ export function SiteHeader() {
         <SiteNav links={LINKS} />
         <div className="flex items-center gap-1 md:justify-self-end">
           <span className="hidden md:contents"><ThemeToggle /></span>
-          <ButtonLink href={at('/app')} size="sm" className="ml-1 h-8 px-3.5 text-[12.5px] md:ml-2">Launch app</ButtonLink>
+          <ButtonLink href={at('/app')} size="sm" className="ml-1 h-9 px-4 text-[14px] md:ml-2">Launch app</ButtonLink>
           <SiteMenu links={LINKS} />
         </div>
       </div>
@@ -45,15 +45,15 @@ export function SiteFooter() {
         <div className="grid gap-12 py-16 md:grid-cols-12">
           <div className="md:col-span-5">
             <Wordmark size={22} />
-            <p className="mt-5 max-w-[38ch] text-[14px] leading-relaxed text-fg-2">
+            <p className="mt-5 max-w-[38ch] text-[15px] leading-relaxed text-fg-2">
               An AI agent that market-makes on Perpl from your own account and steps aside when Smart Traders move. Built for Monad Metropolis.
             </p>
           </div>
           <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 md:col-span-7">
             {COLUMNS.map((c) => (
               <div key={c.title}>
-                <p className="text-[13px] font-semibold">{c.title}</p>
-                <ul className="mt-4 grid gap-2.5 text-[14px]">
+                <p className="text-[14px] font-semibold">{c.title}</p>
+                <ul className="mt-4 grid gap-2.5 text-[15px]">
                   {c.links.map((l) => (
                     <li key={l.label}>
                       {'external' in l
@@ -66,7 +66,7 @@ export function SiteFooter() {
             ))}
           </nav>
         </div>
-        <div className="grid gap-x-12 gap-y-3 border-t border-line py-7 text-[12.5px] leading-relaxed text-fg-3 md:grid-cols-2">
+        <div className="grid gap-x-12 gap-y-3 border-t border-line py-7 text-[13px] leading-relaxed text-fg-3 md:grid-cols-2">
           <p><NetworkNote /></p>
           <p>Market making can lose money: Monday reports results and does not promise profit, and Smart Trader signals can be wrong or late. You keep control: stop, kill, revoke, and withdraw directly on Perpl.</p>
         </div>

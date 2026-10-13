@@ -94,7 +94,7 @@ export default async function Landing() {
                   </p>
                   <div className="enter mt-6 flex flex-wrap gap-2.5" style={{ '--d': '540ms' } as React.CSSProperties}>
                     <Launch />
-                    <ButtonLink href="#how" size="lg" variant="ghost" className="h-12 px-5 text-[15px]">How it works</ButtonLink>
+                    <ButtonLink href="#how" size="lg" variant="ghost" className="h-12 px-5 text-[16px]">How it works</ButtonLink>
                   </div>
                 </div>
               </div>
@@ -133,8 +133,8 @@ export default async function Landing() {
                   <Column label="In">
                     {INPUTS.map(([k, v]) => (
                       <div key={k} className="spot bg-canvas px-5 py-4">
-                        <p className="text-[15px] font-semibold tracking-tight">{k}</p>
-                        <p className="mt-1 text-[13.5px] text-fg-2">{v}</p>
+                        <p className="text-[16px] font-semibold tracking-tight">{k}</p>
+                        <p className="mt-1 text-[14px] text-fg-2">{v}</p>
                       </div>
                     ))}
                   </Column>
@@ -143,9 +143,9 @@ export default async function Landing() {
                       <div key={l.name} className={cx('spot bg-canvas px-5 py-5', l.who === 'Kimi' && 'shadow-[inset_2px_0_0_var(--accent)]')}>
                         <div className="flex items-baseline justify-between gap-3">
                           <p className="text-[19px] font-semibold tracking-tight">{l.name}</p>
-                          <p className="num text-[12px] text-fg-3">{l.when}</p>
+                          <p className="num text-[13px] text-fg-3">{l.when}</p>
                         </div>
-                        <p className="mt-2 max-w-[48ch] text-[14px] text-fg-2">{l.text}</p>
+                        <p className="mt-2 max-w-[48ch] text-[15px] text-fg-2">{l.text}</p>
                         <Tag tone={l.who === 'Kimi' ? 'accent' : 'neutral'} className="mt-3">{l.who}</Tag>
                       </div>
                     ))}
@@ -153,14 +153,14 @@ export default async function Landing() {
                   <Column label="Out">
                     {outputs(onchain).map(([k, v]) => (
                       <div key={k} className="spot bg-canvas px-5 py-5">
-                        <p className="text-[15px] font-semibold tracking-tight">{k}</p>
-                        <p className="mt-1 text-[13.5px] text-fg-2">{v}</p>
+                        <p className="text-[16px] font-semibold tracking-tight">{k}</p>
+                        <p className="mt-1 text-[14px] text-fg-2">{v}</p>
                       </div>
                     ))}
                   </Column>
                 </Spotlight>
               </Reveal>
-              <p className="mt-6 text-[14px] text-fg-2">
+              <p className="mt-6 text-[15px] text-fg-2">
                 Every part in detail, and what Kimi decided on mainnet: <a href={at('/system')} className="font-medium text-fg underline decoration-line-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent">System</a>.
               </p>
             </div>
@@ -181,7 +181,7 @@ export default async function Landing() {
                         <Tag tone={p.funds ? 'accent' : 'neutral'}>{p.can}</Tag>
                       </div>
                       <p className="mt-6 text-[21px] font-semibold tracking-tight">{p.title}</p>
-                      <ul className="mt-3 grid gap-1.5 text-[14px] text-fg-2">
+                      <ul className="mt-3 grid gap-1.5 text-[15px] text-fg-2">
                         {p.lines.map((l) => <li key={l}>{l}</li>)}
                       </ul>
                     </div>
@@ -200,8 +200,8 @@ export default async function Landing() {
                 <dl className="mt-10 grid gap-5">
                   {CONTROLS.map(([k, v]) => (
                     <div key={k} className="border-l-2 border-line-2 pl-4">
-                      <dt className="text-[15px] font-semibold tracking-tight">{k}</dt>
-                      <dd className="mt-1 max-w-[50ch] text-[14px] text-fg-2">{v}</dd>
+                      <dt className="text-[16px] font-semibold tracking-tight">{k}</dt>
+                      <dd className="mt-1 max-w-[50ch] text-[15px] text-fg-2">{v}</dd>
                     </div>
                   ))}
                 </dl>
@@ -223,7 +223,7 @@ export default async function Landing() {
                 <PerplStats />
               </Reveal>
               <div className="mt-8">
-                <ButtonLink href={at('/analytics')} size="lg" variant="ghost" className="h-12 px-5 text-[15px]">Open the analytics</ButtonLink>
+                <ButtonLink href={at('/analytics')} size="lg" variant="ghost" className="h-12 px-5 text-[16px]">Open the analytics</ButtonLink>
               </div>
             </div>
           </section>
@@ -233,7 +233,7 @@ export default async function Landing() {
             <div className={`${WRAP} grid gap-10 py-20 md:py-28 lg:grid-cols-12 lg:gap-12`}>
               <div className="lg:col-span-4">
                 <h2 className={`${H2} max-w-[12ch]`}>Questions before you start</h2>
-                <p className="mt-5 max-w-[34ch] text-[15px] text-fg-2">
+                <p className="mt-5 max-w-[34ch] text-[16px] text-fg-2">
                   Anything not here is on the <a href={at('/system')} className="font-medium text-fg underline decoration-line-2 underline-offset-4 transition-colors hover:text-accent hover:decoration-accent">System</a> page, part by part.
                 </p>
               </div>
@@ -244,7 +244,7 @@ export default async function Landing() {
                       {f.q}
                       <PlusIcon size={18} aria-hidden className="flex-none text-fg-3 transition-transform duration-300 group-open:rotate-45" />
                     </summary>
-                    <p className="max-w-[64ch] pb-6 text-[15px] leading-relaxed text-fg-2">{f.a}</p>
+                    <p className="max-w-[64ch] pb-6 text-[16px] leading-relaxed text-fg-2">{f.a}</p>
                   </details>
                 ))}
               </div>
@@ -271,7 +271,7 @@ export default async function Landing() {
 /** The one call to action: a label and an arrow box that nudges forward on hover. */
 function Launch({ inverse = false }: { inverse?: boolean }) {
   return (
-    <ButtonLink href={at('/app')} size="lg" variant={inverse ? 'inverse' : 'primary'} className="group h-12 gap-5 pl-5 pr-1.5 text-[15px]">
+    <ButtonLink href={at('/app')} size="lg" variant={inverse ? 'inverse' : 'primary'} className="group h-12 gap-5 pl-5 pr-1.5 text-[16px]">
       Launch app
       <span aria-hidden className={cx('grid size-9 place-items-center rounded-xs transition-transform duration-300 ease-out group-hover:translate-x-0.5', inverse ? 'bg-accent text-accent-fg' : 'bg-accent-fg text-accent')}>
         <ArrowRightIcon size={16} weight="bold" />
@@ -284,7 +284,7 @@ function Launch({ inverse = false }: { inverse?: boolean }) {
 function Fact({ n, k, href }: { n: React.ReactNode; k: string; href?: string }) {
   return (
     <div className="flex flex-col-reverse bg-void px-5 py-5 md:px-6 md:py-6">
-      <dt className="mt-3 max-w-[24ch] text-[13.5px] text-fg-2">{href ? <a href={href} className="underline decoration-line-2 underline-offset-4 transition-colors hover:text-fg hover:decoration-accent">{k}</a> : k}</dt>
+      <dt className="mt-3 max-w-[24ch] text-[14px] text-fg-2">{href ? <a href={href} className="underline decoration-line-2 underline-offset-4 transition-colors hover:text-fg hover:decoration-accent">{k}</a> : k}</dt>
       <dd className="num text-[2.25rem] font-medium leading-none tracking-tight md:text-[2.75rem]">{n}</dd>
     </div>
   );
@@ -314,8 +314,8 @@ function Limits({ policy }: { policy: Policy | null }) {
   return (
     <div className="panel rounded-lg">
       <header className="flex h-10 items-center justify-between gap-3 border-b border-line px-4">
-        <h3 className="text-[13px] font-semibold">{policy ? 'The house account\'s limits' : 'The balanced preset'}</h3>
-        <span className="text-[12px] text-fg-3">{policy ? 'as set in Setup' : 'what Setup starts from'}</span>
+        <h3 className="text-[14px] font-semibold">{policy ? 'The house account\'s limits' : 'The balanced preset'}</h3>
+        <span className="text-[13px] text-fg-3">{policy ? 'as set in Setup' : 'what Setup starts from'}</span>
       </header>
       <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-3">
         {rows.map(([k, v]) => (
@@ -325,7 +325,7 @@ function Limits({ policy }: { policy: Policy | null }) {
           </div>
         ))}
       </dl>
-      <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-[12.5px] text-fg-3">
+      <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-[13px] text-fg-3">
         <span>Collateral this needs: <span className="num text-fg">{usd(balanceNeededUsd(p, p.markets.length))}</span>, so the stop loss fires while the margin is intact.</span>
         <span className="num">{p.preset} preset</span>
       </footer>

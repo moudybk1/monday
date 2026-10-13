@@ -76,7 +76,7 @@ function Compare() {
     <div className="grid gap-1 pt-1">
       <section className="panel flex-row flex-wrap items-center gap-2 px-2.5 py-2">
         {ws.map((q, i) => (
-          <span key={q} className="num inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 pl-2 pr-1 text-[12px]">
+          <span key={q} className="num inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 pl-2 pr-1 text-[13px]">
             <span className="size-2 rounded-[1px]" style={{ background: `var(--${TONES[i]})` }} aria-hidden />
             <Link href={`/analytics/wallet/${q}`} className="hover:text-accent">{label(q)}</Link>
             <button type="button" onClick={() => set(ws.filter((x) => x !== q))} aria-label={`Remove ${label(q)}`} className="grid size-5 place-items-center rounded-sm text-fg-3 hover:bg-raised hover:text-fg"><XIcon size={11} /></button>
@@ -86,14 +86,14 @@ function Compare() {
           <form onSubmit={(e) => { e.preventDefault(); add(draft.trim()); setDraft(''); }} className="flex items-center gap-1">
             <label htmlFor="cmp-add" className="sr-only">Add a wallet to the comparison: address or account number</label>
             <input
-              id="cmp-add" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add to comparison: address or account #" className={cx(INPUT, 'num h-7 w-64 text-[12px]')}
+              id="cmp-add" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add to comparison: address or account #" className={cx(INPUT, 'num h-7 w-64 text-[13px]')}
               required pattern="0x[0-9a-fA-F]{40}|[0-9]{1,12}" title="A 0x wallet address (40 hex characters) or a Perpl account number"
             />
             <button type="submit" className="grid size-7 place-items-center rounded-sm border border-line-2 text-fg-2 hover:bg-raised" aria-label="Add"><PlusIcon size={12} /></button>
           </form>
         )}
         {watch.list.filter((q) => !listed(q)).length > 0 && ws.length < MAX && (
-          <span className="flex flex-wrap items-center gap-1 text-[11.5px] text-fg-3">
+          <span className="flex flex-wrap items-center gap-1 text-[13px] text-fg-3">
             Watching:
             {watch.list.filter((q) => !listed(q)).map((q) => (
               <button key={q} type="button" onClick={() => add(q)} className="num rounded-sm border border-accent/40 px-1.5 py-0.5 text-accent hover:bg-accent/12">{label(q)}</button>
@@ -118,7 +118,7 @@ function Compare() {
           )}
           <Panel title="Side by side" className="rise">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-[12px]">
+              <table className="w-full min-w-[640px] text-[13px]">
                 <thead>
                   <tr className="h-8 border-b border-line text-left">
                     <th className="label pl-2.5 font-normal" />
@@ -178,19 +178,19 @@ function Empty({ onAdd }: { onAdd: (qs: string[]) => void }) {
   return (
     <section className="panel rise items-center px-6 py-16 text-center">
       <h2 className="display text-[1.75rem] font-medium">Compare up to four wallets</h2>
-      <p className="mt-3 max-w-[60ch] text-[13px] leading-relaxed text-fg-2">
+      <p className="mt-3 max-w-[60ch] text-[14px] leading-relaxed text-fg-2">
         Type an address or account number in the box above, press Watch on any wallet, or start with this week&apos;s most profitable accounts on Perpl (ranked by 7-day PnL; the table then shows each wallet over its own history).
       </p>
       <div className="mt-7 flex flex-wrap justify-center gap-2">
         {top.isLoading ? Array.from({ length: MAX }, (_, i) => <Skeleton key={i} className="h-9 w-36" />)
           : four.map((t) => (
-            <button key={t.account} type="button" onClick={() => onAdd([String(t.account)])} className="num inline-flex h-9 items-center gap-2.5 rounded-sm border border-line-2 px-3 text-[12px] transition-colors hover:border-accent/60 hover:bg-accent/8">
+            <button key={t.account} type="button" onClick={() => onAdd([String(t.account)])} className="num inline-flex h-9 items-center gap-2.5 rounded-sm border border-line-2 px-3 text-[13px] transition-colors hover:border-accent/60 hover:bg-accent/8">
               #{t.account}<span className={tone(t.netUsd)}>{signedMoney(t.netUsd)}</span>
             </button>
           ))}
       </div>
       {four.length > 1 && <Button className="mt-5" onClick={() => onAdd(four.map((t) => String(t.account)))}>Compare these {four.length}</Button>}
-      {top.isError && <p className="mt-4 text-[12px] text-fg-3">The leaderboard is not reachable right now. Adding a wallet by address still works.</p>}
+      {top.isError && <p className="mt-4 text-[13px] text-fg-3">The leaderboard is not reachable right now. Adding a wallet by address still works.</p>}
     </section>
   );
 }

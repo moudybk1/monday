@@ -45,15 +45,15 @@ export default function WalletPage() {
     <div className="grid gap-1 pt-1">
       <section className="panel min-w-0 rise flex-row flex-wrap items-center justify-between gap-3 px-3 py-2.5" style={style(0)}>
         <div className="min-w-0">
-          <h1 className="num flex items-center gap-2 text-[15px] font-semibold">
-            <span className="truncate">{d.address || `Account #${d.account}`}</span>
+          <h1 className="num flex items-center gap-2 text-[16px] font-semibold">
+            <span className={cx('truncate', d.address && 'font-mono')}>{d.address || `Account #${d.account}`}</span>
             {d.address && (
               <button type="button" onClick={() => void navigator.clipboard?.writeText(d.address)} aria-label="Copy address" className="grid size-6 place-items-center rounded-sm text-fg-3 hover:bg-raised hover:text-fg">
                 <CopyIcon size={13} />
               </button>
             )}
           </h1>
-          <p className="mt-0.5 text-[11.5px] text-fg-3">
+          <p className="mt-0.5 text-[13px] text-fg-3">
             Perpl account <span className="num text-fg-2">#{d.account}</span>
             {d.frozen && <span className="ml-2 text-ask-fg">frozen</span>}
             {p.firstTs && <> · trading since <span className="num">{shortDay(p.firstTs)}</span>, last fill {ago(p.lastTs!)} ago</>}
@@ -64,15 +64,15 @@ export default function WalletPage() {
             </p>
           )}
           {d.rank.volumePct != null && d.rank.pnlPct != null && (
-            <p className="mt-1 text-[11.5px] text-fg-2" title={`Among the ${d.rank.accounts.toLocaleString('en-US')} accounts with a fill in the last ${d.rank.days} days`}>
+            <p className="mt-1 text-[13px] text-fg-2" title={`Among the ${d.rank.accounts.toLocaleString('en-US')} accounts with a fill in the last ${d.rank.days} days`}>
               Last {d.rank.days} days: more volume than <span className="num text-fg">{Math.round((1 - d.rank.volumePct) * 100)}%</span> of traders, a better result than <span className={cx('num', d.rank.pnlPct <= 0.5 ? 'text-bid-fg' : 'text-ask-fg')}>{Math.round((1 - d.rank.pnlPct) * 100)}%</span>.
             </p>
           )}
         </div>
         <div className="flex items-center gap-2">
           <WatchButton wallet={d} network={d.network} />
-          <Link href={`/analytics/compare?w=${id}`} className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-[12px] text-fg-2 hover:bg-raised"><UsersThreeIcon size={12} /> Compare</Link>
-          {d.address && <a href={`${EXPLORER}/address/${d.address}`} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-[12px] text-fg-2 hover:bg-raised">Explorer <ArrowSquareOutIcon size={11} /></a>}
+          <Link href={`/analytics/compare?w=${id}`} className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-[13px] text-fg-2 hover:bg-raised"><UsersThreeIcon size={12} /> Compare</Link>
+          {d.address && <a href={`${EXPLORER}/address/${d.address}`} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-2 px-2.5 text-[13px] text-fg-2 hover:bg-raised">Explorer <ArrowSquareOutIcon size={11} /></a>}
         </div>
       </section>
 
@@ -94,10 +94,10 @@ export default function WalletPage() {
       </dl>
 
       <Panel title="Open positions" aside={<span>live from the Exchange</span>} className="min-w-0 rise">
-        {!d.positions.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">No open positions.</p> : (<>
+        {!d.positions.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">No open positions.</p> : (<>
           <Margin d={d} />
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-[11.5px]">
+            <table className="w-full min-w-[920px] text-[13px]">
               <thead>
                 <tr className="label h-7 text-left [&>th]:font-normal">
                   <th className="pl-2.5">Market</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="pl-3" /><th className="text-right">Entry</th><th className="text-right">Mark</th>
@@ -141,7 +141,7 @@ export default function WalletPage() {
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]" style={style(4)}>
         <Panel title="By market" aside={<span>best first</span>} className="h-[440px]">
-          <table className="w-full text-[11.5px]">
+          <table className="w-full text-[13px]">
             <thead>
               <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal"><th className="pl-2.5">Market</th><th className="text-right">Net PnL</th><th className="text-right">Win</th><th className="pr-2.5 text-right">Volume</th></tr>
             </thead>
@@ -158,9 +158,9 @@ export default function WalletPage() {
           </table>
         </Panel>
         <Panel title="Trade history" aside={<span>newest {d.trades.length}</span>} className="h-[440px]">
-          {!d.trades.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">No indexed fills yet.</p> : (
+          {!d.trades.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">No indexed fills yet.</p> : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-[11.5px]">
+              <table className="w-full min-w-[700px] text-[13px]">
                 <thead>
                   <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal">
                     <th className="pl-2.5">Time UTC</th><th>Market</th><th>Action</th><th className="text-right">Price</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Fee</th><th className="pr-2.5 text-right">Realised</th>
@@ -186,7 +186,7 @@ export default function WalletPage() {
         </Panel>
         <Panel title={d.liquidations.length ? 'Liquidations and flows' : 'Deposits and withdrawals'} aside={<span>{deposits ? `${signedMoney(deposits)} net` : ''}</span>} className="h-[440px]">
           {d.liquidations.length > 0 && (
-            <table className="w-full border-b border-line text-[11.5px]">
+            <table className="w-full border-b border-line text-[13px]">
               <tbody className="num">
                 {d.liquidations.map((l, i) => (
                   <tr key={`${l.ts}${l.sym}${i}`} className="h-[24px] border-t border-line first:border-t-0 bg-ask/5">
@@ -199,8 +199,8 @@ export default function WalletPage() {
               </tbody>
             </table>
           )}
-          {!d.flows.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">None indexed yet.</p> : (
-            <table className="w-full text-[11.5px]">
+          {!d.flows.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">None indexed yet.</p> : (
+            <table className="w-full text-[13px]">
               <tbody className="num">
                 {d.flows.map((f) => (
                   <tr key={`${f.ts}${f.kind}${f.usd}`} className="h-[24px] border-t border-line first:border-t-0">
@@ -214,7 +214,7 @@ export default function WalletPage() {
           )}
         </Panel>
       </div>
-      <p className="px-1 text-[11px] text-fg-3">Realised PnL counts price PnL and funding on reducing fills, minus every fill&apos;s fees, as the Exchange emits them. A win is a reducing fill that made money after fees.</p>
+      <p className="px-1 text-[12px] text-fg-3">Realised PnL counts price PnL and funding on reducing fills, minus every fill&apos;s fees, as the Exchange emits them. A win is a reducing fill that made money after fees.</p>
     </div>
   );
 }
@@ -238,7 +238,7 @@ function Margin({ d }: { d: PxWallet }) {
       {cells.map(([k, v, title, cls]) => (
         <div key={k} className="bg-canvas px-2.5 py-1.5" title={title}>
           <dt className="label">{k}</dt>
-          <dd className={cx('num mt-0.5 text-[13px]', cls)}>{v}</dd>
+          <dd className={cx('num mt-0.5 text-[14px]', cls)}>{v}</dd>
         </div>
       ))}
     </dl>
@@ -276,19 +276,19 @@ function Insights({ w }: { w: PxWallet }) {
     <Panel title="What stands out" aside={<span>from this wallet&apos;s own numbers</span>} bodyClassName="p-2.5" className="h-[340px]">
       <AnimatePresence initial={false}>
         {ex.data?.text && (
-          <motion.div key="explain" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-3 rounded-sm border border-accent/30 bg-accent/6 px-2.5 py-2 text-[12.5px] leading-snug text-fg">
+          <motion.div key="explain" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-3 rounded-sm border border-accent/30 bg-accent/6 px-2.5 py-2 text-[13px] leading-snug text-fg">
             <p>{ex.data.text}</p>
-            <p className="mt-1.5 text-[10.5px] text-fg-3">{ex.data.source === 'facts' ? 'The model is unavailable or did not answer in time, so these are the page\'s own figures, unchanged.' : 'Written by a model from the figures on this page only.'}</p>
+            <p className="mt-1.5 text-[12px] text-fg-3">{ex.data.source === 'facts' ? 'The model is unavailable or did not answer in time, so these are the page\'s own figures, unchanged.' : 'Written by a model from the figures on this page only.'}</p>
           </motion.div>
         )}
       </AnimatePresence>
       {!ex.data?.text && ex.data?.available !== false && (
-        <button type="button" onClick={() => void ex.refetch()} disabled={ex.isFetching} className="mb-3 inline-flex h-7 items-center gap-1.5 rounded-sm border border-accent/45 bg-accent/12 px-2.5 text-[12px] text-accent hover:bg-accent/20 disabled:opacity-70">
+        <button type="button" onClick={() => void ex.refetch()} disabled={ex.isFetching} className="mb-3 inline-flex h-7 items-center gap-1.5 rounded-sm border border-accent/45 bg-accent/12 px-2.5 text-[13px] text-accent hover:bg-accent/20 disabled:opacity-70">
           {ex.isFetching ? <CircleNotchIcon size={12} className="animate-spin" /> : <SparkleIcon size={12} weight="fill" />}{ex.isFetching ? 'Writing…' : 'Explain in plain words'}
         </button>
       )}
-      {ex.isError && <p className="mb-2 text-[11.5px] text-warn">{ex.error instanceof Error ? ex.error.message : 'The model did not answer.'}</p>}
-      <ul className="grid gap-2 text-[12px] leading-snug text-fg-2">
+      {ex.isError && <p className="mb-2 text-[13px] text-warn">{ex.error instanceof Error ? ex.error.message : 'The model did not answer.'}</p>}
+      <ul className="grid gap-2 text-[13px] leading-snug text-fg-2">
         {lines.map((l, i) => {
           const { Icon, cls } = ICON[l.tone];
           return (
@@ -332,7 +332,7 @@ function Calendar({ p }: { p: PxWallet['performance'] }) {
   return (
     <Panel title="Daily PnL" aside={<span>last {WEEKS} weeks, UTC days</span>} bodyClassName="p-2.5">
       <HeatGrid label="Net PnL per day" rows={WEEKDAYS} cols={cols} cells={cells} mode="sign" cell={14} />
-      <p className="mt-2 text-[11.5px] text-fg-3">
+      <p className="mt-2 text-[13px] text-fg-3">
         {active.length ? <>{green} of {active.length} trading days made money.{best && best.netUsd > 0 ? ` Best ${shortDay(best.day)} ${signedMoney(best.netUsd)}` : ''}{worst && worst.netUsd < 0 ? `, worst ${shortDay(worst.day)} ${signedMoney(worst.netUsd)}` : ''}.</> : 'No fills in this period.'}
       </p>
     </Panel>
@@ -347,8 +347,8 @@ function Pair({ label, a, b, fa, fb, tones = ['bid', 'ask'], i }: { label: strin
   const color = (t: Tone) => (t === 'bid' ? 'var(--bid)' : t === 'ask' ? 'var(--ask)' : t === 'accent' ? 'var(--accent)' : 'var(--fg-3)');
   return (
     <div className="grid gap-1">
-      <div className="flex items-baseline justify-between text-[11px]"><span className="text-fg-3">{label}</span></div>
-      <div className="num flex items-center gap-2 text-[11.5px]">
+      <div className="flex items-baseline justify-between text-[12px]"><span className="text-fg-3">{label}</span></div>
+      <div className="num flex items-center gap-2 text-[13px]">
         <span className="w-20 text-fg">{fa}</span>
         <span className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-[1px] bg-raised-2" aria-hidden>
           <motion.span className="h-full" style={{ background: color(tones[0]) }} initial={reduce ? false : { width: 0 }} animate={{ width: `${share * 100}%` }} transition={{ duration: 0.8, ease: EASE, delay: i * 0.05 }} />
@@ -370,7 +370,7 @@ function Edge({ p, deposits, equity, partial }: { p: PxWallet['performance']; de
       <Pair i={3} label="Net long against net short" a={p.sides.long.netUsd} b={p.sides.short.netUsd} fa={signedMoney(p.sides.long.netUsd)} fb={signedMoney(p.sides.short.netUsd)} tones={[p.sides.long.netUsd >= 0 ? 'bid' : 'ask', p.sides.short.netUsd >= 0 ? 'bid' : 'ask']} />
       <Pair i={4} label="Volume made against volume taken" a={p.makerVolumeUsd} b={p.volumeUsd - p.makerVolumeUsd} fa={money(p.makerVolumeUsd)} fb={money(p.volumeUsd - p.makerVolumeUsd)} tones={['accent', 'muted']} />
       <Pair i={5} label="Funding against fees" a={Math.max(0, p.fundingUsd)} b={p.feesUsd + Math.max(0, -p.fundingUsd)} fa={signedMoney(p.fundingUsd)} fb={`-${money(p.feesUsd, true)}`} />
-      <div className="flex items-baseline justify-between border-t border-line pt-2 text-[11.5px]">
+      <div className="flex items-baseline justify-between border-t border-line pt-2 text-[13px]">
         <span className="text-fg-3">Return on net deposits</span>
         <span className={cx('num', roi == null ? 'text-fg-3' : tone(roi))}>{roi == null ? (partial ? 'more than 200 flows, n/a' : 'n/a') : `${roi >= 0 ? '+' : ''}${(roi * 100).toFixed(1)}% on ${money(deposits)}`}</span>
       </div>
@@ -382,7 +382,7 @@ function Edge({ p, deposits, equity, partial }: { p: PxWallet['performance']; de
 function Sides({ p }: { p: PxWallet['performance'] }) {
   const { long, short } = p.sides;
   const row = (name: string, s: typeof long, t: Tone) => (
-    <div key={name} className="grid grid-cols-[3rem_1fr_5rem] items-center gap-2 text-[11.5px]">
+    <div key={name} className="grid grid-cols-[3rem_1fr_5rem] items-center gap-2 text-[13px]">
       <span className="text-fg-2">{name}</span>
       <span className="flex items-center gap-2"><Share value={s.closes ? s.wins / s.closes : 0} tone={t} className="flex-1" /><span className="num w-9 text-fg-3">{s.closes ? `${Math.round((s.wins / s.closes) * 100)}%` : 'n/a'}</span></span>
       <span className={cx('num text-right', tone(s.netUsd))}>{signedMoney(s.netUsd)}</span>

@@ -32,7 +32,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty, maker
   }, [confirm]);
 
   if (!plans.length && !maker) {
-    return <p className="px-2.5 py-4 text-[12px] text-fg-3">{empty ?? <>No plan running. Start an <Link href="/app/setup/trade" className="underline underline-offset-2 hover:text-fg">Agentic Trade</Link> or a <Link href="/app/setup/twap" className="underline underline-offset-2 hover:text-fg">TWAP</Link> in Setup.</>}</p>;
+    return <p className="px-2.5 py-4 text-[13px] text-fg-3">{empty ?? <>No plan running. Start an <Link href="/app/setup/trade" className="underline underline-offset-2 hover:text-fg">Agentic Trade</Link> or a <Link href="/app/setup/twap" className="underline underline-offset-2 hover:text-fg">TWAP</Link> in Setup.</>}</p>;
   }
   const act = async (p: PlanView, close: boolean) => {
     if (close && confirm !== p.id) return setConfirm(p.id);
@@ -49,7 +49,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty, maker
   const venue = sim ? 'the exchange' : 'Perpl';
 
   return (
-    <table className="w-full min-w-[900px] text-[11.5px]">
+    <table className="w-full min-w-[900px] text-[13px]">
       <thead>
         <tr className={HEAD}>
           <th className="pl-2.5">Plan</th><th>Status</th><th>Progress</th><th className="text-right">Entry</th>

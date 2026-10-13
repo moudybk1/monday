@@ -55,13 +55,13 @@ function Shell({ children }: { children: React.ReactNode }) {
         {/* Always say which network the orders go to. A live mainnet is never hidden, even on a phone. */}
         {cfg.data?.realFunds ? (
           <>
-            <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex"><span aria-hidden className="live-dot size-1.5 rounded-full bg-bid" />live</span>
+            <span className="hidden items-center gap-1.5 text-[12px] text-fg-3 md:flex"><span aria-hidden className="live-dot size-1.5 rounded-full bg-bid" />live</span>
             <Tag tone="bid">{cfg.data.networkName}</Tag>
           </>
         ) : cfg.data &&<span><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
         {me.data && (
           <span className="flex h-7 items-center rounded-sm border border-line-2">
-            <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[12px] text-fg-2 sm:inline', !me.data.demo && 'num')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
+            <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[13px] text-fg-2 sm:inline', !me.data.demo && 'font-mono')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
             <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" title="Sign out" className="grid h-full w-7 place-items-center text-fg-2 hover:bg-raised hover:text-fg">
               <SignOutIcon size={14} />
             </button>
@@ -79,7 +79,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             <h1 className="display text-2xl">Connecting to Monday</h1>
             <p className="text-fg-2">Monday&apos;s server is not answering right now. This page keeps trying and connects by itself as soon as it can. Your bot and your funds on Perpl are not affected by this page.</p>
             <Skeleton className="mt-2 h-1.5 w-56" />
-            {process.env.NODE_ENV === 'development' && <p className="mt-4 text-[12.5px] text-fg-3">Still here after a minute? Check that the server is running (<code className="num">npm run dev</code>).</p>}
+            {process.env.NODE_ENV === 'development' && <p className="mt-4 text-[13px] text-fg-3">Still here after a minute? Check that the server is running (<code className="num">npm run dev</code>).</p>}
           </div>
         ) : cfg.data && !cfg.data.sim && cfg.data.chainId !== chain.id ? (
           <div className="py-16">
@@ -146,7 +146,7 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
     <div className="page-in mx-auto grid min-h-[calc(100dvh-3rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
       <div>
         <h1 className="display text-4xl font-medium md:text-5xl">Connect your wallet</h1>
-        <p className="mt-4 max-w-[52ch] text-[15px] text-fg-2">
+        <p className="mt-4 max-w-[52ch] text-[16px] text-fg-2">
           Monday signs you in with a message from your wallet on {chain.name}. It costs no gas and moves no funds. Your wallet key never leaves your browser.
           {realFunds && ' This server trades real funds.'}
         </p>
@@ -154,7 +154,7 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
           <Button size="lg" onClick={session.signIn} disabled={busy || noWallet !== null}>Connect wallet</Button>
           {sim && <Button size="lg" variant="ghost" onClick={demo} disabled={busy}>{busy ? 'Opening' : 'Use a demo account'}</Button>}
         </div>
-        {error && <p role="alert" className="mt-3 text-[12.5px] text-ask-fg">{error}</p>}
+        {error && <p role="alert" className="mt-3 text-[13px] text-ask-fg">{error}</p>}
         {wrongChain && (
           <div className="mt-4">
             <Notice tone="warn">
@@ -166,7 +166,7 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
         )}
         {noWallet && <NoWallet here={noWallet} />}
       </div>
-      <dl className="panel divide-y divide-line text-[13px]">
+      <dl className="panel divide-y divide-line text-[14px]">
         {[
           ['Funds stay put', 'Your collateral stays in your own Perpl account. Monday never holds it.'],
           ['Trade-only key', 'The key you give Monday can place and cancel orders. Perpl never lets an API key withdraw.'],

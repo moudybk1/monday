@@ -36,13 +36,13 @@ export function AccountStep({ wallet, account, loading, error, retry, next }: { 
     return (
       <div>
         <Heading title="You need a Perpl account first">
-          Monday trades inside your own Perpl exchange account, and {wallet ? <span className="num text-fg">{shortAddr(wallet)}</span> : 'this wallet'} does not have one yet. Open it on Perpl with the same wallet and a deposit of at least {usd(account.minDepositUsd)}. Already deposited? Then Perpl holds it under another wallet: sign out and connect that one.
+          Monday trades inside your own Perpl exchange account, and {wallet ? <span className="font-mono text-fg">{shortAddr(wallet)}</span> : 'this wallet'} does not have one yet. Open it on Perpl with the same wallet and a deposit of at least {usd(account.minDepositUsd)}. Already deposited? Then Perpl holds it under another wallet: sign out and connect that one.
         </Heading>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href={account.depositUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-sm bg-fg px-4 text-sm font-medium text-canvas hover:bg-accent hover:text-accent-fg">Open Perpl <ArrowSquareOutIcon size={14} /></a>
           <Button variant="ghost" onClick={retry}>Check now</Button>
         </div>
-        <p className="mt-4 text-[13px] text-fg-3" role="status">Leave this tab open. It checks every few seconds and moves on once the deposit lands.</p>
+        <p className="mt-4 text-[14px] text-fg-3" role="status">Leave this tab open. It checks every few seconds and moves on once the deposit lands.</p>
       </div>
     );
   }
@@ -50,8 +50,8 @@ export function AccountStep({ wallet, account, loading, error, retry, next }: { 
     <div>
       <Heading title="Perpl account found">Monday will trade inside this account. Your collateral stays there the whole time, and you withdraw on Perpl whenever you like.</Heading>
       <dl className="mt-8 grid grid-cols-2 border-y border-line-2">
-        <div className="py-4"><dt className="text-[12px] text-fg-3">Account</dt><dd className="num mt-1 text-xl font-semibold">{account.accountId}</dd></div>
-        <div className="border-l border-line py-4 pl-5"><dt className="text-[12px] text-fg-3">Collateral balance</dt><dd className="num mt-1 text-xl font-semibold">{fmtUsd(account.balanceUsd ?? 0)}</dd></div>
+        <div className="py-4"><dt className="text-[13px] text-fg-3">Account</dt><dd className="num mt-1 text-xl font-semibold">{account.accountId}</dd></div>
+        <div className="border-l border-line py-4 pl-5"><dt className="text-[13px] text-fg-3">Collateral balance</dt><dd className="num mt-1 text-xl font-semibold">{fmtUsd(account.balanceUsd ?? 0)}</dd></div>
       </dl>
       <Button size="lg" className="mt-8" onClick={next}>Continue</Button>
     </div>
@@ -112,7 +112,7 @@ export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: 
         <Field label="API key secret" htmlFor="secret" error={err?.field === 'secret' ? err.message : null} hint="Encrypted with AES-256-GCM on the server. Never sent back to the browser.">
           <input id="secret" type="password" className={cx(INPUT, 'num')} value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" spellCheck={false} required />
         </Field>
-        {err?.field === 'form' && <p role="alert" className="text-[13px] text-ask-fg">{err.message}</p>}
+        {err?.field === 'form' && <p role="alert" className="text-[14px] text-ask-fg">{err.message}</p>}
         <div><Button type="submit" size="lg" disabled={busy || !token || !secret}>{busy ? 'Signing in to Perpl' : 'Validate key'}</Button></div>
       </form>
     </div>
