@@ -164,6 +164,13 @@ function Stats() {
   const total = hist7.data?.total ?? [];
   const dayAgo = total.length > 2 && now - total[0].t >= 20 * 3_600_000 ? total.reduce((b, p) => (Math.abs(p.t - (now - DAY)) < Math.abs(b.t - (now - DAY)) ? p : b)) : null;
   const sampled = (f: (p: PxHistory['total'][number]) => number) => (total.length > 2 ? total.map(f) : []);
+  // The window's own flows, liquidations and new accounts: the last 24 hours from the headline, longer windows summed
+  // over their UTC days, today included, the same days as the volume and fee figures.
+  const winLabel = win === 'all' ? 'all time' : win;
+  const inWindow = (f: (d: PxOverview['daily'][number]) => number | null) => (win === '24h' ? null : o.daily.filter((d) => win === 'all' || d.t >= today - (winDays - 1) * DAY).reduce<number | null>((s, d) => (s == null || f(d) == null ? null : s + f(d)!), 0));
+  const netFlow = win === '24h' ? h.netFlow24hUsd : inWindow((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)));
+  const liquidated = win === '24h' ? h.liquidations24hUsd : inWindow((d) => d.liquidationsUsd);
+  const newAccounts = win === '24h' ? h.newAccounts24h : win === 'all' ? null : inWindow((d) => d.newAccounts);
 
   return (
     <div className="grid gap-1 pt-1">
@@ -183,9 +190,9 @@ function Stats() {
         {/* A fee rate is only meaningful when fees and volume cover the same days. */}
         <Kpi k={`Fees ${win === 'all' ? 'all time' : win}`} hint={hintOf('Fees')} v={fees == null ? 'n/a' : undefined} n={fees} format={(v) => money(v, true)} delta={<Delta now={win === '24h' ? h.fees24hUsd : cur((d) => d.feesUsd)} prev={win === '24h' ? o.daily.find((d) => d.t === today - DAY)?.feesUsd : prev((d) => d.feesUsd)} suffix={vsLabel} />} sub={!feesDone ? PARTIAL : vol ? `${((fees ?? 0) / vol * 100).toFixed(3)}% of volume` : undefined} spark={<Sparkline values={spark((d) => d.feesUsd)} />} />
         <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} hint={hintOf('Traders')} v={traders == null ? 'n/a' : undefined} n={traders} format={int} delta={win === '24h' ? <Delta now={h.activeTraders24h} prev={o.daily.find((d) => d.t === today - DAY)?.traders} suffix="vs yesterday" /> : undefined} sub={tradersDone ? 'accounts that traded' : PARTIAL} spark={<Sparkline values={spark((d) => d.traders)} />} />
-        <Kpi k="Net flow 24h" hint={hintOf('Net flow')} v={h.netFlow24hUsd == null ? 'n/a' : undefined} n={h.netFlow24hUsd} format={signedMoney} t={h.netFlow24hUsd} sub={h.complete['24h'] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
-        <Kpi k="Liquidated 24h" hint={hintOf('Liquidated')} v={h.liquidations24hUsd == null ? 'n/a' : undefined} n={h.liquidations24hUsd} format={money} sub={h.complete['24h'] ? 'closed by the exchange' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
-        <Kpi k="Accounts" n={h.accounts} format={int} delta={h.newAccounts24h != null ? <span className="num text-[12px] text-bid-fg">+{h.newAccounts24h} <span className="font-sans text-fg-3">24h</span></span> : undefined} sub="ever opened" spark={<Sparkline values={spark((d) => d.newAccounts)} />} />
+        <Kpi k={`Net flow ${winLabel}`} hint={hintOf('Net flow')} v={netFlow == null ? 'n/a' : undefined} n={netFlow} format={signedMoney} t={netFlow} sub={h.complete[win] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
+        <Kpi k={`Liquidated ${winLabel}`} hint={hintOf('Liquidated')} v={liquidated == null ? 'n/a' : undefined} n={liquidated} format={money} sub={h.complete[win] ? 'closed by the exchange' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
+        <Kpi k="Accounts" n={h.accounts} format={int} delta={newAccounts != null ? <span className="num text-[12px] text-bid-fg">+{int(newAccounts)} <span className="font-sans text-fg-3">{winLabel}</span></span> : undefined} sub="ever opened" spark={<Sparkline values={spark((d) => d.newAccounts)} />} />
       </dl>
 
       <details className="panel min-w-0 rise px-3 py-2 text-[13px] text-fg-2" style={{ '--i': 1.5 } as React.CSSProperties}>
@@ -195,6 +202,8 @@ function Stats() {
         </dl>
       </details>
 
+      <div className="min-w-0 rise" style={{ '--i': 1.7 } as React.CSSProperties}><Shares o={o} win={win} winDays={winDays} today={today} /></div>
+
       <div className="min-w-0 rise grid gap-1 xl:h-[460px] xl:grid-cols-[minmax(0,1fr)_400px]" style={{ '--i': 2 } as React.CSSProperties}>
         <History o={o} sym={sym} onSym={setSym} win={win} />
         <LiquidationMap risk={risk.data} error={risk.isError} sym={sym === ALL ? undefined : sym} onSym={setSym} />
@@ -203,8 +212,6 @@ function Stats() {
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Spotlight liqs={liqs.data} now={now} /></div>
 
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} risk={risk.data} hist={hist7.data} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
-
-      <div className="min-w-0 rise" style={{ '--i': 3.5 } as React.CSSProperties}><Shares o={o} win={win} winDays={winDays} today={today} /></div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 4 } as React.CSSProperties}>
         <Panel title="Closest to liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
@@ -255,18 +262,12 @@ function History({ o, sym, onSym, win }: { o: PxOverview; sym: string; onSym: (s
 
   const all = o.daily;
   const rows = all.filter((d) => !range || d.t >= Date.now() - range * DAY);
-  const first = all.length - rows.length;
   type Row = (typeof rows)[number];
   // Every calendar day keeps its slot: a day not indexed yet is drawn hatched, never dropped or shown as zero.
   const indexed = (d: Row, v: number | null, tip: string) => d.coverage === 'none'
     ? { key: day(d.t), v: null, tip: `${shortDay(d.t)}: not indexed yet` }
     : { key: day(d.t), v, tip: d.coverage === 'partial' ? `${tip}, partly indexed so far` : tip, faded: d.coverage === 'partial' };
   const marketVol = (d: Row) => (sym === ALL ? d.volumeUsd : d.byMarket[sym] ?? 0);
-  // The seven-day average rides over the bars on the same scale.
-  const avg7 = (f: (d: Row) => number | null) => rows.map((_, i) => {
-    const w = all.slice(Math.max(0, first + i - 6), first + i + 1).map(f).filter((v): v is number => v != null);
-    return w.length >= 4 ? w.reduce((a, b) => a + b, 0) / w.length : null;
-  });
   const topMarkets = useMemo(() => Object.entries(rows.reduce<Record<string, number>>((acc, d) => { for (const [k, v] of Object.entries(d.byMarket)) acc[k] = (acc[k] ?? 0) + v; return acc; }, {})).sort((a, b) => b[1] - a[1]).map(([k]) => k), [rows]);
   const marketsBySize = useMemo(() => [...o.markets].sort((a, b) => b.openInterestUsd - a.openInterestUsd).map((m) => m.sym), [o.markets]);
 
@@ -279,17 +280,17 @@ function History({ o, sym, onSym, win }: { o: PxOverview; sym: string; onSym: (s
   if (metric === 'volume' && stack && sym === ALL) {
     body = <StackedBars height={H} label="Daily volume by market" format={money} series={topMarkets.slice(0, 5)} lowLabel={low} highLabel={high} data={rows.map((d) => ({ key: day(d.t), parts: d.byMarket, tip: `${shortDay(d.t)}: ${money(d.volumeUsd)} traded` }))} />;
   } else if (metric === 'volume') {
-    body = <SignedBars height={H} tone="muted" label={`Daily volume${marketLabel}`} format={money} lowLabel={low} highLabel={high} line={{ values: avg7(marketVol), name: '7-day average' }} data={rows.map((d) => ({ key: day(d.t), v: marketVol(d), tip: `${shortDay(d.t)}: ${money(marketVol(d))} traded${sym === ALL ? `. Top: ${Object.entries(d.byMarket).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([s, v]) => `${s} ${money(v)}`).join(', ')}` : ` on ${sym}`}` }))} />;
+    body = <SignedBars height={H} tone="bid" label={`Daily volume${marketLabel}`} format={money} lowLabel={low} highLabel={high} data={rows.map((d) => ({ key: day(d.t), v: marketVol(d), tip: `${shortDay(d.t)}: ${money(marketVol(d))} traded${sym === ALL ? `. Top: ${Object.entries(d.byMarket).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([s, v]) => `${s} ${money(v)}`).join(', ')}` : ` on ${sym}`}` }))} />;
     note = <>Volume comes from Perpl&apos;s own candles and goes back to launch.</>;
   } else if (metric === 'fees') {
-    body = <SignedBars height={H} tone="muted" label="Daily fees" format={(v) => money(v, true)} lowLabel={low} highLabel={high} line={{ values: avg7((d) => d.feesUsd), name: '7-day average' }} data={rows.map((d) => indexed(d, d.feesUsd, `${shortDay(d.t)}: ${money(d.feesUsd, true)} in fees`))} />;
+    body = <SignedBars height={H} tone="bid" label="Daily fees" format={(v) => money(v, true)} lowLabel={low} highLabel={high} data={rows.map((d) => indexed(d, d.feesUsd, `${shortDay(d.t)}: ${money(d.feesUsd, true)} in fees`))} />;
   } else if (metric === 'traders') {
-    body = <SignedBars height={H} tone="muted" label="Daily active traders" format={int} lowLabel={low} highLabel={high} line={{ values: avg7((d) => d.traders), name: '7-day average' }} data={rows.map((d) => indexed(d, d.traders, `${shortDay(d.t)}: ${d.traders} accounts traded`))} />;
+    body = <SignedBars height={H} tone="bid" label="Daily active traders" format={int} lowLabel={low} highLabel={high} data={rows.map((d) => indexed(d, d.traders, `${shortDay(d.t)}: ${d.traders} accounts traded`))} />;
   } else if (metric === 'fills') {
-    body = <SignedBars height={H} tone="muted" label="Daily fills" format={int} lowLabel={low} highLabel={high} line={{ values: avg7((d) => d.trades), name: '7-day average' }} data={rows.map((d) => indexed(d, d.trades, `${shortDay(d.t)}: ${int(d.trades ?? 0)} fills (maker and taker sides)`))} />;
+    body = <SignedBars height={H} tone="bid" label="Daily fills" format={int} lowLabel={low} highLabel={high} data={rows.map((d) => indexed(d, d.trades, `${shortDay(d.t)}: ${int(d.trades ?? 0)} fills (maker and taker sides)`))} />;
     note = <>A fill counts once for its maker and once for its taker.</>;
   } else if (metric === 'accounts') {
-    body = <SignedBars height={H} tone="muted" label="New accounts per day" format={int} lowLabel={low} highLabel={high} line={{ values: avg7((d) => d.newAccounts), name: '7-day average' }} data={rows.map((d) => indexed(d, d.newAccounts, `${shortDay(d.t)}: ${d.newAccounts} accounts opened`))} />;
+    body = <SignedBars height={H} tone="bid" label="New accounts per day" format={int} lowLabel={low} highLabel={high} data={rows.map((d) => indexed(d, d.newAccounts, `${shortDay(d.t)}: ${d.newAccounts} accounts opened`))} />;
   } else if (metric === 'flows') {
     body = <SignedBars height={H} label="Daily net flows" format={money} lowLabel={low} highLabel={high} data={rows.map((d) => indexed(d, d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0), `${shortDay(d.t)}: ${money(d.depositsUsd)} in, ${money(d.withdrawalsUsd)} out`))} />;
     note = <>Teal days saw more deposited than withdrawn.</>;
