@@ -39,6 +39,12 @@ export function Tag({ tone = 'neutral', children, className }: { tone?: keyof ty
   return <span className={cx('num inline-flex h-[18px] items-center rounded-sm border px-1.5 text-[10.5px] font-medium uppercase leading-none tracking-[0.04em] whitespace-nowrap', TONE[tone], className)}>{children}</span>;
 }
 
+/** A market in a table: a click opens it on the Terminal's chart and book. Plain text where nothing can open it. */
+export function SymButton<S extends string>({ sym, onPick, className, children = sym }: { sym: S; onPick?: (s: S) => void; className?: string; children?: ReactNode }) {
+  if (!onPick) return <span className={className}>{children}</span>;
+  return <button type="button" onClick={() => onPick(sym)} title={`Show ${sym} on the chart`} className={cx('cursor-pointer underline-offset-2 hover:underline', className)}>{children}</button>;
+}
+
 // One quote form of the Spread v2 symbol; the second is this one rotated 180 degrees.
 const SPREAD = 'M36 0H82V20L32 70V80H20C8.9543 80 0 71.0457 0 60V36C0 16.1177 16.1177 0 36 0Z';
 

@@ -53,6 +53,7 @@ export default function Terminal() {
   const [session, setSession] = useState<SessionDraft>({ sl: '', tp: '' });
   const killDialog = useRef<HTMLDialogElement>(null);
   const guide = useRef<HTMLDialogElement>(null);
+  const chartArea = useRef<HTMLDivElement>(null);
   const ready = Boolean(state);
   // Arriving from a plan's setup: its market, on the Plans tab.
   useEffect(() => {
@@ -118,6 +119,15 @@ export default function Terminal() {
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const running = state.plans.filter((p) => p.status !== 'done');
   const status = terminalStatus(state);
+  // A market picked from a table: its chart and book, its URL (?m=) so a reload keeps it, and the chart in view on a phone.
+  const pick = (s: MarketSym) => {
+    setPicked(s);
+    const q = new URLSearchParams(location.search);
+    q.set('m', s);
+    history.replaceState(null, '', `?${q}`);
+    const top = chartArea.current?.getBoundingClientRect().top;
+    if (top != null && (top < 0 || top > innerHeight / 2)) chartArea.current!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const planMarkets = running.map((p) => p.input.sym);
   const openOrders = shown.reduce((n, s) => n + (state.markets[s]?.quotes.bid ? 1 : 0) + (state.markets[s]?.quotes.ask ? 1 : 0), 0);
   const stale = m && m.dataAgeMs > 5_000;
@@ -132,7 +142,7 @@ export default function Terminal() {
       {/* Market strip */}
       {/* Visible overflow so the market picker can drop below the strip. */}
       <div className="panel flex-none flex-row flex-wrap items-stretch overflow-visible">
-        <MarketPicker state={state} sym={sym} onPick={setPicked} />
+        <MarketPicker state={state} sym={sym} onPick={pick} />
         {m && <Ticker m={m} />}
         {m && <Stats m={m} quoting={quoting} blend={quotingFor(state.policy).cfg.blend} />}
         <div className="order-3 ml-auto flex items-center gap-2 px-2.5 py-2 xl:order-4">
@@ -182,7 +192,7 @@ export default function Terminal() {
         // Phone: agent, chart and blotter, book, smart money. Tablet: agent across the top, then book and smart money side
         // by side. Desktop: three columns, the agent and smart money stacked in the third.
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_300px_360px] xl:grid-rows-[auto_minmax(0,1fr)]">
-          <div className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-span-2">
+          <div ref={chartArea} className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-span-2">
             <PriceChart sym={sym} m={m} fills={state.fills} now={now} levels={planLevels(running.find((p) => p.input.sym === sym))} className="h-[360px] flex-none xl:h-auto xl:flex-[3]" />
 
             <section className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
@@ -205,11 +215,11 @@ export default function Terminal() {
                 </span>
               </header>
               <div className={cx('scroll min-h-0 flex-1', tab === 'equity' && 'p-1.5')}>
-                {tab === 'orders' && <OpenOrders state={state} />}
-                {tab === 'positions' && <Positions state={state} />}
-                {tab === 'plans' && <PlanList plans={state.plans} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} />}
-                {tab === 'fills' && <Fills state={state} />}
-                {tab === 'decisions' && <DecisionLog decisions={state.decisions} explorerUrl={cfg?.explorerUrl} chainOn={state.health.chain} />}
+                {tab === 'orders' && <OpenOrders state={state} onPick={pick} />}
+                {tab === 'positions' && <Positions state={state} onPick={pick} />}
+                {tab === 'plans' && <PlanList plans={state.plans} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick} />}
+                {tab === 'fills' && <Fills state={state} onPick={pick} />}
+                {tab === 'decisions' && <DecisionLog decisions={state.decisions} explorerUrl={cfg?.explorerUrl} chainOn={state.health.chain} onPick={pick} />}
                 {tab === 'model' && <Model m={m} quoting={quoting} policy={state.policy} />}
                 {tab === 'equity' && (
                   <LineChart
@@ -242,7 +252,7 @@ export default function Terminal() {
           <div className="order-first md:col-span-2 xl:order-none xl:col-span-1 xl:col-start-3 xl:row-start-1">
             {state.policy.markets.length ? (
               <AgentConsole
-                state={state} sym={sym} onPick={setPicked} session={session} onSession={setSession} busy={busy !== null}
+                state={state} sym={sym} onPick={pick} session={session} onSession={setSession} busy={busy !== null}
                 onStart={start} onPause={() => act('/agent/pause')} onKill={() => killDialog.current?.showModal()}
               />
             ) : (

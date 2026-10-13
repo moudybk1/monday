@@ -2,10 +2,10 @@
 
 import { ArrowUpRightIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
-import type { Decision } from '@monday/core';
+import type { Decision, MarketSym } from '@monday/core';
 import { fmtTime } from '@/lib/format';
 import { at } from '@/lib/hosts';
-import { Tag, cx } from './ui';
+import { SymButton, Tag, cx } from './ui';
 
 const SOURCE: Record<Decision['source'], string> = { governor: 'Governor', fallback: 'Rules', reflex: 'Reflex', kill: 'Kill' };
 
@@ -36,7 +36,7 @@ export function Chain({ d, explorerUrl }: { d: Pick<Decision, 'txHash' | 'anchor
  * Decision log (FR-DSH-4): what changed, why, and where to verify it.
  * Newest first. A reflex or a kill gets the alert colour on its edge; everything else stays grey.
  */
-export function DecisionLog({ decisions, explorerUrl, chainOn, limit = 40 }: { decisions: Decision[]; explorerUrl?: string; chainOn?: boolean; limit?: number }) {
+export function DecisionLog({ decisions, explorerUrl, chainOn, limit = 40, onPick }: { decisions: Decision[]; explorerUrl?: string; chainOn?: boolean; limit?: number; onPick?: (s: MarketSym) => void }) {
   if (decisions.length === 0) {
     return <p className="px-2.5 py-4 text-[12px] text-fg-3">No decisions yet. The governor writes its first within seconds of starting, then every 15 minutes or when flow changes.</p>;
   }
@@ -48,7 +48,7 @@ export function DecisionLog({ decisions, explorerUrl, chainOn, limit = 40 }: { d
           <li key={d.id} className={cx('rise grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-2 border-b border-line py-1.5 pl-2 pr-2.5 sm:grid-cols-[4.25rem_9.5rem_minmax(0,1fr)_auto]', urgent ? 'border-l-2 border-l-ask' : 'border-l-2 border-l-transparent')}>
             <span className="num pt-px text-[11.5px] text-fg-3">{fmtTime(d.at)}</span>
             <span className="flex flex-wrap items-start gap-1">
-              <Tag>{d.market}</Tag>
+              <SymButton sym={d.market} onPick={onPick}><Tag>{d.market}</Tag></SymButton>
               <Tag tone={urgent ? 'ask' : 'neutral'}>{SOURCE[d.source]}</Tag>
               {(d.source === 'governor' || d.source === 'fallback') && <Tag tone={d.regime === 'storm' ? 'accent' : 'neutral'}>{d.regime}</Tag>}
             </span>
