@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_CONFIG, MARKETS, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
-import { AgentConsole, sessionUsd, terminalStatus, type SessionDraft } from '@/components/agent';
+import { AgentConsole, terminalStatus } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
 import { Diverging, LineChart } from '@/components/charts';
@@ -52,7 +52,6 @@ export default function Terminal() {
   const [side, setSide] = useState<'book' | 'trades'>('book');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [session, setSession] = useState<SessionDraft>({ sl: '', tp: '' });
   const killDialog = useRef<HTMLDialogElement>(null);
   const blotter = useRef<HTMLElement>(null);
   const guide = useRef<HTMLDialogElement>(null);
@@ -116,12 +115,6 @@ export default function Terminal() {
   const showPlans = () => {
     setTab('plans');
     blotter.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // on a phone the blotter sits below
-  };
-  const start = () => {
-    const stopLossUsd = sessionUsd(session.sl), takeProfitUsd = sessionUsd(session.tp);
-    // A mistyped limit must not quietly become "no limit".
-    if (Number.isNaN(stopLossUsd) || Number.isNaN(takeProfitUsd)) return setError('Session stop loss and take profit must be positive amounts, or empty for no limit.');
-    return act('/agent/start', { stopLossUsd, takeProfitUsd });
   };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const running = state.plans.filter((p) => p.status !== 'done');
@@ -188,7 +181,7 @@ export default function Terminal() {
         {state.status === 'paused' && state.closing === 'flatten' && <Notice tone="warn">Take profit reached, but Perpl has not confirmed the position is closed. Monday retries every 10 seconds; you can close it on Perpl too.</Notice>}
         {/* Stop means stop: nothing watches a position left open, so say so while one is. */}
         {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0 && !planMarkets.includes(x.sym)) && (
-          <Notice tone="warn">Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl, use Kill and flatten, or start Monday again.</Notice>
+          <Notice tone="warn" action={<Button size="xs" variant="danger" onClick={() => killDialog.current?.showModal()}>Kill and flatten</Button>}>Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl or with Kill and flatten.</Notice>
         )}
         {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes pulled. Monday resumes on its own when data returns.</Notice>}
         {/* The newest warning from the agent itself: loss-limit approach, rate limits, blocked orders, disconnects. */}
@@ -281,8 +274,7 @@ export default function Terminal() {
           <div className="order-first md:col-span-2 xl:order-none xl:col-span-1 xl:col-start-3 xl:row-start-1">
             {state.policy.markets.length ? (
               <AgentConsole
-                state={state} sym={sym} onPick={pick} session={session} onSession={setSession} busy={busy !== null}
-                onStart={start} onKill={() => killDialog.current?.showModal()} onShowPlans={showPlans}
+                state={state} sym={sym} onPick={pick} onShowPlans={showPlans}
               />
             ) : (
               <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} />

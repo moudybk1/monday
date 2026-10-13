@@ -1,18 +1,10 @@
 'use client';
 
-import { PlayIcon, XCircleIcon } from '@phosphor-icons/react';
 import { KIND_LABEL, planPnl, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
 import { fmtBps, fmtPrice, fmtSigned, fmtTime, fmtUsd } from '@/lib/format';
 import { Diverging } from './charts';
 import { Button, ButtonLink, Tag, cx } from './ui';
 
-/**
- * Session stop loss and take profit as typed. Empty means none; anything that is not a positive amount blocks Start.
- * Text inputs, not number ones: a number input reports unparseable text ("$50", "1,000") as empty, which would read as "none".
- */
-export type SessionDraft = { sl: string; tp: string };
-/** A session limit as typed: null for none, the amount, or NaN for a mistake (a negative or non-number) that must not pass silently. */
-export const sessionUsd = (s: string): number | null => (s.trim() === '' ? null : Number(s) > 0 ? Number(s) : NaN);
 export const STATUS = { quoting: 'Quoting', paused: 'Stopped', killed: 'Killed', idle: 'Not started' } as const;
 /** The agent's state in one word, with cleanup Perpl has not confirmed yet taking precedence. */
 export const statusText = (s: DashboardState) => (s.closing === 'flatten' ? 'Closing' : s.closing === 'cancel' ? 'Cancelling' : STATUS[s.status]);
@@ -40,15 +32,10 @@ export function quoteStanding(m: MarketState, side: Side): { label: string; good
  * The column where a manual terminal keeps its order ticket. Monday trades for you, so this is the agent: the money,
  * the controls, and one row per market showing where its quotes stand in line and what they have earned.
  */
-export function AgentConsole({ state, sym, onPick, session, onSession, busy, onStart, onKill, onShowPlans }: {
+export function AgentConsole({ state, sym, onPick, onShowPlans }: {
   state: DashboardState;
   sym: MarketSym;
   onPick: (s: MarketSym) => void;
-  session: SessionDraft;
-  onSession: (s: SessionDraft) => void;
-  busy: boolean;
-  onStart: () => void;
-  onKill: () => void;
   onShowPlans: () => void;
 }) {
   const { pnl, policy } = state;
@@ -60,7 +47,6 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
   const used = Math.min(100, Math.max(0, pnl.lossLimitUsedPct));
   const m = state.markets[sym];
   const cell = 'min-w-0 bg-canvas px-2.5 py-2';
-  const invalid = { sl: Number.isNaN(sessionUsd(session.sl)), tp: Number.isNaN(sessionUsd(session.tp)) };
 
   return (
     <section className="panel flex-none" aria-label="Agent">
@@ -117,33 +103,11 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
             <span>Quoting. Stop it under Plans.</span>
             <Button size="xs" variant="ghost" onClick={onShowPlans}>Open Plans</Button>
           </div>
-        ) :  state.status === 'killed' && !state.closing ? (
-          // A kill ends everything: the market maker starts again from Setup, like any other mode.
-          <ButtonLink href="/app/setup" size="sm" className="w-full">Set up again</ButtonLink>
         ) : (
-          <div className="grid gap-1.5">
-            <div className="grid grid-cols-2 gap-1.5">
-              {([['sl', 'Session stop loss', 'Kill and flatten once this session loses this much. Empty: only the daily limit.'], ['tp', 'Take profit', 'Stop and close the position once this session makes this much. Empty: no target.']] as const).map(([k, label, help]) => (
-                <label key={k} htmlFor={`session-${k}`} className="grid gap-1" title={help}>
-                  <span className="label">{label}</span>
-                  <span className="flex items-center gap-1 text-[12px] text-fg-3">
-                    $<input
-                      id={`session-${k}`} type="text" inputMode="decimal" autoComplete="off" placeholder="none" value={session[k]}
-                      onChange={(e) => onSession({ ...session, [k]: e.target.value })} aria-invalid={invalid[k] || undefined} aria-describedby={invalid[k] ? 'session-error' : undefined}
-                      className={cx('num h-7 w-full min-w-0 rounded-sm border bg-raised px-1.5 text-[12px] text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none', invalid[k] ? 'border-ask' : 'border-line-2')}
-                    />
-                  </span>
-                </label>
-              ))}
-            </div>
-            {(invalid.sl || invalid.tp) && <p id="session-error" role="alert" className="text-[11px] leading-snug text-ask-fg">Enter a positive amount, or leave the field empty for no limit.</p>}
-            <div className="flex gap-1.5">
-              {/* A kill still closing positions cannot be resumed over: the position would stay open with nobody closing it. */}
-              <Button size="sm" className="flex-1" onClick={onStart} disabled={busy || invalid.sl || invalid.tp || state.closing === 'flatten'} title={state.closing === 'flatten' ? 'Wait until Perpl confirms the positions are closed.' : undefined}>
-                <PlayIcon size={12} weight="fill" /> {state.closing === 'flatten' ? 'Closing positions' : state.status === 'idle' ? 'Start quoting' : 'Start again'}
-              </Button>
-              {state.status === 'paused' && <Button size="sm" variant="danger" onClick={onKill} disabled={busy}><XCircleIcon size={12} weight="fill" /> Kill and flatten</Button>}
-            </div>
+          // Stopped, killed or never started: the market maker starts again from Setup, like any other mode.
+          <div className="flex items-center justify-between gap-2 text-[11.5px] text-fg-3">
+            <span>{state.closing ? 'Closing: waiting for Perpl to confirm.' : `${statusText(state)}. Start it from Setup.`}</span>
+            {!state.closing && <ButtonLink href="/app/setup" size="xs" variant="ghost">Set up again</ButtonLink>}
           </div>
         )}
       </div>
