@@ -143,7 +143,7 @@ export function AskChat() {
 
             <div className="flex-none border-t border-line p-2">
               {!busy && (
-                <div className="no-bar mb-2 flex gap-1 overflow-x-auto">
+                <div className="mb-2 flex flex-wrap gap-1">
                   {suggestions(path).map((s) => (
                     <button key={s} type="button" onClick={() => void send(s)} className="flex-none rounded-full border border-line-2 px-2.5 py-1 text-[13px] whitespace-nowrap text-fg-2 hover:border-accent/45 hover:text-fg">{s}</button>
                   ))}

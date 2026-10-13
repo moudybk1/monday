@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: { default: 'Monday - AI trading terminal for Perpl', template: '%s - Monday' },
   description,
   openGraph: { type: 'website', siteName: 'Monday', title: 'Monday - AI trading terminal for Perpl', description },
-  twitter: { card: 'summary', title: 'Monday - AI trading terminal for Perpl', description },
+  twitter: { card: 'summary_large_image', title: 'Monday - AI trading terminal for Perpl', description },
 };
 
 // A terminal is dark unless the user chose otherwise. Set before first paint so the page never flashes.

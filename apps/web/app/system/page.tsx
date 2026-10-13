@@ -7,7 +7,7 @@ import { at } from '@/lib/hosts';
 
 export const metadata: Metadata = {
   title: 'System',
-  description: 'How Monday works: the engine, the reflexes, Kimi as the risk governor, the risk controls, the Perpl analytics and Ask Monday.',
+  description: 'How Monday works: the engine, the reflexes, Kimi as the risk governor, the risk controls, Agentic Trade and TWAP, the Perpl analytics and Ask Monday.',
 };
 
 // One centred column pair: the contents on the left, the article beside it, nothing left empty on the right.
@@ -22,10 +22,11 @@ const TOC = [
   { id: 'reflexes', label: 'Reflexes' },
   { id: 'kimi', label: 'Kimi, the risk governor' },
   { id: 'risk', label: 'Risk controls' },
+  { id: 'plans', label: 'Agentic Trade and TWAP' },
   { id: 'analytics', label: 'Perpl analytics' },
   { id: 'ask', label: 'Ask Monday' },
   { id: 'infrastructure', label: 'Infrastructure' },
-  { id: 'limits', label: 'Honest limits' },
+  { id: 'limits', label: 'Limits' },
 ];
 
 // Measured on the live decision log (Monad mainnet, kimi-k3, 10 Oct 18:59 to 12 Oct 06:17 UTC). Fixed here on purpose:
@@ -99,7 +100,7 @@ export default function SystemPage() {
                 Funds never leave the user&apos;s Perpl account. Monday trades through a Perpl API key with trade scope, and Perpl never lets any API key withdraw or transfer funds. The key is stored encrypted on the server. Users sign in with their wallet (a signed message, no gas, no funds moved).
               </p>
               <p className={P}>
-                <b className="text-fg">Stop</b> cancels Monday&apos;s orders and leaves positions and the user&apos;s own orders alone. <b className="text-fg">Kill</b> cancels every order on the account and closes every position with reduce-only market orders, retrying until Perpl confirms. Revoking the key on Perpl cuts Monday off at once.
+                <b className="text-fg">Stop</b> cancels the market maker&apos;s orders and leaves positions, the user&apos;s own orders and any running Agentic Trade or TWAP alone. <b className="text-fg">Kill</b> cancels every order on the account and closes every position with reduce-only market orders, retrying until Perpl confirms; it ends the plans too. Revoking the key on Perpl cuts Monday off at once.
               </p>
             </Section>
 
@@ -195,6 +196,32 @@ export default function SystemPage() {
                 <Item k="Margin floor">Equity below what the limits need stops Monday before Perpl&apos;s maintenance margin.</Item>
                 <Item k="Bad data">Quotes are pulled when market data is five seconds old; at 30 seconds Monday stops and closes positions. Three failed orders in a row stop it too.</Item>
                 <Item k="Restarts">Monday picks its own resting quotes back up and leaves the user&apos;s orders alone; any cancel or close it owes is retried until Perpl confirms.</Item>
+                <Item k="Plans">An Agentic Trade or TWAP position always has its stop loss resting on Perpl itself, so it holds even if Monday&apos;s server is down. The daily stop loss and a Kill cover the plans&apos; positions as well.</Item>
+              </ul>
+            </Section>
+
+            <Section id="plans" title="Agentic Trade and TWAP">
+              <p className={P}>
+                Two more ways to trade from the same account, run by code from start to finish. Each takes a margin and a leverage, trades one market of its own (never one the market maker quotes), and can run while the market maker is stopped. Before either starts, Kimi sums up the daily, 4-hour and hourly charts in a few sentences; the entries and exits are the code&apos;s.
+              </p>
+              <h3 className={H3}>Agentic Trade</h3>
+              <p className={P}>
+                A scalping session on a long or short bias. Monday reads the daily and 4-hour trend (the close against a sloping 20-bar average) and re-reads it every 15 minutes. When both agree with the bias it follows the trend, entering on a pullback to the 20 EMA that has resumed; when both run against it, it fades the move, entering when a stretched RSI turns; when they disagree, it waits.
+              </p>
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
+                <Item k="Entry">A maker limit at the trigger bar&apos;s close, on a 1, 5 or 15 minute chart. Unfilled after two bars, it is cancelled and the next setup is awaited.</Item>
+                <Item k="Exits">From the fill, a stop one bar&apos;s usual range away (never past 80% of the way to liquidation) rests on Perpl as a trigger, and a target of one and a half ranges (one, against the trend) rests as a maker order. A scalp still open after 12 bars is closed.</Item>
+                <Item k="Sizing">Margin times leverage, cut so that one stop can lose at most what is left of the session&apos;s loss limit. A target that does not clear three times the round trip&apos;s fees is skipped.</Item>
+                <Item k="Session">Ends at a loss or a profit the user set as a share of the margin, or when its time (up to a week) is up. Stop takes no new scalp and lets the open one reach its exit; Close closes it at once.</Item>
+              </ul>
+              <h3 className={H3}>TWAP</h3>
+              <p className={P}>
+                One position built in slices over 5 minutes to 24 hours, so a large order does not move a thin book. Passive sends maker orders only; balanced starts each slice as a maker and takes what is left at the slice&apos;s end; aggressive takes every slice. Slice times and sizes are jittered a little so the pattern is not exact, and a maker slice follows the best price up to three times before it is left where it is.
+              </p>
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
+                <Item k="Limit price">A price the slices must not pass: a slice beyond it is skipped, never forced.</Item>
+                <Item k="Protection">The stop loss, and the take profit if one is set, are priced from the mark when the TWAP started and rest on Perpl as triggers from the first fill, sized to the whole position so later fills are covered.</Item>
+                <Item k="After the build">The position is held until its stop, its target or the user closes it. Stop ends the building and keeps the protection; Close closes the position at market.</Item>
               </ul>
             </Section>
 
@@ -204,6 +231,7 @@ export default function SystemPage() {
               </p>
               <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Protocol">Volume, open interest, TVL, fees and traders over 24 hours, 7 and 30 days and all time; daily series; collateral flows; funding and long/short per market; a liquidation map and the positions closest to it; who makes money; when Perpl trades.</Item>
+                <Item k="Flow">What Perpl&apos;s top traders, consistent winners and whales hold in each market and how they moved over the last hour, six hours and day, with a live tape of their orders.</Item>
                 <Item k="Wallets">Search by address or account: equity, open positions with liquidation price, trade history with realised PnL, win rate, profit factor, drawdown, streaks, hold time, best and worst markets, rank. Compare up to four side by side.</Item>
                 <Item k="Screener">Presets for winners, streaks, whales, makers, takers, liquidated and losers, thresholds, a watchlist, and leaderboards for 1, 7, 30 and 90 days.</Item>
               </ul>
@@ -221,11 +249,12 @@ export default function SystemPage() {
               </p>
             </Section>
 
-            <Section id="limits" title="Honest limits">
+            <Section id="limits" title="Limits">
               <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
-                <Item k="Profit is not promised">Market making at retail size and full maker fees is hard on Perpl, and earlier versions of Monday lost small amounts. The exit rules of 12 October have done better so far, on a day of data.</Item>
+                <Item k="Profit is not promised">Market making at retail size and full maker fees is hard on Perpl, and earlier versions of Monday lost small amounts. The exit rules in force since 12 October have done better, on a few days of data.</Item>
                 <Item k="Kimi manages risk">It decides how carefully to quote. It does not create an edge on its own, and the record above covers two days.</Item>
                 <Item k="The signal defends">The study finds Smart Trader flow leading the next move only on SOL so far, and weakly, so elsewhere Monday uses it to step aside, not to lean.</Item>
+                <Item k="Scalps and TWAPs">Their triggers are plain chart rules that have not shown an edge of their own in replay; they work the user&apos;s view carefully, they do not supply one.</Item>
                 <Item k="Without Kimi">If Kimi is unavailable the rules set every parameter, and the record says so.</Item>
               </ul>
               <div className="mt-10 flex flex-wrap gap-2.5">
