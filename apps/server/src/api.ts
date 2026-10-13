@@ -15,6 +15,7 @@ import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain
 import { config } from './config';
 import { db, seal, upsertUser } from './db';
 import { llmEnabled } from './governor';
+import { marketInsight } from './insight';
 import { PlanError, readMarket } from './plans';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
@@ -459,6 +460,12 @@ export async function buildApi(deps: ApiDeps) {
     need(req);
     const { sym } = z.object({ sym: z.enum(MARKETS) }).parse(req.query);
     return readMarket(deps.driver.feed, sym);
+  });
+  // D1, H4 and H1 with a few sentences from the model: the first step of the Agentic Trade and TWAP setup.
+  app.get('/api/plans/insight', async (req) => {
+    need(req);
+    const { sym } = z.object({ sym: z.enum(MARKETS) }).parse(req.query);
+    return marketInsight(deps.driver.feed, sym);
   });
   app.post('/api/plans', async (req) => {
     if (!config.plansLive) throw new HttpError(409, 'plans_off', 'Agentic Trade and TWAP are not live on real funds yet.');

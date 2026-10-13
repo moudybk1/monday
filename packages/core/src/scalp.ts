@@ -3,6 +3,7 @@
 
 import { RSI0, ema, rsiStep } from './indicators';
 import type { Bias } from './plan';
+import type { MarketSym } from './types';
 
 export interface Bar { t: number; o: number; h: number; l: number; c: number; v?: number }
 export type Trend = 'bullish' | 'bearish' | 'neutral';
@@ -14,6 +15,7 @@ export type ScalpFrame = '1m' | '5m' | '15m';
 export const FRAME_SEC: Record<ScalpFrame, number> = { '1m': 60, '5m': 300, '15m': 900 };
 export const D1_SEC = 86_400;
 export const H4_SEC = 14_400;
+export const H1_SEC = 3_600;
 /** Bars each read asks for: enough for a 20-period EMA and its slope, with room to spare. */
 export const READ_BARS = 60;
 
@@ -64,6 +66,26 @@ export function trendOf(bars: Bar[]): Trend {
 
 /** The market as the scalper reads it: D1 and H4 must agree, or it waits. */
 export const marketRead = (d1: Trend, h4: Trend): MarketRead => (d1 === h4 && d1 !== 'neutral' ? d1 : 'mixed');
+
+/**
+ * The setup pages' market read before a trade is set up: D1, H4 and H1 by the same trend rule, and a few sentences on
+ * them from the model (`source: 'model'`) or from a rule when the model is off, late or over its budget.
+ */
+export interface MarketInsight {
+  sym: MarketSym;
+  at: number;
+  price: number;
+  d1: Trend;
+  h4: Trend;
+  h1: Trend;
+  /** D1 and H4 together, as the scalper reads them. */
+  market: MarketRead;
+  /** H1 points the same way as D1 and H4. */
+  aligned: boolean;
+  summary: string;
+  source: 'model' | 'rules';
+  model: string | null;
+}
 
 /** Follow when the user's side is the market's, counter when it is against it; a mixed market has no mode. */
 export const scalpMode = (bias: Bias, market: MarketRead): ScalpMode | null =>

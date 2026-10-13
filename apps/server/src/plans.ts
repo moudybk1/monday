@@ -115,7 +115,7 @@ const fresh = (): PlanState => ({
 // ---- candles, shared by every account on a feed: one request per market and width, however many plans read it ----
 const barCache = new WeakMap<MarketFeed, Map<string, { at: number; data: Promise<Bar[]> }>>();
 /** The last `n` closed bars of `resSec` width. Fresh for `ttlMs`; a feed that only keeps minutes is rolled up. */
-function barsOf(feed: MarketFeed, sym: MarketSym, resSec: number, n: number, ttlMs: number): Promise<Bar[]> {
+export function barsOf(feed: MarketFeed, sym: MarketSym, resSec: number, n: number, ttlMs: number): Promise<Bar[]> {
   let cache = barCache.get(feed);
   if (!cache) barCache.set(feed, (cache = new Map()));
   const key = `${sym}:${resSec}`;
