@@ -20,6 +20,20 @@ const nextConfig: NextConfig = {
     resolveAlias: { '@coinbase/cdp-sdk': './lib/cdp-sdk-stub.js' },
   },
   outputFileTracingRoot: root,
+  // Browser hardening on every page. No page may be framed (a trading screen under someone else's overlay is a
+  // clickjacking target). A full content security policy is still to come: it needs a report-only trial with the wallets.
+  async headers() {
+    return [{
+      source: '/:path*',
+      headers: [
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+        { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        { key: 'X-Frame-Options', value: 'DENY' },
+        { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+        { key: 'Strict-Transport-Security', value: 'max-age=31536000' }, // per host; browsers ignore it over plain http (local dev)
+      ],
+    }];
+  },
   // The evidence page is gone (2026-10-12); links to it, shared before, land on the home page.
   async redirects() {
     return [{ source: '/evidence', destination: '/', permanent: false }];

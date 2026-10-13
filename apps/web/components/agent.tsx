@@ -93,7 +93,7 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
           {!live && plans.length > 0 && <dd className="mt-1 text-[11px] text-fg-3">market maker not running, see Plans</dd>}
           {live && (
             <dd className="num mt-1 text-[11px] text-fg-3">
-              stop {live.stopLossUsd != null ? <span className="text-ask-fg">-{usd(live.stopLossUsd)}</span> : 'none'} / target {live.takeProfitUsd != null ? <span className="text-bid-fg">+{usd(live.takeProfitUsd)}</span> : 'none'}
+              stop {live.stopLossUsd != null ? <span className="text-ask-fg">-{usd(live.stopLossUsd, 2)}</span> : 'none'} / target {live.takeProfitUsd != null ? <span className="text-bid-fg">+{usd(live.takeProfitUsd, 2)}</span> : 'none'}
               {plans.length > 0 && `, ${plans.length} plan${plans.length > 1 ? 's' : ''} too`}
             </dd>
           )}
@@ -164,6 +164,7 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
             // Only what Monday looks after: the policy's markets and any it is still exiting.
             if (!x || !(x.inPolicy || x.position.size !== 0 || x.quotes.bid || x.quotes.ask)) return null;
             const inv = x.position.notionalUsd;
+            const plan = plans.find((p) => p.input.sym === s); // the plan's market and position, not the maker's
             const q = (side: Side) => {
               const st = quoteStanding(x, side);
               if (!st) return <span className="text-fg-3">{x.reflex?.action === 'pull' && x.reflex.side === side ? 'pulled' : 'none'}</span>;
@@ -179,8 +180,10 @@ export function AgentConsole({ state, sym, onPick, session, onSession, busy, onS
                 key={s} onClick={() => onPick(s)} tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(s); } }}
                 className={cx('h-[34px] cursor-pointer border-t border-line align-middle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent', s === sym ? 'bg-raised' : 'hover:bg-raised')}
               >
-                <td className="pl-2.5 font-sans font-semibold" title={!x.inPolicy ? 'Not in your policy any more: Monday only closes the position here.' : x.stage !== 'normal' ? `Inventory stage: ${x.stage}. Monday has stopped adding and is working the exit.` : undefined}>
-                  {s}{(!x.inPolicy || x.stage !== 'normal') && <span className={cx('ml-1 font-normal', x.stage === 'urgent' ? 'text-ask-fg' : 'text-warn')}>{x.inPolicy ? x.stage : 'exit'}</span>}
+                <td className="pl-2.5 font-sans font-semibold" title={plan ? `A running ${KIND_LABEL[plan.input.kind]} plan trades this market, with its own stop and target (see Plans). The market maker leaves it alone.` : !x.inPolicy ? 'Not in your policy any more: Monday only closes the position here.' : x.stage !== 'normal' ? `Inventory stage: ${x.stage}. Monday has stopped adding and is working the exit.` : undefined}>
+                  {s}{plan
+                    ? <span className="ml-1 font-normal text-fg-3">plan</span>
+                    : (!x.inPolicy || x.stage !== 'normal') && <span className={cx('ml-1 font-normal', x.stage === 'urgent' ? 'text-ask-fg' : 'text-warn')}>{x.inPolicy ? x.stage : 'exit'}</span>}
                 </td>
                 <td>
                   <span className={cx('inline-block w-[3.6rem]', tone(inv))}>{Math.abs(inv) < 0.5 ? 'flat' : `${inv > 0 ? '+' : '-'}${fmtUsd(Math.abs(inv), 0)}`}</span>

@@ -50,16 +50,19 @@ function Compare() {
     if (keep.length < ws.length) set(keep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved.join()]);
+  // Periods that differ by more than a day: the history rows are not like for like.
+  const starts = loaded.flatMap(({ w }) => (w?.fills.since != null ? [w.fills.since] : []));
+  const mixed = starts.length > 1 && Math.max(...starts) - Math.min(...starts) > 86_400_000;
   const rows: [string, (w: PxWallet) => React.ReactNode, ((w: PxWallet) => number | null)?][] = [
     ['Equity', (w) => money(w.equityUsd)],
     ['Open PnL', (w) => signedMoney(w.positions.reduce((s, p) => s + p.upnl, 0)), (w) => w.positions.reduce((s, p) => s + p.upnl, 0)],
     ['Open positions', (w) => w.positions.length ? w.positions.map((p) => `${p.sym} ${p.long ? 'L' : 'S'}`).join(', ') : 'none'],
+    // Busy wallets are measured over their newest fills only: each column says which period the rows below cover.
+    ['Stats cover', (w) => (w.fills.total > w.fills.used ? `newest ${w.fills.used.toLocaleString('en-US')} of ${w.fills.total.toLocaleString('en-US')}` : 'all indexed fills') + (w.fills.since ? `, since ${new Date(w.fills.since).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}` : '')],
     ['Realised PnL', (w) => signedMoney(w.performance.netUsd), (w) => w.performance.netUsd],
     ['Fees paid', (w) => money(w.performance.feesUsd, true)],
     ['Volume', (w) => money(w.performance.volumeUsd)],
     ['Fills', (w) => w.performance.trades.toLocaleString('en-US')],
-    // Busy wallets are measured over their newest fills only: each column says which period its numbers cover.
-    ['Stats cover', (w) => (w.fills.total > w.fills.used ? `newest ${w.fills.used.toLocaleString('en-US')} of ${w.fills.total.toLocaleString('en-US')}` : 'all indexed fills') + (w.fills.since ? `, since ${new Date(w.fills.since).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}` : '')],
     ['Win rate', (w) => (w.performance.winRate == null ? 'n/a' : `${(w.performance.winRate * 100).toFixed(1)}%`)],
     ['Profit factor', (w) => profitText(w.performance)],
     ['Max drawdown', (w) => money(w.performance.maxDrawdownUsd, true)],
@@ -106,6 +109,11 @@ function Compare() {
           {failed.length > 0 && (
             <Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={() => failed.forEach((x) => void x.refetch())}>Retry</Button>}>
               Could not load {failed.length === 1 ? 'one wallet' : `${failed.length} wallets`}. {failed[0].error?.message}
+            </Notice>
+          )}
+          {mixed && (
+            <Notice>
+              Each wallet is measured over its own period (Stats cover), so realised PnL, volume, fills and drawdown do not span the same days.
             </Notice>
           )}
           <Panel title="Side by side" className="rise">
@@ -171,7 +179,7 @@ function Empty({ onAdd }: { onAdd: (qs: string[]) => void }) {
     <section className="panel rise items-center px-6 py-16 text-center">
       <h2 className="display text-[1.75rem] font-medium">Compare up to four wallets</h2>
       <p className="mt-3 max-w-[60ch] text-[13px] leading-relaxed text-fg-2">
-        Type an address or account number in the box above, press Watch on any wallet, or start with this week&apos;s most profitable accounts on Perpl.
+        Type an address or account number in the box above, press Watch on any wallet, or start with this week&apos;s most profitable accounts on Perpl (ranked by 7-day PnL; the table then shows each wallet over its own history).
       </p>
       <div className="mt-7 flex flex-wrap justify-center gap-2">
         {top.isLoading ? Array.from({ length: MAX }, (_, i) => <Skeleton key={i} className="h-9 w-36" />)

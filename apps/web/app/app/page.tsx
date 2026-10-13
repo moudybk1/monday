@@ -209,11 +209,11 @@ export default function Terminal() {
                 </div>
                 {/* One line, cut short when the tabs need the room: it never wraps into the tab row. */}
                 <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[11.5px] text-fg-3 lg:block">
-                  {tab === 'orders' ? 'queue: what must trade before each order does'
+                  {tab === 'orders' ? "the market maker's quotes; a plan's orders show under Plans"
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
                     : tab === 'plans' ? `Agentic Trade and TWAP; stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
-                    : tab === 'fills' ? (past === 'fills' ? 'markout: price move after the fill, positive is good' : 'Agentic Trade and TWAP that have ended')
+                    : tab === 'fills' ? (past === 'fills' ? "the market maker's fills; markout is the move after, positive is good" : 'Agentic Trade and TWAP that have ended')
                     : tab === 'model' ? `${sym}, this tick` : `since ${state.equity[0] ? fmtTime(state.equity[0].t, false) : 'start'}`}
                 </span>
               </header>
@@ -229,7 +229,7 @@ export default function Terminal() {
                           key={v} type="button" aria-pressed={past === v} onClick={() => setPast(v)}
                           className={cx('flex h-6 items-center gap-1.5 rounded-sm px-2 text-[11.5px]', past === v ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}
                         >
-                          {v === 'fills' ? 'Fills' : 'Plans'}<span className="num text-[10.5px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
+                          {v === 'fills' ? 'Maker fills' : 'Plans'}<span className="num text-[10.5px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
                         </button>
                       ))}
                     </div>
@@ -317,8 +317,9 @@ export default function Terminal() {
   );
 }
 
-/** Market as agent state: traded by the policy, dropped but still holding a position, or only watched. */
-const agentTag = (x: MarketState) => (x.inPolicy ? 'trading' : x.position.size !== 0 ? 'exit' : 'off');
+/** Market as agent state: a running plan's, traded by the policy, dropped but still holding a position, or only watched. */
+const agentTag = (x: MarketState, state: DashboardState) =>
+  state.plans.some((p) => p.status !== 'done' && p.input.sym === x.sym) ? 'plan' : x.inPolicy ? 'trading' : x.position.size !== 0 ? 'exit' : 'off';
 const pct = (n: number | null) => (n == null ? '-' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`);
 const PICK_COLS = 'grid grid-cols-[minmax(0,1.3fr)_1fr_0.8fr] items-center gap-x-3 sm:grid-cols-[minmax(0,1.3fr)_1fr_0.8fr_0.8fr_0.9fr_0.9fr]';
 
@@ -334,7 +335,7 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
     return () => document.removeEventListener('pointerdown', close);
   }, []);
   const x = state.markets[sym];
-  const tag = x && agentTag(x);
+  const tag = x && agentTag(x, state);
   return (
     <details ref={menu} className="relative order-1 flex-none border-r border-line" onKeyDown={(e) => e.key === 'Escape' && menu.current && (menu.current.open = false)}>
       <summary aria-label={`Market: ${sym}. Change market`} className="flex h-14 min-w-[8.25rem] cursor-pointer list-none flex-col justify-center gap-1.5 px-3 hover:bg-raised [&::-webkit-details-marker]:hidden">
@@ -357,7 +358,7 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
         {(Object.keys(state.markets) as MarketSym[]).map((s) => {
           const r = state.markets[s];
           if (!r) return null;
-          const t = agentTag(r);
+          const t = agentTag(r, state);
           const c = r.day.changePct;
           return (
             <button

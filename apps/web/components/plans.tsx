@@ -88,7 +88,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { p
               <td className="text-right">{level(p.tpPrice, p.takeOnVenue, sc ? '-' : p.input.kind === 'twap' && p.input.takeProfitPct ? `${p.input.takeProfitPct}%` : 'Off')}</td>
               <td className="text-right" title={sc ? `Session stop loss -${usd(sc.lossLimitUsd, 2)}${sc.targetUsd != null ? `, take profit +${usd(sc.targetUsd, 2)}` : ''}` : undefined}>
                 {sc || p.filledSize > 0 ? <span className={tone(pnl)}>{fmtSigned(pnl)}</span> : '-'}
-                {sc && live && <span className="text-fg-3"> of -{usd(sc.lossLimitUsd)}{sc.targetUsd != null ? `/+${usd(sc.targetUsd)}` : ''}</span>}
+                {sc && live && <span className="text-fg-3"> of -{usd(sc.lossLimitUsd, 2)}{sc.targetUsd != null ? `/+${usd(sc.targetUsd, 2)}` : ''}</span>}
               </td>
               <td className="max-w-[22rem] truncate pl-4 font-sans text-fg-2" title={p.note}>{p.note}</td>
               <td className="pr-2.5 text-right font-sans whitespace-nowrap">

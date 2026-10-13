@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { DashboardState, Policy, PolicyLimits } from '@monday/core';
 import { statusText } from '@/components/agent';
-import { PolicyForm, draftFrom, draftOk, takeProfitUsd, toBody, type PolicyDraft } from '@/components/policy-form';
+import { PolicyForm, draftFits, draftFrom, draftOk, takeProfitUsd, toBody, type PolicyDraft } from '@/components/policy-form';
 import { Button, Notice, Panel, Skeleton, Tag } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtUsd, shortHash } from '@/lib/format';
@@ -94,6 +94,7 @@ export default function PolicyPage() {
     }
   };
   // Start and Stop act on the settings in force, so they only show once nothing is waiting to be saved or signed.
+  // Start also waits for a balance that carries them: the summary says what is missing (the server refuses it too).
   const botAction = async (what: 'start' | 'pause') => {
     setNote(null);
     setBusy(what === 'start' ? 'Starting' : 'Stopping');
@@ -131,7 +132,7 @@ export default function PolicyPage() {
         ? <Button size="lg" className="w-full" onClick={sign} disabled={busy !== null}>{busy ?? 'Sign on Monad'}</Button>
         : bot && bot.status === 'quoting'
           ? <Button size="lg" variant="ghost" className="w-full" onClick={() => void botAction('pause')} disabled={busy !== null}>{busy ?? 'Stop bot'}</Button>
-          : bot && <Button size="lg" className="w-full" onClick={() => void botAction('start')} disabled={busy !== null || bot.closing != null}>{busy ?? 'Start bot'}</Button>;
+          : bot && <Button size="lg" className="w-full" onClick={() => void botAction('start')} disabled={busy !== null || bot.closing != null || !draftFits(draft, balance)}>{busy ?? 'Start bot'}</Button>;
 
   return (
     <div className="page-in grid gap-5 py-8">

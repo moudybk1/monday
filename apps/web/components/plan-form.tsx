@@ -412,7 +412,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
           <Line k="Trigger" v={t ? `${t.frame}, ${mode ? MODE_LABEL[mode].toLowerCase() : 'waiting'}` : '-'} />
           <Line k="Liquidation" v={n ? `about ${n.liqPct.toFixed(1)}% away` : '-'} />
           <Line k="Session stop loss" v={n ? `-${money(n.lossUsd, 2)}` : '-'} tone="text-ask-fg" />
-          <Line k="Session take profit" v={n?.profitUsd != null ? `+${money(n.profitUsd, 2)}` : 'Off'} tone={n?.profitUsd != null ? 'text-bid-fg' : undefined} />
+          <Line k="Session take profit" v={!n ? '-' : n.profitUsd != null ? `+${money(n.profitUsd, 2)}` : 'Off'} tone={n?.profitUsd != null ? 'text-bid-fg' : undefined} />
           <Line k="Session length" v={t ? hours(t.expiryHours) : '-'} />
           <Line k="Fees per scalp, at most" v={n ? money(n.feesUsd, 2) : '-'} />
         </dl>
@@ -433,7 +433,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
         <Line k="Execution" v={w ? `${w.slices} slices, ${STYLE_LABEL[w.style].toLowerCase()}` : '-'} />
         <Line k="Liquidation" v={n ? `about ${px(n.liqPrice)}` : '-'} />
         <Line k="Stop loss" v={n ? `${px(n.slPrice)}, -${money(n.lossUsd, 2)}` : '-'} tone="text-ask-fg" />
-        <Line k="Take profit" v={n?.tpPrice ? `${px(n.tpPrice)}, +${money(n.profitUsd ?? 0, 2)}` : 'Off'} tone={n?.tpPrice ? 'text-bid-fg' : undefined} />
+        <Line k="Take profit" v={!n ? '-' : n.tpPrice ? `${px(n.tpPrice)}, +${money(n.profitUsd ?? 0, 2)}` : 'Off'} tone={n?.tpPrice ? 'text-bid-fg' : undefined} />
         <Line k="Reward to risk" v={n?.rr != null ? n.rr.toFixed(2) : '-'} />
         <Line k="Fees in and out" v={n ? money(n.feesUsd, 2) : '-'} />
       </dl>

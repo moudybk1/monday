@@ -29,7 +29,7 @@ function suggestions(path: string): string[] {
   if (path.startsWith('/analytics/wallet/')) return ['Explain this wallet', 'Is this wallet a market maker?', 'Top 5 traders this week', 'What is profit factor?'];
   if (path.startsWith('/analytics/screener')) return ['Consistent winners 30D', 'Who is on a streak this week', 'Market makers with volume over $1M', 'Biggest losers today'];
   if (path.startsWith('/analytics/compare')) return ['Compare the top 3 this week', 'Compare the top 4 by volume this month', 'Whales liquidated this month'];
-  return ['Perpl volume today', 'Funding across markets', 'Long/short by market', 'Top 5 traders this week', 'Whales liquidated this month', 'What is open interest?'];
+  return ['Perpl volume, last 24h', 'Funding across markets', 'Long/short by market', 'Top 5 traders this week', 'Whales liquidated this month', 'What is open interest?'];
 }
 
 /**
