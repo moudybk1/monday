@@ -107,7 +107,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
           // Stopped, killed or never started: the market maker starts again from Setup, like any other mode.
           <div className="flex items-center justify-between gap-2 text-[13px] text-fg-3">
             <span>{state.closing ? 'Closing: waiting for Perpl to confirm.' : `${statusText(state)}. Start it from Setup.`}</span>
-            {!state.closing && <ButtonLink href="/app/setup" size="xs" variant="ghost">Set up again</ButtonLink>}
+            {!state.closing && <ButtonLink href="/app/setup" size="xs" variant="ghost">Setup</ButtonLink>}
           </div>
         )}
       </div>

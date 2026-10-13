@@ -62,6 +62,7 @@ services:
         NEXT_PUBLIC_ANALYTICS_URL: ${ANALYTICS_URL:-}
     environment:
       API_URL: http://server:3001
+      STATS_URL: http://stats:3002 # the landing reads Perpl's all-time volume from the indexer
     restart: always
     logging: *logging
     expose:

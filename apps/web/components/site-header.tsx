@@ -1,11 +1,12 @@
+import { ArrowRightIcon } from '@phosphor-icons/react/dist/ssr';
 import Link from 'next/link';
-import { NetworkNote } from './network-note';
 import { SiteMenu, SiteNav } from './site-menu';
 import { ThemeToggle } from './theme-toggle';
 import { at } from '@/lib/hosts';
 import { ButtonLink, Wordmark } from './ui';
 
 const LINKS = [
+  { href: at('/#modes'), label: 'Modes' },
   { href: at('/#how'), label: 'How it works' },
   { href: at('/system'), label: 'System' },
   { href: at('/analytics'), label: 'Analytics' },
@@ -24,7 +25,17 @@ export function SiteHeader() {
         <SiteNav links={LINKS} />
         <div className="flex items-center gap-1 md:justify-self-end">
           <span className="hidden md:contents"><ThemeToggle /></span>
-          <ButtonLink href={at('/app')} size="sm" className="ml-1 h-9 px-4 text-[14px] md:ml-2">Launch app</ButtonLink>
+          {/* The one call to action on the public pages: a label and an arrow box that nudges forward, with an amber
+              halo on hover. */}
+          <ButtonLink
+            href={at('/app')} size="sm" style={{ transitionProperty: 'filter, box-shadow' }}
+            className="group ml-1 h-9 gap-3 pl-3.5 pr-1 text-[14px] font-semibold duration-300 hover:shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent)_20%,transparent),0_8px_24px_-8px_color-mix(in_oklab,var(--accent)_55%,transparent)] md:ml-2"
+          >
+            Launch app
+            <span aria-hidden className="grid size-7 place-items-center rounded-xs bg-accent-fg text-accent transition-transform duration-300 ease-out group-hover:translate-x-0.5">
+              <ArrowRightIcon size={13} weight="bold" />
+            </span>
+          </ButtonLink>
           <SiteMenu links={LINKS} />
         </div>
       </div>
@@ -34,7 +45,7 @@ export function SiteHeader() {
 
 const COLUMNS = [
   { title: 'Product', links: [{ href: at('/app'), label: 'Launch app' }, { href: at('/analytics'), label: 'Perpl analytics' }, { href: at('/analytics/screener'), label: 'Screener' }, { href: at('/analytics/flow'), label: 'Flow' }] },
-  { title: 'Learn', links: [{ href: at('/#how'), label: 'How it works' }, { href: at('/system'), label: 'System' }, { href: at('/system#kimi'), label: 'Kimi, the risk governor' }, { href: at('/#faq'), label: 'Questions' }] },
+  { title: 'Learn', links: [{ href: at('/#modes'), label: 'Modes' }, { href: at('/#how'), label: 'How it works' }, { href: at('/system'), label: 'System' }, { href: at('/system#kimi'), label: 'Kimi, the risk governor' }, { href: at('/#faq'), label: 'Questions' }] },
   { title: 'Built on', links: [{ href: 'https://perpl.xyz', label: 'Perpl', external: true }, { href: 'https://www.monad.xyz', label: 'Monad', external: true }] },
 ] as const;
 
@@ -46,7 +57,7 @@ export function SiteFooter() {
           <div className="md:col-span-5">
             <Wordmark size={22} />
             <p className="mt-5 max-w-[38ch] text-[15px] leading-relaxed text-fg-2">
-              An AI agent that market-makes on Perpl from your own account and steps aside when Smart Traders move. Built for Monad Metropolis.
+              An AI trading terminal for Perpl: a market maker, Agentic Trade and TWAP, all trading from your own account. Built for Monad Metropolis.
             </p>
           </div>
           <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 md:col-span-7">
@@ -65,10 +76,6 @@ export function SiteFooter() {
               </div>
             ))}
           </nav>
-        </div>
-        <div className="grid gap-x-12 gap-y-3 border-t border-line py-7 text-[13px] leading-relaxed text-fg-3 md:grid-cols-2">
-          <p><NetworkNote /></p>
-          <p>Market making can lose money: Monday reports results and does not promise profit, and Smart Trader signals can be wrong or late. You keep control: stop, kill, revoke, and withdraw directly on Perpl.</p>
         </div>
       </div>
     </footer>

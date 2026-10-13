@@ -32,7 +32,7 @@ it('answers with the figures, follows up on the window, defines words, and decli
   expect(oi.text).toMatch(/^Open interest is the size of all open positions.*Open interest on Perpl is \$1\.5M.*BTC holds 67%/);
 
   const funding = await chat('BTC funding', {}, data);
-  expect(funding.text).toMatch(/^BTC funding is 0\.0010% per hour on average over the last 8 hours \(8\.8% a year\): longs pay shorts\.$/);
+  expect(funding.text).toMatch(/^BTC funding is 0\.0080% per 8 hours \(0\.0010% per hour, averaged over the last 8 hours\): longs pay shorts\.$/);
 
   expect((await chat('will BTC go up tomorrow?', {}, data)).text).toMatch(/does not predict prices/);
   expect((await chat('show me SOL', {}, data)).text).toMatch(/^SOL is at 100 .*5 accounts long against 15 short\.$/);

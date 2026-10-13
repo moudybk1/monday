@@ -59,7 +59,7 @@ export default function SystemPage() {
           <p className="label">System</p>
           <h1 className="display mt-3 max-w-[20ch] text-[2.5rem] font-medium sm:text-5xl lg:text-[3.5rem]">How Monday works, part by part.</h1>
           <p className="mt-6 max-w-[62ch] text-[17px] leading-relaxed text-fg-2 md:text-[18px]">
-            Monday is an AI agent that market-makes on Perpl, the on-chain order book on Monad, from the user&apos;s own account. Code quotes and protects; Kimi, Moonshot AI&apos;s model, decides how carefully to quote and says why. Alongside it runs a public analytics dashboard for all of Perpl, with a chat that answers from real on-chain data.
+            Monday is an AI trading terminal for Perpl, the on-chain order book on Monad: a market maker, Agentic Trade and TWAP, all trading from the user&apos;s own account. Code quotes and protects; Kimi, Moonshot AI&apos;s model, decides how carefully the market maker quotes and says why, and sums up the market before a trade. Alongside it runs a public analytics dashboard for all of Perpl, with a chat that answers from real on-chain data.
           </p>
           </div>
         </header>
