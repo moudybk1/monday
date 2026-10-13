@@ -97,7 +97,7 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
                   </div>
                 </div>
               </Cell>
-              <Cell name="Engine" who="code" when="every 1 s" note="Reprices both quotes from the book, Hyperliquid and the position.">
+              <Cell name="Engine" who="code" when="every 1 s" note="Reprices both quotes from the book, the reference market and the position.">
                 <div aria-hidden className="flex h-10 items-end gap-[3px]">
                   {Array.from({ length: 12 }, (_, i) => <span key={i} className="beat h-full w-[3px] rounded-[1px] bg-line-2" style={{ '--i': i } as CSSProperties} />)}
                 </div>
@@ -152,7 +152,7 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
 
 const INPUTS = [
   { name: 'Perpl', sub: 'Order book, trades, funding', packets: [[1600, 0], [1600, 800]] },
-  { name: 'Hyperliquid', sub: 'Prices and the trade tape', packets: [[2100, 300], [2100, 1350]] },
+  { name: 'Reference market', sub: 'Prices and the trade tape', packets: [[2100, 300], [2100, 1350]] },
   { name: 'Smart Traders', sub: 'Wallets with a record of profit', packets: [[3200, 400]] },
 ] as const;
 // The Smart Trader flow, bar by bar: quiet, then the burst.

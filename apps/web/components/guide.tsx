@@ -12,7 +12,7 @@ const AREAS: [string, ReactNode][] = [
   ['Order book', <>Every open offer on Perpl. The middle row is the spread, the gap Monday needs a few bps of to earn anything. Monday&apos;s own offers are tagged MONDAY, with how much is queued ahead of them. The Trades tab shows what is actually printing.</>],
   ['Agent', <>Your money and the controls. <b>Stop</b> cancels Monday&apos;s offers and stops the bot; any position stays open and is yours to manage. <b>Kill and flatten</b> cancels everything and closes positions. While quoting, Monday kills itself when the stop loss you set for the day is reached.</>],
   ['Open orders', <>Where each of Monday&apos;s offers sits: at the best price or behind it, and what has to trade before it fills.</>],
-  ['Smart Traders', <>Big trades by wallets with a record of consistent profit on Hyperliquid. When they rush one way, Monday steps aside on that side.</>],
+  ['Smart Traders', <>Big trades by wallets with a record of consistent profit. When they rush one way, Monday steps aside on that side.</>],
   ['Decisions', <>Every change Monday makes, with the reason in plain words.</>],
 ];
 

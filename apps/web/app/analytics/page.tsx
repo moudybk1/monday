@@ -352,13 +352,13 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
     return pts.reduce((b, p) => (Math.abs(p.t - (o.at - DAY)) < Math.abs(b.t - (o.at - DAY)) ? p : b)).oiUsd;
   };
   return (
-    <Panel title="Markets" aside={<span className="hidden lg:inline">click a market to focus the chart and the map. Long/short is open accounts; share is of Hyperliquid&apos;s 24h volume</span>}>
+    <Panel title="Markets" aside={<span className="hidden lg:inline">click a market to focus the chart and the map. Long/short is open accounts; vs ref. market compares 24h volume with the market where these perps are priced first</span>}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1180px] text-[11.5px]">
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
               <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 days</th>
-              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right" title="The mean of the last 8 hours' funding intervals, annualised">Funding 8h</th><th className="text-right">Long / short</th><th className="text-right">vs Hyperliquid</th><th className="pr-2.5 pl-3">Setups</th>
+              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right" title="The mean of the last 8 hours' funding intervals, annualised">Funding 8h</th><th className="text-right">Long / short</th><th className="text-right" title="Perpl's 24h volume as a share of the reference market's">vs ref. market</th><th className="pr-2.5 pl-3">Setups</th>
             </tr>
           </thead>
           <tbody className="num">

@@ -41,12 +41,12 @@ const TEMPLATES: { id: Exclude<PresetName, 'custom'>; label: string; note: strin
 const LOSS_PCT = [0.05, 0.1, 0.25, 0.5]; // Tread's stop loss choices; 100% would leave no margin for a position
 const TP_PCT = [0.1, 0.25, 0.5, 1, null];
 const REF_MODES: { id: RefMode; label: string; note: string }[] = [
-  { id: 'mid', label: 'Mid', note: "Quotes around Perpl's own mid. Fills most often, and Perpl's price can lag Hyperliquid's." },
-  { id: 'grid', label: 'Grid', note: "Quotes around a half-and-half mix of Perpl's and Hyperliquid's mid, where price moves first. The default." },
-  { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's and Hyperliquid's mid with the weight you choose." },
+  { id: 'mid', label: 'Mid', note: "Quotes around Perpl's own mid. Fills most often, and Perpl's price can lag the reference market's." },
+  { id: 'grid', label: 'Grid', note: "Quotes around a half-and-half mix of Perpl's mid and the reference market's, where price moves first. The default." },
+  { id: 'blend', label: 'Blend', note: "Quotes around a mix of Perpl's mid and the reference market's, with the weight you choose." },
 ];
 /** The same in every mode since 2026-10-11: before that Mid and Blend exited at the market, and most of those exits lost. */
-const EXIT_NOTE = `In every mode Monday holds one entry at a time and never adds to it. The exit rests at the entry plus fees and 1 bp, plus fees alone after 10 minutes, and closes at the best price once the open loss reaches ${STAGE.urgentLossFrac * 100}% of your stop loss or the position is an hour old. New entries stay 3 bps on the safe side of Hyperliquid's price.`;
+const EXIT_NOTE = `In every mode Monday holds one entry at a time and never adds to it. The exit rests at the entry plus fees and 1 bp, plus fees alone after 10 minutes, and closes at the best price once the open loss reaches ${STAGE.urgentLossFrac * 100}% of your stop loss or the position is an hour old. New entries stay 3 bps on the safe side of the reference price.`;
 const PARTICIPATIONS: { id: Participation; label: string }[] = [{ id: 'aggressive', label: 'Aggressive' }, { id: 'normal', label: 'Normal' }, { id: 'passive', label: 'Passive' }];
 const EPS = 1e-9;
 
@@ -209,7 +209,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
               ))}
             </Choices>
             {value.refMode === 'blend' && (
-              <Choices legend="Hyperliquid weight" note="Hyperliquid's share of the price Monday quotes around; the rest is Perpl's own mid." wide>
+              <Choices legend="Reference weight" note="The reference market's share of the price Monday quotes around; the rest is Perpl's own mid." wide>
                 {[0.5, 1].map((w) => (
                   <Chip key={w} type="radio" name="blend" checked={value.blendWeight === w} onChange={() => onChange({ ...value, blendWeight: w })}>{w * 100}%</Chip>
                 ))}

@@ -970,7 +970,7 @@ export class Runner {
     if (!state?.book && !state?.ref && !state?.fill) rt.govAsap = true; // book flicker, a few seconds of reference move or one fill are not worth an early governor run
     const holdMin = cfg.reflexHoldMs / 60_000;
     if (state?.released) {
-      const what = state.fill ? 'The taker has passed' : state.ref ? 'Perpl has had time to catch up with Hyperliquid' : state.book ? 'The book has evened out' : 'Flow has cooled';
+      const what = state.fill ? 'The taker has passed' : state.ref ? 'Perpl has had time to catch up with the reference market' : state.book ? 'The book has evened out' : 'Flow has cooled';
       this.logDecision(sym, 'reflex', 'reflex', { widen: state.side, release: true }, `${what}. The ${state.side} is back, still widened for now.`, { z5m: z, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
     } else if (state?.fill) {
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
@@ -979,7 +979,7 @@ export class Runner {
       this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.fillHoldMs / 1000, trigger: 'fill' }, reason, { fills: n, opens: rt.opens[state.side], at: now }, null);
     } else if (state?.ref) {
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
-      const led = byLevel ? `Hyperliquid prices ${sym} ${Math.abs(move!).toFixed(1)} bps ${move! >= 0 ? 'above' : 'below'} Perpl, past their usual gap,` : `Hyperliquid's ${sym} mid moved ${move! >= 0 ? 'up' : 'down'} ${Math.abs(move!).toFixed(1)} bps in ${cfg.refWindowMs / 1000} seconds`;
+      const led = byLevel ? `The reference market prices ${sym} ${Math.abs(move!).toFixed(1)} bps ${move! >= 0 ? 'above' : 'below'} Perpl, past their usual gap,` : `The reference market's ${sym} mid moved ${move! >= 0 ? 'up' : 'down'} ${Math.abs(move!).toFixed(1)} bps in ${cfg.refWindowMs / 1000} seconds`;
       const reason = `${led} and Perpl's book has not caught up. ${what} for ${cfg.refHoldMs / 1000} seconds.`;
       this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_s: cfg.refHoldMs / 1000, trigger: byLevel ? 'reference gap' : 'reference' }, reason, { hlMoveBps: jump, hlLeadBps: lead, windowMs: cfg.refWindowMs, hlMid: hlMid(sym), perplMid: snap.mid, bestBid: snap.bestBid, bestAsk: snap.bestAsk, at: now }, null);
     } else if (state?.book) {
@@ -991,12 +991,12 @@ export class Runner {
       const verb = state.side === 'ask' ? 'bought' : 'sold';
       const what = state.action === 'pull' ? `${cap(state.side)} pulled` : `${cap(state.side)} widened ${cfg.reflexWiden}x`;
       const reason = big && Math.abs(z) <= cfg.z2
-        ? `A single Smart Trader ${state.side === 'ask' ? 'buy' : 'sell'} of ${usdCompact(big.valueUsd)} ${sym} landed on Hyperliquid. ${what} for ${holdMin} minutes.`
-        : `Smart Traders ${verb} ${usdCompact(Math.abs(sig.w5.netUsd))} ${sym} on Hyperliquid in 5 min (z = ${z.toFixed(1)}). ${what} for ${holdMin} minutes.`;
+        ? `A single Smart Trader ${state.side === 'ask' ? 'buy' : 'sell'} of ${usdCompact(big.valueUsd)} ${sym} landed. ${what} for ${holdMin} minutes.`
+        : `Smart Traders ${verb} ${usdCompact(Math.abs(sig.w5.netUsd))} ${sym} in 5 min (z = ${z.toFixed(1)}). ${what} for ${holdMin} minutes.`;
       const signalAgeMs = now - (culprits[0]?.fetchedAt ?? now);
       this.logDecision(sym, 'reflex', 'reflex', { [state.action]: state.side, hold_min: holdMin }, reason, { z5m: z, netUsd5m: sig.w5.netUsd, smartTraderTx: state.triggerHashes, signalAgeMs, at: now }, null);
     } else if (before) {
-      const what = before.fill ? 'The taker has passed' : before.ref ? 'Perpl has caught up with Hyperliquid' : before.book ? 'The book has evened out' : 'Flow has cooled';
+      const what = before.fill ? 'The taker has passed' : before.ref ? 'Perpl has caught up with the reference market' : before.book ? 'The book has evened out' : 'Flow has cooled';
       this.logDecision(sym, 'reflex', 'reflex', { restore: before.side }, `${what}. The ${before.side} is back to normal.`, { z5m: z, netUsd5m: sig.w5.netUsd, bookImbalance: rt.book, hlMoveBps: move, at: now }, null);
     }
   }
@@ -1399,7 +1399,7 @@ export class Runner {
       if (b?.startsWith('risk:')) return `${word[side]} is blocked because ${GATE_TEXT[b.slice(5) as GateReason]}.`;
       if (b === 'exit') return `Adding to the ${posUsd > 0 ? 'long' : 'short'} is stopped; Monday is working its ${usd(Math.abs(posUsd))} exit${rt.stage === 'urgent' ? ' at the best price' : ''}.`;
       if (b === 'not in policy') return `${rt.sym} is no longer in your policy; Monday only closes what it holds there.`;
-      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.fill ? `Monday's ${side} was just taken and the taker may still be working` : rt.reflex.ref ? `Hyperliquid just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `Smart Traders are ${side === 'ask' ? 'buying' : 'selling'}`}.`;
+      if (b === 'reflex' && rt.reflex) return `${cap(side)} pulled: ${rt.reflex.fill ? `Monday's ${side} was just taken and the taker may still be working` : rt.reflex.ref ? `the reference market just moved ${side === 'ask' ? 'up' : 'down'} and Perpl has not caught up` : rt.reflex.book ? `Perpl's book is lopsided toward ${side === 'ask' ? 'buyers' : 'sellers'}` : `Smart Traders are ${side === 'ask' ? 'buying' : 'selling'}`}.`;
       if (b === 'governor') return `The governor turned quoting off: ${rt.params.reason}`;
       if (b === 'size') return `The ${side} rounds to zero size (quote size, volume cap or inventory skew).`;
       if (rt.held[side] === 'budget') return `Waiting for request budget to move the ${side}.`;
@@ -1407,7 +1407,7 @@ export class Runner {
       return null;
     };
     if (bq && aq) {
-      const gap = rt.gapAlarm ? ' Perpl and Hyperliquid disagree more than usual, so quotes are wider and smaller.' : '';
+      const gap = rt.gapAlarm ? ' Perpl and the reference market disagree more than usual, so quotes are wider and smaller.' : '';
       // At the front of the book the question is how much is queued ahead; behind it, how far away it sits.
       const where = (side: Side, q: QuoteTarget): string => {
         const best = side === 'bid' ? snap.bestBid : snap.bestAsk;
