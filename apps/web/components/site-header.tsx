@@ -6,6 +6,7 @@ import { at } from '@/lib/hosts';
 import { ButtonLink, Wordmark } from './ui';
 
 const LINKS = [
+  { href: at('/#modes'), label: 'Modes' },
   { href: at('/#how'), label: 'How it works' },
   { href: at('/system'), label: 'System' },
   { href: at('/analytics'), label: 'Analytics' },
@@ -34,7 +35,7 @@ export function SiteHeader() {
 
 const COLUMNS = [
   { title: 'Product', links: [{ href: at('/app'), label: 'Launch app' }, { href: at('/analytics'), label: 'Perpl analytics' }, { href: at('/analytics/screener'), label: 'Screener' }, { href: at('/analytics/flow'), label: 'Flow' }] },
-  { title: 'Learn', links: [{ href: at('/#how'), label: 'How it works' }, { href: at('/system'), label: 'System' }, { href: at('/system#kimi'), label: 'Kimi, the risk governor' }, { href: at('/#faq'), label: 'Questions' }] },
+  { title: 'Learn', links: [{ href: at('/#modes'), label: 'Modes' }, { href: at('/#how'), label: 'How it works' }, { href: at('/system'), label: 'System' }, { href: at('/system#kimi'), label: 'Kimi, the risk governor' }, { href: at('/#faq'), label: 'Questions' }] },
   { title: 'Built on', links: [{ href: 'https://perpl.xyz', label: 'Perpl', external: true }, { href: 'https://www.monad.xyz', label: 'Monad', external: true }] },
 ] as const;
 
@@ -46,7 +47,7 @@ export function SiteFooter() {
           <div className="md:col-span-5">
             <Wordmark size={22} />
             <p className="mt-5 max-w-[38ch] text-[15px] leading-relaxed text-fg-2">
-              An AI agent that market-makes on Perpl from your own account and steps aside when Smart Traders move. Built for Monad Metropolis.
+              An AI trading terminal for Perpl: a market maker, Agentic Trade and TWAP, all trading from your own account. Built for Monad Metropolis.
             </p>
           </div>
           <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 md:col-span-7">

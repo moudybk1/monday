@@ -7,13 +7,13 @@ import './globals.css';
 const sans = Manrope({ subsets: ['latin'], variable: '--font-text', display: 'swap' });
 const mono = Geist_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-figures', display: 'swap', preload: false });
 
-const description = 'An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.';
+const description = 'An AI trading terminal for Perpl: a market maker, Agentic Trade and TWAP, trading from your own account inside limits you set.';
 export const metadata: Metadata = {
   metadataBase: process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL) : undefined,
-  title: { default: 'Monday - AI market maker on Perpl', template: '%s - Monday' },
+  title: { default: 'Monday - AI trading terminal for Perpl', template: '%s - Monday' },
   description,
-  openGraph: { type: 'website', siteName: 'Monday', title: 'Monday - AI market maker on Perpl', description },
-  twitter: { card: 'summary', title: 'Monday - AI market maker on Perpl', description },
+  openGraph: { type: 'website', siteName: 'Monday', title: 'Monday - AI trading terminal for Perpl', description },
+  twitter: { card: 'summary', title: 'Monday - AI trading terminal for Perpl', description },
 };
 
 // A terminal is dark unless the user chose otherwise. Set before first paint so the page never flashes.

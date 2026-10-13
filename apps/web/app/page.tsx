@@ -1,4 +1,4 @@
-import { ArrowRightIcon, PlusIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
+import { ArrowRightIcon, ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon, PlusIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
 import { MARKETS, PRESETS, balanceNeededUsd, usd, type AppConfig, type DashboardState, type MarketSym, type Policy } from '@monday/core';
 import { AgentDiagram } from '@/components/agent-diagram';
 import { CloseField, CountUp, LiveProvider, PerplStats, Reveal, Spotlight, Story } from '@/components/landing';
@@ -13,7 +13,24 @@ const LEAD = 'mt-5 max-w-[54ch] text-[16px] leading-relaxed text-fg-2 md:text-[1
 // Measured on the live decision log (Monad mainnet, kimi-k3, 10 to 12 Oct). The System page carries the whole account.
 const KIMI = { decisions: 167, looser: 0 };
 
-// The loops, with what feeds them and what comes out. Same facts as the System page, one line each.
+// The three modes, one answer per row so they read across. Same facts as Setup and the plan forms; keep them in step.
+const MODE_ROWS = ['What it does', 'Use it for', 'Runs', 'Kimi\'s part', 'Protection'] as const;
+const MODES = [
+  {
+    name: 'Agentic Market Maker', icon: ArrowsLeftRightIcon, href: '/app/onboarding', cta: 'Set up the market maker',
+    rows: ['Quotes both sides of the book in the markets you choose and earns the spread.', 'Earning the spread without a view on direction.', 'Until you stop it.', 'Reviews spread and size every 15 minutes, inside hard bounds. Never places an order.', 'A daily stop loss on the margin. At it, Monday cancels its orders and closes the positions.'],
+  },
+  {
+    name: 'Agentic Trade', icon: CrosshairIcon, href: '/app/setup/trade', cta: 'Start a trade',
+    rows: ['Scalps your long or short bias on one market, again and again, on a short timeframe.', 'A view on direction you want worked, entry by entry.', 'Up to a week, or until the stop loss or take profit on its margin.', 'Sums up D1, H4 and H1 before you start. Code reads the trend and picks every entry.', 'Every scalp\'s stop and target rest on Perpl from its fill.'],
+  },
+  {
+    name: 'TWAP', icon: HourglassIcon, href: '/app/setup/twap', cta: 'Start a TWAP',
+    rows: ['Builds a position in slices, as maker orders where it can, so one large order does not move a thin book.', 'A large entry, spread over minutes or hours.', 'Up to 24 hours to build, then held until its stop, its target or you close it.', 'Sums up D1, H4 and H1 before you start. Code places every slice.', 'A price it must not pass while building, and a stop loss on Perpl from the first fill.'],
+  },
+] as const;
+
+// The market maker's loops, with what feeds them and what comes out. Same facts as the System page, one line each.
 const INPUTS = [
   ['Perpl', 'Order book, trades, mark and funding, over the market-data socket.'],
   ['Reference market', 'Mid prices and the trade tape of the market where these perps are priced first, which Perpl follows.'],
@@ -34,20 +51,21 @@ const outputs = (onchain: boolean) => [
 const PARTIES = [
   { icon: WalletIcon, title: 'You', can: 'deposit, withdraw, revoke', lines: ['Sign in with your wallet: a signed message, no gas.', 'Deposit and withdraw on Perpl, from your own wallet.', 'Stop, kill, or revoke the key at any time.'] },
   { icon: VaultIcon, title: 'Your Perpl account', can: 'funds stay here', funds: true, lines: ['Holds the collateral.', 'Every order and fill settles here, on Monad.', 'Only your wallet can withdraw.'] },
-  { icon: Mark, title: 'Monday', can: 'trade-only key', lines: ['Quotes through a trade-scoped Perpl API key, stored encrypted.', 'Perpl never lets any API key withdraw or transfer funds.', 'Revoke the key and Monday loses access at once, and stops.'] },
+  { icon: Mark, title: 'Monday', can: 'trade-only key', lines: ['Trades through a trade-scoped Perpl API key, stored encrypted.', 'Perpl never lets any API key withdraw or transfer funds.', 'Revoke the key and Monday loses access at once, and stops.'] },
 ];
 
 const CONTROLS = [
   ['Position limit', 'The most Monday may hold in each market. Margin and leverage set it, or you type it.'],
-  ['Stop loss', 'A share of your margin. At this loss Monday stops quoting and closes positions for the day. Fast markets can overshoot it.'],
-  ['Stop and kill', 'Stop pulls Monday\'s orders and leaves positions to you. Kill also closes them. One click each, in the terminal.'],
+  ['Stop loss', 'Every mode has one, a share of its margin. At it Monday stops and closes the position. Fast markets can overshoot it.'],
+  ['Stop and kill', 'Stop pulls Monday\'s orders and leaves positions to you. Kill also closes them. One click each, under Plans in the terminal.'],
 ];
 
 // Answers follow what the code does today (runner, stale-data limits, cleanup); keep them in step with it.
 const questions = (onchain: boolean) => [
-  { q: 'What do I need to use Monday?', a: 'A wallet to sign in with, a Perpl account with collateral, and a Perpl API key that can trade. The app walks you through each step before anything is quoted.' },
+  { q: 'What do I need to use Monday?', a: 'A wallet to sign in with, a Perpl account with collateral, and a Perpl API key that can trade. The app walks you through each step before anything trades.' },
+  { q: 'Which mode should I start with?', a: 'The market maker if you want the spread without a view on direction; Agentic Trade if you have a view and want it worked entry by entry; TWAP to get into a large position without moving a thin book. They can run side by side, each in markets of its own.' },
   { q: 'Where are my funds held?', a: 'In your own Perpl account. Monday trades with an API key that Perpl never lets withdraw or transfer funds, and you withdraw on Perpl yourself.' },
-  { q: 'Can Monday lose money?', a: 'Yes. Market making carries inventory and execution risk, Smart Trader signals can be wrong or late, and fees count against every fill. The stop loss you set halts Monday for the day, but a fast market can overshoot it.' },
+  { q: 'Can Monday lose money?', a: 'Yes, in every mode. Market making carries inventory risk, a scalp or a TWAP entry can move against you, signals can be wrong or late, and fees count against every fill. The stop loss you set ends the trading, but a fast market can overshoot it.' },
   { q: 'What is the difference between Stop and Kill?', a: 'Stop cancels Monday\'s orders and leaves open positions for you to manage. Kill cancels every order in the account and closes positions. Closing can take time, and waits if Perpl is unreachable.' },
   { q: 'What happens if the data or the connection fails?', a: 'If market data is more than 5 seconds old Monday pulls its quotes, and after 30 seconds it stops and closes positions. Any cancel or close it still owes is retried until Perpl confirms it. You can always act on Perpl directly.' },
   {
@@ -84,23 +102,23 @@ export default async function Landing() {
           <section>
             <div className={`${WRAP} pt-10 md:pt-12`}>
               <div className="grid items-end gap-x-12 gap-y-7 lg:grid-cols-12">
-                <h1 className="display font-medium text-[clamp(2.4rem,9.2vw,3.5rem)] lg:col-span-8 lg:whitespace-nowrap lg:text-[calc((min(100vw,82.5rem)_-_4rem)*0.0495)] dark:[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]">
-                  <span className="line"><span style={{ '--d': '120ms' } as React.CSSProperties}>Quotes both sides.</span></span>
-                  <span className="line"><span style={{ '--d': '240ms' } as React.CSSProperties}><span className="text-accent">Steps aside</span> for Smart Traders.</span></span>
+                <h1 className="display font-medium text-[clamp(2.4rem,9.2vw,3.5rem)] lg:col-span-8 lg:whitespace-nowrap lg:text-[calc((min(100vw,82.5rem)_-_4rem)*0.064)] dark:[text-shadow:0_2px_12px_rgb(0_0_0/0.35)]">
+                  <span className="line"><span style={{ '--d': '120ms' } as React.CSSProperties}>The AI trading terminal</span></span>
+                  <span className="line"><span style={{ '--d': '240ms' } as React.CSSProperties}>for <span className="text-accent">Perpl</span>.</span></span>
                 </h1>
                 <div className="lg:col-span-4 lg:pb-1.5">
                   <p className="enter max-w-[40ch] text-[17px] leading-relaxed text-fg-2" style={{ '--d': '420ms' } as React.CSSProperties}>
-                    An AI agent that market-makes on Perpl from your own account and pulls its quotes when Smart Traders move.
+                    Make markets, scalp a bias, or build a position in slices, from your own Perpl account and inside your limits.
                   </p>
                   <div className="enter mt-6 flex flex-wrap gap-2.5" style={{ '--d': '540ms' } as React.CSSProperties}>
                     <Launch />
-                    <ButtonLink href="#how" size="lg" variant="ghost" className="h-12 px-5 text-[16px]">How it works</ButtonLink>
+                    <ButtonLink href="#modes" size="lg" variant="ghost" className="h-12 px-5 text-[16px]">Compare the modes</ButtonLink>
                   </div>
                 </div>
               </div>
               <AgentDiagram onchain={onchain} className="enter mt-14 [--d:640ms] lg:mt-20" />
               <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
-                <Fact n={<CountUp value={marketCount} />} k="markets quoted on Perpl, every one it lists" />
+                <Fact n={<CountUp value={marketCount} />} k="Perpl markets, every one it lists" />
                 <Fact n="1 s" k="engine tick. A reflex acts on the next one" />
                 <Fact n={<CountUp value={KIMI.decisions} />} k="Kimi decisions on Monad mainnet, 10 to 12 Oct" href={at('/system#kimi')} />
                 <Fact n={String(KIMI.looser)} k="of them looser than the rules would have been" />
@@ -108,11 +126,24 @@ export default async function Landing() {
             </div>
           </section>
 
-          {/* How it works: one burst, played step by step on the terminal's own panels. */}
-          <section id="how" className="mt-16 scroll-mt-14 border-t border-line bg-canvas md:mt-20">
+          {/* The three modes side by side: the terminal's range before the market maker's depth. */}
+          <section id="modes" className="mt-16 scroll-mt-14 border-t border-line md:mt-20">
             <div className={`${WRAP} py-20 md:py-28`}>
               <Reveal>
-                <h2 className={`${H2} max-w-[22ch]`}>Code moves the quotes. The LLM only turns the dials.</h2>
+                <h2 className={`${H2} max-w-[20ch]`}>Three ways to trade. Run one, or all three.</h2>
+                <p className={LEAD}>Each trades from your own Perpl account, in markets of its own, and stops at a loss you set.</p>
+              </Reveal>
+              <Reveal className="mt-12" delay={0.1}>
+                <Modes />
+              </Reveal>
+            </div>
+          </section>
+
+          {/* How the market maker works: one burst, played step by step on the terminal's own panels. */}
+          <section id="how" className="scroll-mt-14 border-t border-line bg-canvas">
+            <div className={`${WRAP} py-20 md:py-28`}>
+              <Reveal>
+                <h2 className={`${H2} max-w-[22ch]`}>The market maker: code moves the quotes, the LLM turns the dials.</h2>
                 <p className={LEAD}>One Smart Trader burst, from the first quote to the written reason.</p>
               </Reveal>
               <div className="mt-12">
@@ -126,7 +157,7 @@ export default async function Landing() {
             <div className={`${WRAP} py-20 md:py-28`}>
               <Reveal>
                 <h2 className={`${H2} max-w-[20ch]`}>Three loops, three clocks.</h2>
-                <p className={LEAD}>The fast loops are plain code, so nothing urgent ever waits for a model. The slow one is where judgement pays.</p>
+                <p className={LEAD}>The market maker&apos;s fast loops are plain code, so nothing urgent ever waits for a model. The slow one is where judgement pays.</p>
               </Reveal>
               <Reveal className="mt-12" delay={0.1}>
                 <Spotlight className="grid gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-[minmax(0,3fr)_minmax(0,5fr)_minmax(0,4fr)]">
@@ -256,7 +287,7 @@ export default async function Landing() {
             <CloseField className="absolute inset-x-0 bottom-0 -z-10 h-40 md:h-60" />
             <div className={`${WRAP} flex flex-col items-start gap-8 pb-52 pt-20 md:flex-row md:items-start md:justify-between md:pb-80 md:pt-28`}>
               <Reveal>
-                <h2 className="display max-w-[15ch] text-[2.75rem] font-medium md:text-[4.5rem]">Quote both sides without betting on direction.</h2>
+                <h2 className="display max-w-[15ch] text-[2.75rem] font-medium md:text-[4.5rem]">Pick a mode. Monday keeps to your limits.</h2>
               </Reveal>
               <Launch inverse />
             </div>
@@ -277,6 +308,34 @@ function Launch({ inverse = false }: { inverse?: boolean }) {
         <ArrowRightIcon size={16} weight="bold" />
       </span>
     </ButtonLink>
+  );
+}
+
+/**
+ * The modes side by side. On a wide screen each column is a subgrid, so the same question lines up across all three;
+ * on a phone each mode stacks with its own labels.
+ */
+function Modes() {
+  return (
+    <Spotlight className="grid gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-3 lg:grid-rows-[repeat(7,auto)]">
+      {MODES.map((m) => (
+        <div key={m.name} className="grid gap-px lg:row-span-7 lg:grid-rows-subgrid">
+          <div className="spot flex items-center gap-3 bg-canvas px-6 py-5">
+            <span className="grid size-10 flex-none place-items-center rounded-sm border border-line-2 bg-raised text-accent"><m.icon size={20} /></span>
+            <h3 className="text-[21px] font-semibold tracking-tight">{m.name}</h3>
+          </div>
+          {m.rows.map((r, i) => (
+            <div key={MODE_ROWS[i]} className="spot bg-canvas px-6 py-4">
+              <p className="label">{MODE_ROWS[i]}</p>
+              <p className="mt-1.5 max-w-[46ch] text-[15px] leading-relaxed text-fg-2">{r}</p>
+            </div>
+          ))}
+          <div className="bg-canvas px-6 py-5">
+            <ButtonLink href={at(m.href)} size="lg" variant="ghost" className="h-11 w-full text-[15px]">{m.cta}</ButtonLink>
+          </div>
+        </div>
+      ))}
+    </Spotlight>
   );
 }
 

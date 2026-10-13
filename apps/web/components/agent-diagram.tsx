@@ -139,7 +139,7 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
         </div>
       </div>
       <figcaption className="mx-auto mt-6 flex max-w-[44rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px] text-fg-3 xl:max-w-none">
-        <span>Drawn with example numbers and the clock sped up. In the product the engine runs every second and Kimi every 15 minutes.</span>
+        <span>The market maker, drawn with example numbers and the clock sped up. In the product the engine runs every second and Kimi every 15 minutes.</span>
         {!still && (
           <button type="button" onClick={() => setPlaying(!playing)} className="inline-flex h-8 items-center gap-2 rounded-sm border border-line-2 px-3 text-[13px] font-medium text-fg-2 hover:border-fg-3 hover:text-fg">
             {playing ? <><PauseIcon size={13} weight="fill" /> Pause</> : <><PlayIcon size={13} weight="fill" /> Play</>}
