@@ -6,18 +6,19 @@
 import { randomUUID } from 'node:crypto';
 import { mulberry32, type MarketSpec, type MarketSym, type QuoteTarget, type Side, type SmartTrade, MARKETS } from '@monday/core';
 import {
-  VenueError, type Candle, type MarketFeed, type MarketSnapshot, type TapeTrade, type Venue, type VenueAccount, type VenueCredentials,
+  VenueError, type Candle, type MarketFeed, type MarketSnapshot, type OrderSpec, type TapeTrade, type Venue, type VenueAccount, type VenueCredentials,
   type VenueDriver, type VenueEvents, type VenueFill, type VenuePosition,
 } from './types';
 
 // BTC, ETH and SOL mirror Perpl testnet's /pub/context at the time of writing; the rest mainnet's (2026-10-12).
-const spec = (sym: MarketSym, marketId: number, priceTick: number, sizeStep: number, maxLeverage: number): MarketSpec =>
-  ({ sym, marketId, priceTick, sizeStep, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage });
+// Maintenance leverage as mainnet's context had it on 2026-10-13.
+const spec = (sym: MarketSym, marketId: number, priceTick: number, sizeStep: number, maxLeverage: number, maintLeverage: number): MarketSpec =>
+  ({ sym, marketId, priceTick, sizeStep, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage, maintLeverage });
 const SPECS: Record<MarketSym, MarketSpec> = {
-  BTC: spec('BTC', 16, 0.1, 0.00001, 15), ETH: spec('ETH', 32, 0.01, 0.001, 12), SOL: spec('SOL', 48, 0.01, 0.001, 10),
-  MON: spec('MON', 10, 0.000001, 1, 10), HYPE: spec('HYPE', 40, 0.0001, 0.01, 10), ZEC: spec('ZEC', 50, 0.01, 0.0001, 10),
-  LIT: spec('LIT', 60, 0.00001, 0.1, 3), VVV: spec('VVV', 70, 0.0001, 0.01, 3), PUMP: spec('PUMP', 90, 0.000001, 1, 5),
-  NEAR: spec('NEAR', 100, 0.0001, 0.01, 3), UNI: spec('UNI', 110, 0.0001, 0.01, 3),
+  BTC: spec('BTC', 16, 0.1, 0.00001, 15, 25), ETH: spec('ETH', 32, 0.01, 0.001, 12, 20), SOL: spec('SOL', 48, 0.01, 0.001, 10, 20),
+  MON: spec('MON', 10, 0.000001, 1, 10, 20), HYPE: spec('HYPE', 40, 0.0001, 0.01, 10, 20), ZEC: spec('ZEC', 50, 0.01, 0.0001, 10, 18),
+  LIT: spec('LIT', 60, 0.00001, 0.1, 3, 10), VVV: spec('VVV', 70, 0.0001, 0.01, 3, 10), PUMP: spec('PUMP', 90, 0.000001, 1, 5, 10),
+  NEAR: spec('NEAR', 100, 0.0001, 0.01, 3, 10), UNI: spec('UNI', 110, 0.0001, 0.01, 3, 10),
 };
 const START: Record<MarketSym, number> = { BTC: 85_200, ETH: 2_690, SOL: 119.2, MON: 0.027, HYPE: 86.7, ZEC: 1_283, LIT: 3.7, VVV: 24.5, PUMP: 0.0058, NEAR: 5.75, UNI: 7.77 };
 const VOL_1M_BPS: Record<MarketSym, number> = { BTC: 2.6, ETH: 3.4, SOL: 4.6, MON: 8, HYPE: 6, ZEC: 7, LIT: 8, VVV: 8, PUMP: 9, NEAR: 6, UNI: 6 };
@@ -191,6 +192,7 @@ export class SimWorld implements VenueDriver, MarketFeed {
       if (c.trades.length && c.trades[0].ts < this.now - 130 * 60_000) c.trades = c.trades.filter((t) => t.ts > this.now - 120 * 60_000);
       this.takerFlow(c);
     }
+    for (const v of this.venues) v.checkOrders();
   }
 
   /** Taker orders sweep the book. Informed takers lean with smart-money pressure. */
@@ -317,11 +319,18 @@ export interface SimStore {
   save(wallet: string, balance: number, positions: Partial<Record<MarketSym, VenuePosition>>): void;
 }
 
+/** A plan's order on a simulated account: waiting for its trigger, or resting at its limit price. */
+interface SimOrder {
+  key: string;
+  o: OrderSpec;
+}
+
 export class SimVenue implements Venue {
   private up = false;
   private balance = SIM_BALANCE_USD;
   private pos = {} as Record<MarketSym, VenuePosition>;
   private quotes = new Map<string, QuoteTarget>();
+  private orders = new Map<string, SimOrder>();
   private handlers: { [E in keyof VenueEvents]?: VenueEvents[E][] } = {};
 
   constructor(private world: SimMarket, private creds: VenueCredentials, private onClose: () => void, private store?: SimStore) {
@@ -349,6 +358,7 @@ export class SimVenue implements Venue {
   close() {
     this.up = false;
     this.quotes.clear();
+    this.orders.clear();
     this.onClose();
   }
   connected() {
@@ -374,8 +384,9 @@ export class SimVenue implements Venue {
     }
     this.quotes.set(key, { ...target });
   }
-  async cancelAll() {
+  async cancelAll(onlyOwn = false) {
     this.quotes.clear();
+    if (!onlyOwn) this.orders.clear(); // a plan's orders are not Monday's quotes: only a Kill sweeps them
   }
   async flatten() {
     for (const sym of MARKETS) {
@@ -390,8 +401,76 @@ export class SimVenue implements Venue {
     (this.handlers[event] ??= [] as never[]).push(cb as never);
   }
 
-  /** Called by the world when a taker hits this account's quote. */
-  fill(sym: MarketSym, side: Side, price: number, size: number, isMaker: boolean) {
+  // ---- plan orders: Perpl's semantics, simplified (fills at the touch, triggers on the mark) ----
+  async placeOrder(o: OrderSpec): Promise<string> {
+    if (!this.up) throw new VenueError('disconnected', 'Not connected.');
+    const snap = this.world.snapshot(o.sym);
+    if (!snap?.bestBid || !snap.bestAsk) throw new VenueError('rejected', 'No market data for this market yet.');
+    if (o.close && !this.closes(o)) throw new VenueError('rejected', `No ${o.sym} position for this order to close.`);
+    const ord: SimOrder = { key: `sim-order:${randomUUID()}`, o };
+    if (o.trigger) this.orders.set(ord.key, ord);
+    else if (o.price != null && o.postOnly && (o.side === 'bid' ? o.price >= snap.bestAsk : o.price <= snap.bestBid)) {
+      throw new VenueError('crosses_book', 'PostOnly order would cross the book.');
+    } else this.post(ord, snap);
+    return ord.key;
+  }
+  async cancelOrder(key: string) {
+    this.orders.delete(key);
+  }
+  working(key: string) {
+    return this.orders.has(key);
+  }
+
+  /** A close only ever reduces: there must be a position on the other side of the order. */
+  private closes(o: OrderSpec): boolean {
+    const p = this.position(o.sym).size;
+    return o.side === 'bid' ? p < 0 : p > 0;
+  }
+
+  /** Send an order to the book: market and IOC orders take the touch now, a PostOnly limit rests (or is dropped if it would cross). */
+  private post(ord: SimOrder, snap: MarketSnapshot) {
+    const { o } = ord;
+    const touch = o.side === 'bid' ? snap.bestAsk : snap.bestBid;
+    if (touch == null) return;
+    const room = o.close ? Math.min(o.size, Math.abs(this.position(o.sym).size)) : o.size;
+    if (!(room > 0)) return;
+    if (o.price == null) {
+      const worst = snap.mark * (1 + ((o.side === 'bid' ? 1 : -1) * (o.slippageBps ?? 100)) / 1e4);
+      if (o.side === 'bid' ? touch <= worst : touch >= worst) this.fill(o.sym, o.side, touch, room, false, ord.key);
+      return;
+    }
+    const marketable = o.side === 'bid' ? touch <= o.price : touch >= o.price;
+    if (o.postOnly && !marketable) return void this.orders.set(ord.key, ord);
+    if (marketable) this.fill(o.sym, o.side, touch, room, false, ord.key);
+  }
+
+  /** Every world tick: fire the triggers the mark has reached, fill the limits the price has reached, drop closes with nothing left to close. */
+  checkOrders() {
+    for (const ord of [...this.orders.values()]) {
+      const { o } = ord;
+      const snap = this.world.snapshot(o.sym);
+      if (!snap) continue;
+      if (o.close && !this.closes(o)) {
+        this.orders.delete(ord.key); // Perpl drops a position-linked order once that position is closed or flipped
+        continue;
+      }
+      if (o.trigger) {
+        if (o.trigger.when === 'gte' ? snap.mark < o.trigger.price : snap.mark > o.trigger.price) continue;
+        this.orders.delete(ord.key);
+        this.post({ key: ord.key, o: { ...o, trigger: undefined, postOnly: false } }, snap);
+        continue;
+      }
+      const px = o.price!;
+      const reached = o.side === 'bid' ? snap.mark <= px || (snap.bestAsk != null && snap.bestAsk <= px) : snap.mark >= px || (snap.bestBid != null && snap.bestBid >= px);
+      if (!reached) continue;
+      this.orders.delete(ord.key);
+      const size = o.close ? Math.min(o.size, Math.abs(this.position(o.sym).size)) : o.size;
+      if (size > 0) this.fill(o.sym, o.side, px, size, true, ord.key);
+    }
+  }
+
+  /** Called by the world when a taker hits this account's quote, and by a plan's order when it fills. */
+  fill(sym: MarketSym, side: Side, price: number, size: number, isMaker: boolean, orderKey?: string) {
     const spec = this.world.specs()[sym]!;
     const p = this.position(sym);
     const signed = side === 'bid' ? size : -size;
@@ -408,7 +487,7 @@ export class SimVenue implements Venue {
     this.pos[sym] = { size: newSize, entryPrice: entry };
     this.balance += realizedUsd - feeUsd;
 
-    if (isMaker) {
+    if (isMaker && !orderKey) {
       const key = `${sym}:${side}`;
       const q = this.quotes.get(key);
       if (q) {
@@ -418,7 +497,7 @@ export class SimVenue implements Venue {
       }
     }
     // Unique across accounts and restarts: the wallet plus a random event id.
-    const f: VenueFill = { id: `sim:${this.creds.wallet.toLowerCase()}:${randomUUID()}`, sym, side, price, size, feeUsd, realizedUsd, isMaker, ts: Date.now() };
+    const f: VenueFill = { id: `sim:${this.creds.wallet.toLowerCase()}:${randomUUID()}`, sym, side, price, size, feeUsd, realizedUsd, isMaker, ts: Date.now(), orderKey };
     for (const cb of this.handlers.fill ?? []) cb(f);
   }
 }

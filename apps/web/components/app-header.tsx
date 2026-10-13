@@ -9,11 +9,15 @@ import { Wordmark, cx } from './ui';
 
 // In the order a user goes through them: set Monday up, then watch it trade.
 const NAV = [
-  { href: '/app/policy', label: 'Setup' },
+  { href: '/app/setup', label: 'Setup' },
   { href: '/app', label: 'Terminal' },
   { href: '/analytics', label: 'Analytics' },
 ];
-const isOn = (href: string, path: string) => (href === '/analytics' ? path.startsWith('/analytics') : path === href);
+// Setup covers the choice of what to run and each one's own setup: the market maker's policy and onboarding too.
+const isOn = (href: string, path: string) =>
+  href === '/analytics' ? path.startsWith('/analytics')
+  : href === '/app/setup' ? path.startsWith('/app/setup') || path === '/app/policy' || path === '/app/onboarding'
+  : path === href;
 
 /**
  * The header the app and analytics share: the mark left, the sections centred, status and account right, 48px like the site header.

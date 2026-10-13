@@ -22,6 +22,7 @@ import { config } from './config';
 import { atomically, db, event, journal } from './db';
 import { decide, fallbackDecision, hashOf, llmEnabled, llmFailures, rulesProposal, type GovernorContext } from './governor';
 import { hlAgeMs, hlMid, hlMoveBps } from './hyperliquid';
+import { PlanBook } from './plans';
 import { VenueError, type MarketFeed, type MarketSnapshot, type Venue, type VenueCredentials, type VenueDriver, type VenueFill } from './venue/types';
 
 const MIN_REQUOTE_MS = 1_500;
@@ -164,7 +165,7 @@ function tapeOf(feed: MarketFeed): Tape {
 const insDecision = db.prepare(
   'insert into decisions (user_id, at, market, source, regime, params, evidence, params_hash, evidence_hash, reason, llm_model, llm_ms, llm_cost) values (?,?,?,?,?,?,?,?,?,?,?,?,?)',
 );
-const insFill = db.prepare('insert or ignore into fills (id, user_id, sym, side, price, size, fee, is_maker, ts, regime, realized, half_bps, external, quote_event_id, ctx) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+const insFill = db.prepare('insert or ignore into fills (id, user_id, sym, side, price, size, fee, is_maker, ts, regime, realized, half_bps, external, quote_event_id, ctx, plan_id) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
 const insQuote = db.prepare('insert into quote_events (user_id, sym, side, action, prio, price, size, reason, data_at, sent_at, ctx) values (?,?,?,?,?,?,?,?,?,?,?)');
 const doneQuote = db.prepare('update quote_events set done_at = ?, ok = ?, error = ? where id = ?');
 const insMinute = db.prepare(
@@ -225,6 +226,9 @@ export class Runner {
   private disposed = false;
   /** Saved as quoting when the process stopped: tick keeps trying to resume from this time until it works or the user acts. */
   private resumeAt = 0;
+  /** Agentic Trade and TWAP: the user's own trades, run on this runner's connection whether or not it quotes. */
+  readonly plans: PlanBook;
+  private planOpenAt = 0;
   /** Cancel or flatten still owed to Perpl. */
   get owes() {
     return this.owed;
@@ -239,8 +243,8 @@ export class Runner {
       id: r.id, at: r.at, market: r.market, source: r.source, regime: r.regime, params: JSON.parse(r.params), reason: r.reason ?? '',
       paramsHash: r.params_hash, evidenceHash: r.evidence_hash, llmModel: r.llm_model, txHash: r.tx_hash, onchainId: r.onchain_id, anchor: r.tx_hash ? 'confirmed' : chainEnabled ? 'pending' : 'off',
     }));
-    // Monday's own fills only: a trade placed by hand counts for risk (it is in equity), not in Monday's results.
-    const f = db.prepare('select * from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 order by ts desc').all(userId, dayStart) as Record<string, never>[];
+    // Monday's own fills only: a trade placed by hand, or a plan's, counts for risk (it is in equity), not in Monday's results.
+    const f = db.prepare('select * from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 and plan_id is null order by ts desc').all(userId, dayStart) as Record<string, never>[];
     for (const r of f) {
       this.realized += r.realized ?? 0;
       this.fees += r.fee;
@@ -276,8 +280,14 @@ export class Runner {
       dayOutIdle: (db.prepare("select coalesce(sum(amount), 0) s from journal where user_id = ? and kind = 'withdrawal' and at >= ? and json_extract(detail, '$.idle') = 1").get(userId, dayStart) as { s: number }).s,
       sessionIn: this.session ? sum('deposit', this.session.startedAt) : 0, sessionOut: this.session ? sum('withdrawal', this.session.startedAt) : 0,
     };
-    for (const r of db.prepare('select distinct sym from fills where user_id = ? and coalesce(external, 0) = 0 and ts >= ?').all(userId, Date.now() - 86_400_000) as { sym: MarketSym }[]) this.ownSyms.add(r.sym);
+    for (const r of db.prepare('select distinct sym from fills where user_id = ? and coalesce(external, 0) = 0 and plan_id is null and ts >= ?').all(userId, Date.now() - 86_400_000) as { sym: MarketSym }[]) this.ownSyms.add(r.sym);
     tapeOf(deps.driver.feed);
+    this.plans = new PlanBook(userId, deps.driver.feed, () => this.venue, (severity, message) => this.alert(severity, message));
+  }
+
+  /** Open the trading connection now (a plan needs it before it can start). Throws VenueError. */
+  connect(): Promise<void> {
+    return this.open();
   }
 
   // ---- lifecycle ----
@@ -315,6 +325,9 @@ export class Runner {
     if (this.status === 'quoting') return;
     // A kill whose flatten has not landed is not over: quoting again would drop that duty while the position stays open.
     if (this.owed === 'flatten') throw new VenueError('rejected', 'The kill is still closing positions. Wait for Perpl to confirm, or close them on Perpl, then start again.');
+    // One position per market: a plan's market is the plan's until it ends.
+    const shared = this.policy.markets.filter((s) => this.plans.markets().includes(s));
+    if (shared.length) throw new VenueError('rejected', `${shared.join(', ')}: a running plan trades ${shared.length > 1 ? 'these markets' : 'this market'}. Let it finish, or take ${shared.length > 1 ? 'them' : 'it'} out of the market maker's markets.`);
     const epoch = this.epoch;
     await this.open();
     // A Stop or Kill pressed while Perpl was connecting wins; so does a second Start that got there first.
@@ -371,7 +384,7 @@ export class Runner {
     this.persist();
     const err = await this.cleanup('cancel');
     if (err) this.alert('warn', `Stopped, but Monday's orders could not be cancelled yet (${err}). Monday retries while Perpl is reachable.`);
-    else this.alert('info', "Stopped. Monday's orders are cancelled. Open positions and orders you placed yourself are kept, and Monday no longer watches them: close them on Perpl or use Kill and flatten.");
+    else this.alert('info', `Stopped. Monday's orders are cancelled. Open positions and orders you placed yourself are kept, and Monday no longer watches them: close them on Perpl or use Kill and flatten.${this.plans.running().length ? ' Agentic Trade and TWAP plans keep running.' : ''}`);
   }
 
   async kill(reason: KillReason) {
@@ -383,6 +396,7 @@ export class Runner {
     this.persist();
     const evidence = { at: Date.now(), reason, strategy: STRATEGY_VERSION, policyHash: this.policyHash, equityUsd: this.equityNow(), pnlTodayUsd: this.pnlToday(), positions: MARKETS.map((s) => ({ market: s, size: this.venue?.position(s).size ?? 0 })) };
     const err = await this.cleanup('flatten');
+    this.plans.onKill(); // a kill sweeps every order and closes every position, the plans' too
     if (err) this.alert('critical', `Could not flatten automatically: ${err}. Monday retries every 10 seconds while Perpl is reachable; you can also close the position on Perpl.`);
     const done = 'All orders were cancelled and positions closed.';
     let text = reason === 'loss_limit' ? `Daily loss limit of ${usd(this.policy.maxDailyLossUsd)} reached. ${done}`
@@ -452,6 +466,7 @@ export class Runner {
   async shutdown() {
     this.status = 'idle'; // in memory only: a tick during the cancels must not post a new quote
     if (this.venue) this.snapshot(Date.now(), this.equityNow());
+    await this.plans.shutdown().catch(() => {}); // entries nobody will watch come off the book; stop losses stay on it
     const err = await this.venue?.cancelAll(true).then(() => null, (e) => (e instanceof Error ? e.message : String(e)));
     if (err) {
       console.error(JSON.stringify({ service: 'runner', user: this.userId, event: 'shutdown_cancel_failed', error: err }));
@@ -512,7 +527,8 @@ export class Runner {
    */
   private managed(): MarketSym[] {
     const v = this.venue;
-    return MARKETS.filter((s) => this.policy.markets.includes(s) || (v && (v.quote(s, 'bid') || v.quote(s, 'ask') || (v.position(s).size !== 0 && this.ownSyms.has(s)))));
+    const planned = this.plans.markets(); // a plan's market and position are the plan's
+    return MARKETS.filter((s) => !planned.includes(s) && (this.policy.markets.includes(s) || (v && (v.quote(s, 'bid') || v.quote(s, 'ask') || (v.position(s).size !== 0 && this.ownSyms.has(s))))));
   }
   private day(sym: MarketSym, now: number): Day {
     const hit = volume.get(sym);
@@ -653,6 +669,14 @@ export class Runner {
         void this.cleanup(what).then((err) => err
           ? event(this.userId, 'error', { cleanup: what, message: err })
           : this.alert('info', `Perpl is reachable again: all orders cancelled${what === 'flatten' ? ' and positions closed' : ''}.`));
+      }
+    }
+    // Plans run whether or not Monday quotes: keep the connection open while one runs.
+    if (this.plans.running().length) {
+      if (this.venue?.connected()) this.plans.tick(now);
+      else if (!this.venue && !this.opening && now >= this.planOpenAt) {
+        this.planOpenAt = now + 10_000;
+        void this.open().catch((e) => event(this.userId, 'error', { plans: e instanceof Error ? e.message : String(e) }));
       }
     }
     if (this.listeners.size) {
@@ -1060,6 +1084,7 @@ export class Runner {
    * arrives again changes nothing. Its context links it to the request that placed the order and to what Monday saw.
    */
   private onFill(f: VenueFill) {
+    const planId = this.plans.claim(f);
     const rt = this.m[f.sym];
     const snap = this.deps.driver.feed.snapshot(f.sym);
     const sig = this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(f.sym);
@@ -1080,15 +1105,17 @@ export class Runner {
     const ref = rt?.model?.ref ?? snap?.mid ?? null;
     const distBps = ref ? Math.abs(f.price / ref - 1) * 1e4 : null;
     const inserted = atomically(() => {
-      const r = insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, distBps, f.external ? 1 : 0, quoteEventId, JSON.stringify(ctx));
+      const r = insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, distBps, planId == null && f.external ? 1 : 0, quoteEventId, JSON.stringify(ctx), planId);
       if (r.changes === 0) return false;
       this.venue?.persist?.();
       return true;
     });
     if (!inserted) return;
     this.expectedPos[f.sym] = (this.expectedPos[f.sym] ?? 0) + (f.side === 'bid' ? f.size : -f.size);
-    if (!f.external) this.ownSyms.add(f.sym);
+    if (!f.external && planId == null) this.ownSyms.add(f.sym);
     if (this.cash.expected != null) this.cash.expected += f.realizedUsd - f.feeUsd;
+    // A plan's fill is the plan's result: in equity like any fill, never in the market maker's.
+    if (planId != null) return this.plans.onFill(f, planId);
     if (f.external) {
       this.alert('info', `A ${f.sym} trade placed outside Monday filled. It counts toward your limits but not toward Monday's results.`);
       return;
@@ -1469,6 +1496,7 @@ export class Runner {
       },
       costs: this.costs(now),
       markets, equity: this.equity.filter((_, i) => i % step === 0 || i === this.equity.length - 1), fills: this.fills.slice(0, 40), decisions, alerts: this.alerts,
+      plans: this.plans.views(),
     };
   }
 }

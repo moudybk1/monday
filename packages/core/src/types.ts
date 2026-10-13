@@ -1,6 +1,8 @@
 // Shared domain types. The web app and the server both import these, so the
 // wire format has one definition.
 
+import type { PlanView } from './plan';
+
 // Every market Perpl lists on mainnet (2026-10-12). The first three keep their place: MARKET_BIT encodes policies on-chain
 // by position. A market the venue does not list (testnet has fewer) is simply absent from its specs.
 export const MARKETS = ['BTC', 'ETH', 'SOL', 'MON', 'HYPE', 'ZEC', 'LIT', 'VVV', 'PUMP', 'NEAR', 'UNI'] as const;
@@ -103,6 +105,8 @@ export interface MarketSpec {
   makerFeeBps: number;
   takerFeeBps: number;
   maxLeverage: number;
+  /** The leverage at which Perpl liquidates (its maintenance margin, as leverage): 25 means 4% of the notional. */
+  maintLeverage?: number;
 }
 
 export interface BookLevel {
@@ -308,6 +312,8 @@ export interface DashboardState {
   fills: Fill[];
   decisions: Decision[];
   alerts: Alert[];
+  /** Agentic Trade and TWAP plans: the running ones and the last few that ended. */
+  plans: PlanView[];
 }
 
 export const REGIME_CODE: Record<string, number> = { calm: 0, active: 1, storm: 2, stale: 3, reflex: 4 };

@@ -35,15 +35,19 @@ const runners = new Map<number, Runner>();
 const HOUSE_WALLET = '0x00000000000000000000000000000000000da7a0';
 let house: Runner | null = null;
 
-/** A runner exists once a user has both an active key and a policy. */
+/**
+ * A runner exists once a user has an active key. Without a market-maker policy it quotes nothing (and cannot be
+ * started), but it carries the user's Agentic Trade and TWAP plans.
+ */
+const NO_MAKER: Policy = { mode: 'paused', markets: [], preset: 'conservative', ...PRESETS.conservative };
 function runnerFor(userId: number): Runner | null {
   const hit = runners.get(userId);
   if (hit) return hit;
   const row = db.prepare(
-    "select u.wallet, c.account_id, c.enc, c.iv, c.tag, p.json from users u join perpl_credentials c on c.user_id = u.id and c.status = 'active' join policies p on p.user_id = u.id and p.json is not null where u.id = ?",
-  ).get(userId) as { wallet: string; account_id: number; enc: Uint8Array; iv: Uint8Array; tag: Uint8Array; json: string } | undefined;
+    "select u.wallet, c.account_id, c.enc, c.iv, c.tag, p.json from users u join perpl_credentials c on c.user_id = u.id and c.status = 'active' left join policies p on p.user_id = u.id where u.id = ?",
+  ).get(userId) as { wallet: string; account_id: number; enc: Uint8Array; iv: Uint8Array; tag: Uint8Array; json: string | null } | undefined;
   if (!row) return null;
-  const r = new Runner(userId, row.wallet, row.account_id, JSON.parse(row.json) as Policy, {
+  const r = new Runner(userId, row.wallet, row.account_id, row.json ? (JSON.parse(row.json) as Policy) : NO_MAKER, {
     driver, collector, k: nansenK, notify,
     // Decrypted only here, in memory, when a session opens (PRD 17.2).
     creds: () => ({ wallet: row.wallet, accountId: row.account_id, ...(JSON.parse(unseal(row)) as { token: string; secret: string }) }),
@@ -114,6 +118,8 @@ for (const a of db.prepare("select user_id from agents where status = 'quoting'"
 for (const a of db.prepare("select user_id from agents where owed is not null and status != 'quoting'").all() as { user_id: number }[]) {
   void runnerFor(a.user_id)?.resumeCleanup();
 }
+// Running plans pick up where they were: the runner reconnects and each plan checks its orders and position.
+for (const p of db.prepare("select distinct user_id from plans where status != 'done'").all() as { user_id: number }[]) runnerFor(p.user_id);
 resumeChainLog();
 
 // Request and minute records are for tracing and replay; two weeks is plenty.
@@ -140,7 +146,7 @@ ticker = setInterval(() => {
 // Demo runners live in memory; evict the ones nobody has looked at for an hour.
 setInterval(() => {
   if (!simulatedOrders) return;
-  for (const [uid, r] of runners) if (Date.now() - r.lastSeenAt > 3_600_000) dropRunner(uid);
+  for (const [uid, r] of runners) if (Date.now() - r.lastSeenAt > 3_600_000 && !r.plans.running().length) dropRunner(uid);
 }, 60_000).unref();
 
 // Hourly; five minutes after a run that failed or had to keep an older study for a market. One run at a time: an hourly

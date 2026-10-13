@@ -4,18 +4,19 @@ import { CaretDownIcon, QuestionIcon } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_CONFIG, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
+import { DEFAULT_CONFIG, MARKETS, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
 import { AgentConsole, sessionUsd, statusText, type SessionDraft } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
 import { Diverging, LineChart } from '@/components/charts';
 import { Guide } from '@/components/guide';
 import { draftFrom, toBody } from '@/components/policy-form';
+import { PlanList, planLevels } from '@/components/plans';
 import { PriceChart } from '@/components/price-chart';
 import { FlowBars, SmartTape } from '@/components/smart-money';
 import { Tape } from '@/components/tape';
 import { DecisionLog } from '@/components/timeline';
-import { Button, Mark, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
+import { Button, ButtonLink, Mark, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtPrice, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { useLive } from '@/lib/live';
@@ -35,7 +36,7 @@ const KILL_WHY: Record<KillReason, string> = {
   margin: 'Equity fell below the margin this policy needs at its leverage.',
 };
 
-type Tab = 'orders' | 'positions' | 'fills' | 'decisions' | 'equity' | 'model';
+type Tab = 'orders' | 'positions' | 'plans' | 'fills' | 'decisions' | 'equity' | 'model';
 
 export default function Terminal() {
   const qc = useQueryClient();
@@ -53,6 +54,13 @@ export default function Terminal() {
   const killDialog = useRef<HTMLDialogElement>(null);
   const guide = useRef<HTMLDialogElement>(null);
   const ready = Boolean(state);
+  // Arriving from a plan's setup: its market, on the Plans tab.
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    const m = q.get('m');
+    if (m && (MARKETS as readonly string[]).includes(m)) setPicked(m as MarketSym);
+    if (q.get('tab') === 'plans') setTab('plans');
+  }, []);
   // First visit: open the guide once. Storage can be blocked; then it simply does not auto-open.
   useEffect(() => {
     if (!ready) return;
@@ -108,11 +116,13 @@ export default function Terminal() {
     return act('/agent/start', { stopLossUsd, takeProfitUsd });
   };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
+  const running = state.plans.filter((p) => p.status !== 'done');
+  const planMarkets = running.map((p) => p.input.sym);
   const openOrders = shown.reduce((n, s) => n + (state.markets[s]?.quotes.bid ? 1 : 0) + (state.markets[s]?.quotes.ask ? 1 : 0), 0);
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
   const TABS: [Tab, string, number | null][] = [
-    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['fills', 'History', state.fills.length],
+    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length], ['fills', 'History', state.fills.length],
     ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote model', null],
   ];
 
@@ -126,7 +136,7 @@ export default function Terminal() {
         {m && <Stats m={m} quoting={quoting} blend={quotingFor(state.policy).cfg.blend} />}
         <div className="order-3 ml-auto flex items-center gap-2 px-2.5 py-2 xl:order-4">
           {/* The last market cannot be dropped: a policy always trades one. Stop ends trading altogether. */}
-          {!(trading && state.policy.markets.length === 1) && (
+          {state.policy.markets.length > 0 && !(trading && state.policy.markets.length === 1) && (
             <Button
               size="sm" variant={trading ? 'ghost' : 'primary'} onClick={() => void toggleMarket()} disabled={busy !== null}
               title={trading ? `Stop quoting ${sym}. Monday cancels its ${sym} orders and works any open position out.` : `Add ${sym} to your policy. ${quoting ? 'Monday starts quoting it on the next tick.' : 'Monday quotes it once you start.'}`}
@@ -156,7 +166,7 @@ export default function Terminal() {
         {state.status === 'paused' && state.closing === 'cancel' && <Notice tone="warn">Stopped, but Perpl has not confirmed the cancels yet. Monday keeps retrying.</Notice>}
         {state.status === 'paused' && state.closing === 'flatten' && <Notice tone="warn">Take profit reached, but Perpl has not confirmed the position is closed. Monday retries every 10 seconds; you can close it on Perpl too.</Notice>}
         {/* Stop means stop: nothing watches a position left open, so say so while one is. */}
-        {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0) && (
+        {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0 && !planMarkets.includes(x.sym)) && (
           <Notice tone="warn">Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl, use Kill and flatten, or start Monday again.</Notice>
         )}
         {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes pulled. Monday resumes on its own when data returns.</Notice>}
@@ -170,7 +180,7 @@ export default function Terminal() {
         // by side. Desktop: three columns, the agent and smart money stacked in the third.
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_300px_360px] xl:grid-rows-[auto_minmax(0,1fr)]">
           <div className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-span-2">
-            <PriceChart sym={sym} m={m} fills={state.fills} now={now} className="h-[360px] flex-none xl:h-auto xl:flex-[3]" />
+            <PriceChart sym={sym} m={m} fills={state.fills} now={now} levels={planLevels(running.find((p) => p.input.sym === sym))} className="h-[360px] flex-none xl:h-auto xl:flex-[3]" />
 
             <section className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
               <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
@@ -184,6 +194,7 @@ export default function Terminal() {
                 <span className="hidden text-[11.5px] text-fg-3 lg:block">
                   {tab === 'orders' ? 'queue: what must trade before each order does'
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
+                    : tab === 'plans' ? `Agentic Trade and TWAP; stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
                     : tab === 'fills' ? 'markout: price move after the fill, positive is good'
                     : tab === 'model' ? `${sym}, this tick` : `since ${state.equity[0] ? fmtTime(state.equity[0].t, false) : 'start'}`}
@@ -192,6 +203,7 @@ export default function Terminal() {
               <div className={cx('scroll min-h-0 flex-1', tab === 'equity' && 'p-1.5')}>
                 {tab === 'orders' && <OpenOrders state={state} />}
                 {tab === 'positions' && <Positions state={state} />}
+                {tab === 'plans' && <PlanList plans={state.plans} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} />}
                 {tab === 'fills' && <Fills state={state} />}
                 {tab === 'decisions' && <DecisionLog decisions={state.decisions} explorerUrl={cfg?.explorerUrl} chainOn={state.health.chain} />}
                 {tab === 'model' && <Model m={m} quoting={quoting} policy={state.policy} />}
@@ -224,10 +236,14 @@ export default function Terminal() {
           </section>
 
           <div className="order-first md:col-span-2 xl:order-none xl:col-span-1 xl:col-start-3 xl:row-start-1">
-            <AgentConsole
-              state={state} sym={sym} onPick={setPicked} session={session} onSession={setSession} busy={busy !== null}
-              onStart={start} onPause={() => act('/agent/pause')} onKill={() => killDialog.current?.showModal()}
-            />
+            {state.policy.markets.length ? (
+              <AgentConsole
+                state={state} sym={sym} onPick={setPicked} session={session} onSession={setSession} busy={busy !== null}
+                onStart={start} onPause={() => act('/agent/pause')} onKill={() => killDialog.current?.showModal()}
+              />
+            ) : (
+              <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} />
+            )}
           </div>
           <div className="flex min-h-0 flex-col xl:col-start-3 xl:row-start-2">
             <Panel
@@ -257,7 +273,7 @@ export default function Terminal() {
       <dialog ref={killDialog} className="m-auto w-[min(92vw,26rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg">
         <h2 className="text-[17px] font-semibold tracking-tight">Kill and flatten?</h2>
         <p className="mt-2 text-[13px] text-fg-2">
-          Monday cancels every open order on this Perpl account, in every market, then closes every open position on it with reduce-only market orders, including orders and positions you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
+          Monday cancels every open order on this Perpl account, in every market, then closes every open position on it with reduce-only market orders, including Agentic Trade and TWAP plans and anything you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
         </p>
         <form method="dialog" className="mt-5 flex justify-end gap-2">
           <Button type="submit" variant="ghost">Keep running</Button>
@@ -462,5 +478,22 @@ function Loading() {
         <Skeleton className="hidden xl:block" />
       </div>
     </div>
+  );
+}
+
+/** The agent column for an account with no market maker set up: its plans run on their own, and Kill still covers everything. */
+function NoMaker({ running, onKill }: { running: number; onKill: () => void }) {
+  return (
+    <Panel title="Agent" aside={running ? <span>{running} plan{running > 1 ? 's' : ''} running</span> : undefined}>
+      <div className="grid gap-3 p-3 text-[12.5px] text-fg-2">
+        <p>The market maker is not set up on this account.{running ? ' Your plans run on their own; follow them under Plans.' : ' Start a trade, a TWAP, or set up the market maker.'}</p>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href="/app/setup/trade" size="sm">New trade</ButtonLink>
+          <ButtonLink href="/app/setup/twap" size="sm" variant="ghost">New TWAP</ButtonLink>
+          <ButtonLink href="/app/onboarding" size="sm" variant="ghost">Market maker</ButtonLink>
+          {running > 0 && <Button size="sm" variant="danger" onClick={onKill}>Kill and flatten</Button>}
+        </div>
+      </div>
+    </Panel>
   );
 }
