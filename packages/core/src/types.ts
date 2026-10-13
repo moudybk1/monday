@@ -418,4 +418,6 @@ export interface Me {
   /** A changed policy is waiting for the wallet-signed Monad transaction. */
   policyPending: boolean;
   status: AgentStatus;
+  /** Markets the market maker holds, which a plan cannot trade: none once a kill has closed everything. */
+  makerMarkets: MarketSym[];
 }

@@ -157,9 +157,10 @@ export default function Terminal() {
       <div className="grid flex-none gap-1 empty:hidden">
         {error && <Notice tone="warn">{error}</Notice>}
         {state.status === 'killed' && (
-          <Notice tone="ask" action={state.closing ? undefined : <Button size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15" onClick={start}>Review done, restart</Button>}>
+          // A kill ends everything: trading again starts from Setup, in any mode and any market.
+          <Notice tone="ask" action={state.closing ? undefined : <ButtonLink href="/app/setup" size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15">Set up again</ButtonLink>}>
             <strong>{state.closing ? 'Killed, still closing.' : 'Killed.'}</strong> {state.killReason ? KILL_WHY[state.killReason] : ''}{' '}
-            {state.closing ? 'Perpl has not confirmed that every order is cancelled and every position closed. Monday retries every 10 seconds, also after a restart. You can close them on Perpl too.' : 'All orders were cancelled and positions closed.'}
+            {state.closing ? 'Perpl has not confirmed that every order is cancelled and every position closed. Monday retries every 10 seconds, also after a restart. You can close them on Perpl too.' : 'All orders were cancelled and positions closed. To trade again, pick a mode in Setup.'}
             {state.killReason === 'key_error' && <> <Link href="/app/connect" className="underline">Add a new key</Link>.</>}
           </Notice>
         )}

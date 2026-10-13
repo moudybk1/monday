@@ -290,6 +290,14 @@ export class Runner {
     return this.open();
   }
 
+  /**
+   * The markets the market maker holds, which no plan may trade: its policy's, until a kill has closed everything. After
+   * that it starts again only from Setup, so its markets are free.
+   */
+  makerMarkets(): MarketSym[] {
+    return this.status === 'killed' && !this.owed ? [] : this.policy.markets;
+  }
+
   // ---- lifecycle ----
   private open(): Promise<void> {
     if (this.venue) return Promise.resolve();
