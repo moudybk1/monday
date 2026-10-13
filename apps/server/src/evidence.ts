@@ -19,6 +19,13 @@ const POLICY = PRESETS.balanced;
 
 let current: Evidence | null = null;
 export const evidence = () => current;
+/**
+ * The last week of 1-minute candles per market, kept between runs: a run asks Perpl only for the minutes since the last
+ * one. Downloading the whole week every run was ten requests a market, a hundred and ten a run; Perpl refused one market
+ * a run (429), which kept the run incomplete and retried every five minutes, all day (2026-10-13). About 1.5 MB a market.
+ */
+const kept = new Map<MarketSym, Candle[]>();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let missed = 0; // markets whose prices could not be fetched in the last run
 /** The last run kept an older study (or none) for a market whose prices Perpl would not serve: worth another try soon. */
 export const evidenceIncomplete = () => missed > 0;
@@ -168,11 +175,16 @@ export async function computeEvidence(driver: VenueDriver, collector: Collector)
   for (const sym of MARKETS) {
     const spec = driver.feed.specs()[sym];
     if (!spec) continue;
-    // A week of minutes is ten requests a market. Perpl rate-limits bursts (429 after a restart, 2026-10-12): one market it
-    // refuses keeps its last study rather than costing every market theirs, and the run is retried soon (index.ts).
+    // Only the minutes since the last candle kept. A whole week (after a restart) is ten requests: a pause before it keeps
+    // the first run from bursting into Perpl's rate limit. A market Perpl still refuses keeps its last study rather than
+    // costing every market theirs, and the run is retried soon (index.ts).
+    const have = (kept.get(sym) ?? []).filter((c) => c.t >= from);
+    const since = have.length ? have[have.length - 1].t + MIN : from;
     let raw: Candle[];
     try {
-      raw = await driver.feed.candles(sym, from, end);
+      if (!have.length && driver.kind !== 'sim') await sleep(1_000);
+      raw = [...have, ...(since < end ? await driver.feed.candles(sym, since, end) : [])];
+      kept.set(sym, raw);
     } catch (e) {
       missed++;
       console.error(JSON.stringify({ service: 'evidence', event: 'candles_failed', market: sym, error: String(e) }));
