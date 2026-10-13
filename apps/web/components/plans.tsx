@@ -2,7 +2,7 @@
 
 import { ShieldCheckIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { MODE_LABEL, OUTCOME_LABEL, STYLE_LABEL, TREND_LABEL, planPnl, priceAway, usd, type MarketSpec, type MarketSym, type PlanView } from '@monday/core';
 import { tone } from './agent';
 import type { ChartLevel } from './price-chart';
@@ -17,8 +17,8 @@ const STATUS: Record<PlanView['status'], { label: string; tone: 'neutral' | 'acc
 
 const what = (p: PlanView) => (p.input.kind === 'twap' ? `TWAP, ${STYLE_LABEL[p.input.style].toLowerCase()}` : `Scalping ${p.input.frame}`);
 
-/** Agentic Trade and TWAP plans: the running ones first, then the last few that ended. */
-export function PlanList({ plans, specs, sim, now, onError, onPick }: { plans: PlanView[]; specs: Partial<Record<MarketSym, MarketSpec>>; sim: boolean; now: number; onError: (message: string) => void; onPick?: (s: MarketSym) => void }) {
+/** Agentic Trade and TWAP plans as given: the Plans tab passes the running ones, History the ones that ended. */
+export function PlanList({ plans, specs, sim, now, onError, onPick, empty }: { plans: PlanView[]; specs: Partial<Record<MarketSym, MarketSpec>>; sim: boolean; now: number; onError: (message: string) => void; onPick?: (s: MarketSym) => void; empty?: ReactNode }) {
   const [busy, setBusy] = useState<number | null>(null);
   // Closing at market is one click away from a mistake: the first click asks, the second within a few seconds does it.
   const [confirm, setConfirm] = useState<number | null>(null);
@@ -29,7 +29,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick }: { plans: P
   }, [confirm]);
 
   if (!plans.length) {
-    return <p className="px-2.5 py-4 text-[12px] text-fg-3">No plans yet. Start an <Link href="/app/setup/trade" className="underline underline-offset-2 hover:text-fg">Agentic Trade</Link> or a <Link href="/app/setup/twap" className="underline underline-offset-2 hover:text-fg">TWAP</Link> in Setup.</p>;
+    return <p className="px-2.5 py-4 text-[12px] text-fg-3">{empty ?? <>No plan running. Start an <Link href="/app/setup/trade" className="underline underline-offset-2 hover:text-fg">Agentic Trade</Link> or a <Link href="/app/setup/twap" className="underline underline-offset-2 hover:text-fg">TWAP</Link> in Setup.</>}</p>;
   }
   const act = async (p: PlanView, close: boolean) => {
     if (close && confirm !== p.id) return setConfirm(p.id);

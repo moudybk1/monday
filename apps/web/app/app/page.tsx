@@ -47,6 +47,8 @@ export default function Terminal() {
   const registry = useRegistry();
   const [picked, setPicked] = useState<MarketSym>('BTC');
   const [tab, setTab] = useState<Tab>('orders');
+  // History holds what is over: fills, and the Agentic Trade and TWAP plans that ended.
+  const [past, setPast] = useState<'fills' | 'plans'>('fills');
   const [side, setSide] = useState<'book' | 'trades'>('book');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +120,7 @@ export default function Terminal() {
   };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const running = state.plans.filter((p) => p.status !== 'done');
+  const ended = state.plans.filter((p) => p.status === 'done');
   const status = terminalStatus(state);
   // A market picked from a table: its chart and book, its URL (?m=) so a reload keeps it, and the chart in view on a phone.
   const pick = (s: MarketSym) => {
@@ -133,7 +136,7 @@ export default function Terminal() {
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
   const TABS: [Tab, string, number | null][] = [
-    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length], ['fills', 'History', state.fills.length],
+    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length], ['fills', 'History', state.fills.length + ended.length],
     ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote model', null],
   ];
 
@@ -210,15 +213,31 @@ export default function Terminal() {
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
                     : tab === 'plans' ? `Agentic Trade and TWAP; stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
-                    : tab === 'fills' ? 'markout: price move after the fill, positive is good'
+                    : tab === 'fills' ? (past === 'fills' ? 'markout: price move after the fill, positive is good' : 'Agentic Trade and TWAP that have ended')
                     : tab === 'model' ? `${sym}, this tick` : `since ${state.equity[0] ? fmtTime(state.equity[0].t, false) : 'start'}`}
                 </span>
               </header>
               <div className={cx('scroll min-h-0 flex-1', tab === 'equity' && 'p-1.5')}>
                 {tab === 'orders' && <OpenOrders state={state} onPick={pick} />}
                 {tab === 'positions' && <Positions state={state} onPick={pick} />}
-                {tab === 'plans' && <PlanList plans={state.plans} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick} />}
-                {tab === 'fills' && <Fills state={state} onPick={pick} />}
+                {tab === 'plans' && <PlanList plans={running} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick} />}
+                {tab === 'fills' && (
+                  <>
+                    <div role="group" aria-label="History" className="flex gap-1 border-b border-line px-2.5 py-1.5">
+                      {(['fills', 'plans'] as const).map((v) => (
+                        <button
+                          key={v} type="button" aria-pressed={past === v} onClick={() => setPast(v)}
+                          className={cx('flex h-6 items-center gap-1.5 rounded-sm px-2 text-[11.5px]', past === v ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}
+                        >
+                          {v === 'fills' ? 'Fills' : 'Plans'}<span className="num text-[10.5px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {past === 'fills'
+                      ? <Fills state={state} onPick={pick} />
+                      : <PlanList plans={ended} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick} empty="No Agentic Trade or TWAP has ended yet." />}
+                  </>
+                )}
                 {tab === 'decisions' && <DecisionLog decisions={state.decisions} explorerUrl={cfg?.explorerUrl} chainOn={state.health.chain} onPick={pick} />}
                 {tab === 'model' && <Model m={m} quoting={quoting} policy={state.policy} />}
                 {tab === 'equity' && (
