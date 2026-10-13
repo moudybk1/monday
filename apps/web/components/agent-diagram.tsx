@@ -24,7 +24,7 @@ const MM_STATUS: Record<MmPhase, string> = {
   calm: 'Both sides quoted, 2.5 bps from mid',
   burst: 'Smart Traders are buying',
   pulled: 'Ask pulled before it is run over',
-  storm: 'Kimi: wider and smaller until it cools',
+  storm: 'Wider and smaller until the flow cools',
 };
 
 // ---- Agentic Trade: a long bias on an uptrend, two scalps bought on pullbacks, each with its stop and target. ----
@@ -87,17 +87,17 @@ export function ModesDiagram({ className }: { className?: string }) {
               <Tag>three modes, one account</Tag>
             </header>
             <div className="grid gap-px bg-line">
-              <Lane name="Market maker" kimi="dials every 15 min" status={MM_STATUS[mm]} flash={mm === 'calm' ? null : `mm-${mm}`} tone={mm === 'pulled' ? 'ask' : 'accent'}>
+              <Lane name="Market maker" note="both sides, post-only" status={MM_STATUS[mm]} flash={mm === 'calm' ? null : `mm-${mm}`} tone={mm === 'pulled' ? 'ask' : 'accent'}>
                 <BookStrip phase={mm} />
               </Lane>
               <Lane
-                name="Agentic Trade" kimi="read D1 and H4" tone="accent"
+                name="Agentic Trade" note="long bias, 5m scalps" tone="accent"
                 status={scalp >= 0 ? 'Long on the pullback. Stop and target on Perpl' : won ? `${won} scalp${won > 1 ? 's' : ''}, ${won} won. Waiting for the next pullback` : 'Long bias, following the trend. Waiting for a pullback'}
                 flash={scalp >= 0 ? `in-${scalp}` : won ? `won-${won}` : null}
               >
                 <ScalpChart key={still ? 's' : Math.floor(n / LOOP.trade)} r={r} scalp={scalp} />
               </Lane>
-              <Lane name="TWAP" kimi="read before the start" tone="accent" status={filled < SLICES ? `Buying 1.00 ETH in slices, ${filled} of ${SLICES} filled` : 'Built 1.00 ETH. Its stop rests on Perpl'} flash={filled === SLICES ? `done-${Math.floor(n / LOOP.twap)}` : null}>
+              <Lane name="TWAP" note="15 slices over 30 min" tone="accent" status={filled < SLICES ? `Buying 1.00 ETH in slices, ${filled} of ${SLICES} filled` : 'Built 1.00 ETH. Its stop rests on Perpl'} flash={filled === SLICES ? `done-${Math.floor(n / LOOP.twap)}` : null}>
                 <Slices filled={filled} />
               </Lane>
             </div>
@@ -125,15 +125,15 @@ export function ModesDiagram({ className }: { className?: string }) {
   );
 }
 
-/** One mode at work: its name and Kimi's part, what it is doing now, and the picture of it. */
-function Lane({ name, kimi, status, flash, tone, children }: { name: string; kimi: string; status: string; flash: string | null; tone: 'accent' | 'ask'; children: ReactNode }) {
+/** One mode at work: its name and set-up, what it is doing now, and the picture of it. */
+function Lane({ name, note, status, flash, tone, children }: { name: string; note: string; status: string; flash: string | null; tone: 'accent' | 'ask'; children: ReactNode }) {
   return (
     <div className="relative isolate bg-canvas px-4 py-3.5">
       {/* A mode that just acted: a tint that fades, amber for Monday's own moves, vermilion for a pull. */}
       {flash && <span key={flash} aria-hidden className={cx('absolute inset-0 -z-10', tone === 'ask' ? 'flash-down' : 'flash-num')} />}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p className="text-[16px] font-semibold tracking-tight">{name}</p>
-        <span className="flex items-center gap-1.5 text-[12px] text-fg-3"><Tag tone="accent">Kimi</Tag>{kimi}</span>
+        <span className="text-[13px] text-fg-3">{note}</span>
       </div>
       <div className="mt-3">{children}</div>
       <p key={status} className="rise mt-2.5 text-[13px] leading-snug text-fg-2">{status}</p>

@@ -1,5 +1,5 @@
 import { ArrowRightIcon, ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon, PlusIcon, VaultIcon, WalletIcon } from '@phosphor-icons/react/dist/ssr';
-import { MARKETS, PRESETS, balanceNeededUsd, usd, type AppConfig, type DashboardState, type MarketSym, type Policy } from '@monday/core';
+import { MARKETS, PRESETS, balanceNeededUsd, usd, usdCompact, type AppConfig, type DashboardState, type MarketSym, type Policy, type PxOverview } from '@monday/core';
 import { ModesDiagram } from '@/components/agent-diagram';
 import { CloseField, CountUp, LiveProvider, PerplStats, Reveal, Spotlight, Story } from '@/components/landing';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
@@ -10,8 +10,6 @@ const WRAP = 'mx-auto max-w-[1320px] px-4 sm:px-8';
 const H2 = 'display text-[2.25rem] md:text-[3.25rem]';
 const LEAD = 'mt-5 max-w-[54ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]';
 
-// Measured on the live decision log (Monad mainnet, kimi-k3, 10 to 12 Oct). The System page carries the whole account.
-const KIMI = { decisions: 167, looser: 0 };
 
 // The three modes, one answer per row so they read across. Same facts as Setup and the plan forms; keep them in step.
 const MODE_ROWS = ['What it does', 'Use it for', 'Runs', 'Kimi\'s part', 'Protection'] as const;
@@ -77,10 +75,11 @@ const questions = (onchain: boolean) => [
 ];
 
 const API = process.env.API_URL ?? 'http://localhost:3001';
-/** One fact from the server, read once a minute so the page stays static. Unreachable: claim nothing. */
-async function read<T>(path: string): Promise<T | null> {
+const STATS = process.env.STATS_URL ?? 'http://localhost:3002';
+/** One fact from a server, read once a minute so the page stays static. Unreachable: claim nothing. */
+async function read<T>(path: string, base = API): Promise<T | null> {
   try {
-    const res = await fetch(`${API}${path}`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(2_000) });
+    const res = await fetch(`${base}${path}`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(2_000) });
     return res.ok ? ((await res.json()) as T) : null;
   } catch {
     return null;
@@ -88,7 +87,8 @@ async function read<T>(path: string): Promise<T | null> {
 }
 
 export default async function Landing() {
-  const [config, preview] = await Promise.all([read<AppConfig>('/api/config'), read<DashboardState>('/api/public/preview')]);
+  const [config, preview, perpl] = await Promise.all([read<AppConfig>('/api/config'), read<DashboardState>('/api/public/preview'), read<PxOverview>('/api/stats/overview', STATS)]);
+  const allTime = perpl?.headline.volumeAllUsd;
   const onchain = Boolean(config?.registry);
   const marketCount = config ? Object.keys(config.specs).length : MARKETS.length;
   const policy = preview?.policy ?? null;
@@ -119,9 +119,10 @@ export default async function Landing() {
               <ModesDiagram className="enter mt-14 [--d:640ms] lg:mt-20" />
               <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
                 <Fact n={<CountUp value={marketCount} />} k="Perpl markets, every one it lists" />
-                <Fact n="1 s" k="engine tick. A reflex acts on the next one" />
-                <Fact n={<CountUp value={KIMI.decisions} />} k="Kimi decisions on Monad mainnet, 10 to 12 Oct" href={at('/system#kimi')} />
-                <Fact n={String(KIMI.looser)} k="of them looser than the rules would have been" />
+                <Fact n="3" k="trading modes, side by side in one account" href="#modes" />
+                <Fact n="1 s" k="market maker tick. A reflex acts on the next one" />
+                {/* Live from the indexer, a minute old at most; without it, the claim the analytics stand on. */}
+                <Fact n={allTime ? (allTime >= 1e9 ? `$${(allTime / 1e9).toFixed(1)}B` : usdCompact(allTime)) : 'Every'} k={allTime ? 'of Perpl volume indexed since launch' : 'Perpl trade since launch, indexed'} href={at('/analytics')} />
               </dl>
             </div>
           </section>
@@ -342,7 +343,7 @@ function Modes() {
 /** One measured figure in the hairline grid under the terminal. */
 function Fact({ n, k, href }: { n: React.ReactNode; k: string; href?: string }) {
   return (
-    <div className="flex flex-col-reverse bg-void px-5 py-5 md:px-6 md:py-6">
+    <div className="flex flex-col-reverse justify-end bg-void px-5 py-5 md:px-6 md:py-6">
       <dt className="mt-3 max-w-[24ch] text-[14px] text-fg-2">{href ? <a href={href} className="underline decoration-line-2 underline-offset-4 transition-colors hover:text-fg hover:decoration-accent">{k}</a> : k}</dt>
       <dd className="num text-[2.25rem] font-medium leading-none tracking-tight md:text-[2.75rem]">{n}</dd>
     </div>
