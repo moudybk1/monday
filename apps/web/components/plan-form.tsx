@@ -10,13 +10,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   BIAS_LABEL, MODE_LABEL, PLAN_DEFAULTS, PLAN_RULES, SCALP_TARGET_ATR, STYLE_LABEL, TREND_LABEL, planNumbers, planProblems, scalpMode, twapSlicesFor,
-  type Bias, type DashboardState, type MarketInsight, type MarketRead, type MarketSpec, type MarketState, type MarketSym, type PlanField, type PlanInput, type PlanView, type ScalpFrame, type Trend, type TwapStyle,
+  type Bias, type DashboardState, type MarketInsight, type MarketRead, type MarketSpec, type MarketSym, type PlanField, type PlanInput, type PlanView, type ScalpFrame, type Trend, type TwapStyle,
 } from '@monday/core';
+import { InsightCard } from './market-read';
 import { Heading, type PerplAccount } from './perpl-connect';
 import { Chip, Choices, Line, Money, Row, SEG, Slider, levTicks, money, parse } from './policy-form';
 import { Button, INPUT, Notice, Panel, Skeleton, Tag, cx } from './ui';
 import { api } from '@/lib/api';
-import { fmtPrice, fmtTime } from '@/lib/format';
+import { fmtPrice } from '@/lib/format';
 import { useAppConfig, useMe } from '@/lib/wallet';
 
 type Kind = PlanInput['kind'];
@@ -209,40 +210,6 @@ function MarketStep({ kind, sym, symbols, blocked, prices, specs, insight, onPic
         <div><Button size="lg" onClick={next} disabled={!sym}>Continue</Button></div>
       </div>
     </div>
-  );
-}
-
-function InsightCard({ sym, q, m, spec }: { sym: MarketSym; q: UseQueryResult<MarketInsight>; m?: MarketState; spec?: MarketSpec }) {
-  const r = q.data?.sym === sym ? q.data : null;
-  const overall = r ? (r.market === 'mixed' ? 'neutral' : r.market) : null;
-  return (
-    <section aria-label={`${sym} market read`} aria-live="polite" className="rounded-sm border border-line-2 bg-raised p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[15px] font-semibold">{sym}</span>
-        {m && <span className="num text-[13px] text-fg-2">{fmtPrice(m.mark, spec)}</span>}
-        {r && overall && <Tag tone={trendTone(overall)}>{r.market === 'mixed' ? 'Mixed' : TREND_LABEL[r.market]}</Tag>}
-        {r && r.market !== 'mixed' && <span className="text-[12px] text-fg-3">{r.aligned ? 'D1, H4 and H1 agree' : r.h1 === 'neutral' ? 'H1 flat' : 'H1 pulling back'}</span>}
-      </div>
-      {r ? (
-        <>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {(['d1', 'h4', 'h1'] as const).map((k) => <Tag key={k} tone={trendTone(r[k])}>{k.toUpperCase()} {TREND_LABEL[r[k]]}</Tag>)}
-          </div>
-          <p className="mt-3 max-w-[62ch] text-[14px] leading-relaxed">{r.summary}</p>
-          <p className="mt-2 text-[11.5px] text-fg-3">
-            {r.source === 'model' ? `Read by ${/kimi/i.test(r.model ?? '') ? 'Kimi' : 'the model'}` : 'Read by rule'} at {fmtTime(r.at, false)}. Each timeframe: the close against a rising or falling 20 EMA.
-          </p>
-        </>
-      ) : q.isError ? (
-        <p className="mt-3 text-[13px] text-ask-fg">Could not read {sym} right now. <button type="button" className="underline underline-offset-2" onClick={() => void q.refetch()}>Try again</button></p>
-      ) : (
-        <div className="mt-3 grid gap-2" role="status">
-          <span className="text-[12.5px] text-fg-3">Reading D1, H4 and H1...</span>
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-4/5" />
-        </div>
-      )}
-    </section>
   );
 }
 

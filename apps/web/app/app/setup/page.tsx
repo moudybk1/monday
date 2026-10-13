@@ -23,8 +23,9 @@ export default function Setup() {
       id: 'maker', icon: ArrowsLeftRightIcon, title: 'Agentic Market Maker',
       text: 'Quotes both sides of the book in the markets you choose and earns the spread. Kimi reviews its spread and size every 15 minutes, inside limits your wallet signs on Monad.',
       facts: ['Runs until you stop it', 'Daily loss limit you sign', 'Every decision hashed and logged'],
-      status: me.status === 'quoting' ? <Tag tone="bid">Running</Tag> : maker ? <Tag>Stopped</Tag> : null,
-      cta: maker ? 'Open settings' : 'Set up', href: maker ? '/app/policy' : '/app/onboarding',
+      // Like the other two: a tag only while it runs, and a button that starts one (a saved policy opens prefilled).
+      status: me.status === 'quoting' ? <Tag tone="bid">Running</Tag> : null,
+      cta: me.status === 'quoting' ? 'Manage' : 'New market maker', href: maker ? '/app/policy' : '/app/onboarding',
     },
     {
       id: 'trade', icon: CrosshairIcon, title: 'Agentic Trade',
