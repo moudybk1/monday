@@ -12,7 +12,7 @@ import {
   type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type Me, type PlanInput, type Policy,
 } from '@monday/core';
 import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain';
-import { config } from './config';
+import { config, redact } from './config';
 import { db, seal, upsertUser } from './db';
 import { llmEnabled } from './governor';
 import { marketInsight } from './insight';
@@ -114,7 +114,14 @@ const MAX_SOCKETS = 1_000; // live dashboards at once; beyond this a viewer wait
 export async function buildApi(deps: ApiDeps) {
   // Behind Caddy or the web app's proxy every visitor arrives from a private address; trust the forwarded client address
   // from those only, so per-address rate limits count visitors and not the proxy. A direct public caller cannot spoof it.
-  const app = Fastify({ trustProxy: ['loopback', 'uniquelocal'], logger: { level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'] } });
+  const app = Fastify({
+    trustProxy: ['loopback', 'uniquelocal'],
+    logger: {
+      level: config.prod ? 'info' : 'warn', redact: ['req.headers.cookie', 'req.headers.authorization', '*.secret', '*.token', '*.signature', '*.apikey', '*.apiKeySecret', '*.apiKeyToken'],
+      // A failed RPC read (Setup, the policy check) throws an error that quotes the keyed RPC URL: scrubbed before it is logged.
+      serializers: { err: (e: Error & { code?: string; statusCode?: number }) => ({ type: e.name, message: redact(e.message), stack: redact(e.stack ?? ''), code: e.code, statusCode: e.statusCode }) },
+    },
+  });
   await app.register(cookie);
   // Clients only ever send a one-line hello; anything bigger is not ours.
   // Compressed frames: the terminal's state for 11 markets is ~100 KB of JSON a second and deflates about 5x. Uncompressed it

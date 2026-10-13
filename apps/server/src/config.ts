@@ -125,3 +125,21 @@ if (!config.sessionSecret) throw new Error('SESSION_SECRET is required outside t
 // demo keys stored in a paper database still open after a restart. In production a random key dies with the process.
 if (!config.masterKey) config.masterKey = prod ? randomBytes(32).toString('base64') : 'monday-dev-master-key-simulated-orders-only';
 
+// Keyed URLs and secrets never reach a log line or an event row. A failed RPC call quotes its URL in the error, and a
+// keyed endpoint (QuickNode, BlockVision) carries the key in that URL: without this, one RPC hiccup during Setup wrote
+// it to the container log. Scrubbed once here, at the console both processes log through, and in the API's logger.
+const SECRETS: [string, string][] = [];
+for (const url of new Set([config.chain.rpcUrl, config.stats.rpcUrl].filter(Boolean))) {
+  try {
+    const u = new URL(url);
+    if (u.pathname.length > 1 || u.search || u.username || u.password) SECRETS.push([url.replace(/\/$/, ''), `${u.origin}/…`]);
+  } catch {
+    // not a URL: nothing to hide
+  }
+}
+for (const s of [config.telegram.token, config.nansen.apiKey, config.llm.apiKey, config.stats.envioToken, config.masterKey, config.sessionSecret]) if (s.length >= 8) SECRETS.push([s, '***']);
+export const redact = (text: string): string => SECRETS.reduce((t, [from, to]) => t.replaceAll(from, to), text);
+for (const k of ['error', 'warn', 'log'] as const) {
+  const write = console[k].bind(console);
+  console[k] = (...args: unknown[]) => write(...args.map((a) => (typeof a === 'string' ? redact(a) : a instanceof Error ? redact(a.stack ?? a.message) : a)));
+}

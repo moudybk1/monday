@@ -355,7 +355,8 @@ export function walletPerformance(trades: PxTrade[]): WalletPerformance {
     const m = markets.get(t.sym) ?? { sym: t.sym, trades: 0, closes: 0, wins: 0, volumeUsd: 0, feesUsd: 0, netUsd: 0 };
     const day = Math.floor(t.ts / DAY) * DAY;
     const d = days.get(day) ?? { day, trades: 0, closes: 0, wins: 0, volumeUsd: 0, netUsd: 0 };
-    const s = t.long ? sides.long : sides.short;
+    // `long` is the side after the event: an invert's result was made on the side it closed, not the one it opened.
+    const s = (t.kind === 'invert' ? !t.long : t.long) ? sides.long : sides.short;
     m.trades++;
     d.trades++;
     for (const x of [m, d, s]) {
@@ -614,3 +615,6 @@ export function quickAsk(raw: string, markets: string[], loose = false): AskInte
   if (/\bscreener\b/.test(t)) return { kind: 'tab', tab: 'screener' };
   return null;
 }
+
+/** "More volume than N% of traders" from a rank fraction (0 is the top). Never 100: nobody beats every trader, themselves included. */
+export const rankPct = (pct: number) => Math.min(99, Math.floor((1 - pct) * 100));

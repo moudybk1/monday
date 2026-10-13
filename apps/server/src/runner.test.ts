@@ -478,3 +478,67 @@ it('an agent saved as quoting resumes by itself, retries while Perpl is down, an
   expect(startedAt()).toBe(sessionStart); // a resume must not move the session start: deposits since then stay deposits
   after.dispose();
 });
+
+/** A venue that keeps a plan's resting orders, so a tick can see what a kill left behind. */
+function planVenue(wallet: string, placeOrder?: () => Promise<string>) {
+  const orders = new Set<string>();
+  let oid = 0;
+  const v = {
+    size: 0, placed: 0,
+    connect: async () => v.account(), close() {}, on() {}, connected: () => true, quote: () => null, setQuote: async () => {},
+    account: () => ({ accountId: 1, balanceUsd: 1_000, canTrade: true }), position: () => ({ size: v.size, entryPrice: 0 }),
+    // The sweep takes a moment, as Perpl's does: a tick lands while the kill is between its cancel and its flatten.
+    cancelAll: async () => { orders.clear(); await new Promise((ok) => setTimeout(ok, 20)); },
+    flatten: async () => { v.size = 0; },
+    placeOrder: async (o: { price?: number; postOnly?: boolean }) => {
+      v.placed++;
+      if (placeOrder) return placeOrder();
+      const key = `1:${++oid}`;
+      if (o.price != null && o.postOnly) orders.add(key);
+      return key;
+    },
+    cancelOrder: async (key: string) => void orders.delete(key), working: (key: string) => orders.has(key),
+  };
+  const spec = { sym: 'BTC' as const, marketId: 1, priceTick: 0.1, sizeStep: 0.0001, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage: 10 };
+  const feed = {
+    specs: () => ({ BTC: spec }), candles: async () => [],
+    snapshot: (s: MarketSym) => (s === 'BTC' ? { sym: 'BTC', mark: 100_000, oracle: 100_000, mid: 100_000, bestBid: 99_990, bestAsk: 100_010, bids: [], asks: [], fundingRate: 0, openInterest: 0, updatedAt: Date.now() } : null),
+  };
+  const driver = { kind: 'perpl', open: () => v, feed } as never;
+  const r = new Runner(upsertUser(wallet), wallet, 1, { ...POLICY, markets: ['ETH'] }, { driver, collector: {} as never, k: () => 0, notify: () => {}, creds: () => ({ wallet, accountId: 1, token: 't', secret: 's' }) });
+  const twap = { kind: 'twap' as const, sym: 'BTC' as const, bias: 'long' as const, marginUsd: 100, leverage: 5, durationMin: 10, slices: 2, style: 'passive' as const, limitPrice: null, stopLossPct: 2, takeProfitPct: null };
+  return { v, r, orders, twap };
+}
+
+it('a kill lets no plan post a new entry while it sweeps and flattens', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const { v, r, orders, twap } = planVenue('0xkplan');
+  await r.connect();
+  r.plans.create(twap, [], 0);
+  await settle();
+  expect(orders.size).toBe(1); // the first slice rests as a maker order
+  const kill = r.kill('manual');
+  await settle(); // the sweep took the slice off the book and is still in flight
+  r.tick();
+  await settle();
+  await kill;
+  expect(r.plans.running()).toEqual([]);
+  expect(orders.size).toBe(0); // nothing of the plan's rests after the kill
+  r.dispose();
+});
+
+it("a TWAP slice the venue refuses is tried again after a pause, not every second", async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const { v, r, twap } = planVenue('0xtwapno', async () => { throw new VenueError('rejected', 'Perpl order failed: PriceOutOfRange'); });
+  await r.connect();
+  r.plans.create(twap, [], 0);
+  await settle();
+  expect(v.placed).toBe(1);
+  for (let i = 0; i < 6; i++) {
+    vi.setSystemTime(Date.now() + 1_000);
+    r.tick();
+    await settle();
+  }
+  expect(v.placed).toBeLessThanOrEqual(3); // 6 seconds: at most two more attempts
+  r.dispose();
+});

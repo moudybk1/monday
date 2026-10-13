@@ -41,7 +41,7 @@ function Stats() {
   const params = useSearchParams();
   const ov = useQuery({ queryKey: ['stats-overview'], queryFn: () => api<PxOverview>('/stats/overview'), refetchInterval: 15_000 });
   const risk = useQuery({ queryKey: ['stats-risk'], queryFn: () => api<Risk>('/stats/risk'), refetchInterval: 30_000 });
-  const liqs = useQuery({ queryKey: ['stats-liqs'], queryFn: () => api<PxLiquidation[]>('/stats/liquidations?limit=40'), refetchInterval: 10_000 });
+  const liqs = useQuery({ queryKey: ['stats-liqs'], queryFn: () => api<PxLiquidation[]>('/stats/liquidations?limit=200'), refetchInterval: 10_000 });
   const hist7 = useQuery({ queryKey: ['stats-history', 7], queryFn: () => api<PxHistory>('/stats/history?days=7'), refetchInterval: 60_000 });
   const [win, setWin] = useState<PxWindow>('24h');
   const [sym, setSym] = useState<string>(ALL);

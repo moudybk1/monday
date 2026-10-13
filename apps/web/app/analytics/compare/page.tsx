@@ -29,7 +29,7 @@ function Compare() {
   const ws = (params.get('w') ?? '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, MAX);
   const [draft, setDraft] = useState('');
   const set = (next: string[]) => router.replace(`/analytics/compare${next.length ? `?w=${next.join(',')}` : ''}`);
-  const qs = useQueries({ queries: ws.map((q) => ({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${q}`), refetchInterval: 30_000 })) });
+  const qs = useQueries({ queries: ws.map((q) => ({ queryKey: ['stats-wallet', q], queryFn: () => api<PxWallet>(`/stats/wallet/${encodeURIComponent(q)}`), refetchInterval: 30_000 })) });
   useEffect(() => {
     document.title = 'Compare wallets - Monday';
   }, []);

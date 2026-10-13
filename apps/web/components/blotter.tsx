@@ -53,8 +53,8 @@ export function OpenOrders({ state, onPick }: { state: DashboardState; onPick?: 
  * A position's leverage: notional at mark over the margin Perpl holds for it. Until Perpl reports that margin (seconds
  * after a fill) and on simulated venues, the policy's leverage, which Monday sends with every order.
  */
-const leverageOf = (p: MarketState['position'], policy: Policy) =>
-  p.marginUsd != null && p.marginUsd > 0 ? { x: Math.abs(p.notionalUsd) / p.marginUsd, from: 'perpl' as const } : { x: policy.maxLeverage, from: 'policy' as const };
+const leverageOf = (p: MarketState['position'], sent: number) =>
+  p.marginUsd != null && p.marginUsd > 0 ? { x: Math.abs(p.notionalUsd) / p.marginUsd, from: 'perpl' as const } : { x: sent, from: 'policy' as const };
 
 /** One row per market in the policy: what Monday holds, at what entry, and how it is doing at the live mark. */
 export function Positions({ state, onPick }: { state: DashboardState; onPick?: (s: MarketSym) => void }) {
@@ -74,20 +74,22 @@ export function Positions({ state, onPick }: { state: DashboardState; onPick?: (
           const flat = Math.abs(p.notionalUsd) < 0.5;
           const long = p.size > 0;
           const pct = flat || !p.entryPrice ? 0 : (m.mark / p.entryPrice - 1) * (long ? 1 : -1) * 100;
+          // A plan's position: its own leverage, and no share of a market-maker limit it does not run under.
+          const plan = state.plans.find((x) => x.status !== 'done' && x.input.sym === m.sym);
           return (
             <tr key={m.sym} className={cx('h-[24px] border-t border-line', flat && 'text-fg-3')}>
               <td className="pl-2.5 font-sans font-semibold text-fg"><SymButton sym={m.sym} onPick={onPick} /> <span className="font-normal text-fg-3">perp</span></td>
               <td className={cx('font-sans', !flat && (long ? 'text-bid-fg' : 'text-ask-fg'))}>{flat ? 'Flat' : long ? 'Long' : 'Short'}</td>
               <td>{flat ? '-' : (() => {
-                const l = leverageOf(p, state.policy);
-                return <span title={l.from === 'perpl' ? `${fmtUsd(Math.abs(p.notionalUsd))} at mark on ${fmtUsd(p.marginUsd!)} of margin` : 'Your policy\'s leverage, sent with every order. Perpl\'s own figure shows once it confirms the position.'}><span className={l.from === 'policy' ? 'text-fg-3' : undefined}>{l.x.toFixed(1)}x</span></span>;
+                const l = leverageOf(p, plan?.input.leverage ?? state.policy.maxLeverage);
+                return <span title={l.from === 'perpl' ? `${fmtUsd(Math.abs(p.notionalUsd))} at mark on ${fmtUsd(p.marginUsd!)} of margin` : `${plan ? 'The plan\'s' : 'Your policy\'s'} leverage, sent with every order. Perpl's own figure shows once it confirms the position.`}><span className={l.from === 'policy' ? 'text-fg-3' : undefined}>{l.x.toFixed(1)}x</span></span>;
               })()}</td>
               <td className="text-right">{flat ? '-' : `${fmtSize(Math.abs(p.size), m.spec)} ${m.sym}`}</td>
               <td className="text-right">{flat ? '-' : fmtUsd(Math.abs(p.notionalUsd))}</td>
               <td className="text-right">{flat ? '-' : fmtPrice(p.entryPrice, m.spec)}</td>
               <td className="text-right">{fmtPrice(m.mark, m.spec)}</td>
               <td className={cx('text-right', !flat && tone(p.unrealizedUsd))}>{flat ? '-' : <>{fmtSigned(p.unrealizedUsd)} <span className="text-fg-3">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span></>}</td>
-              <td className="pr-2.5 text-right">{flat ? '-' : `${Math.round(Math.min(100, (Math.abs(p.notionalUsd) / state.policy.maxInventoryUsd) * 100))}%`}</td>
+              <td className="pr-2.5 text-right">{flat || plan ? '-' : `${Math.round(Math.min(100, (Math.abs(p.notionalUsd) / state.policy.maxInventoryUsd) * 100))}%`}</td>
             </tr>
           );
         })}

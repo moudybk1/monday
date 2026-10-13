@@ -562,8 +562,10 @@ export class PlanBook {
     if (input.limitPrice != null) price = long ? Math.min(price, input.limitPrice) : Math.max(price, input.limitPrice);
     p.st.slicePrice = price;
     p.st.entryKey = '';
-    this.place(p, v, { sym: input.sym, side: long ? 'bid' : 'ask', size, leverage: input.leverage, price, postOnly: true }, 'entry', () => {
+    this.place(p, v, { sym: input.sym, side: long ? 'bid' : 'ask', size, leverage: input.leverage, price, postOnly: true }, 'entry', (err, code) => {
       p.st.entryKey = null; // crossed in the meantime: the next tick quotes the new touch
+      // Any other refusal (a price out of range, a balance short) would come back every second: wait before trying again.
+      if (code !== 'crosses_book') Object.assign(p.st, { retryAt: Date.now() + 3_000, note: `Slice ${p.st.slicesDone + 1} not placed yet (${err}). Retrying.` });
     });
   }
 
