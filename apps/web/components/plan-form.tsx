@@ -120,7 +120,9 @@ export function PlanWizard({ kind }: { kind: Kind }) {
     const first = asked && free.includes(asked) ? asked : free.includes('BTC') ? 'BTC' : free[0];
     if (first) pickSym(first);
   }, [plans.data, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
-  const balance = account.data?.balanceUsd ?? null;
+  // What a new plan may use: the balance less what the market maker and the running plans already hold.
+  const balance = account.data?.availableUsd ?? account.data?.balanceUsd ?? null;
+  const total = account.data?.balanceUsd ?? null;
   const input = toInput(kind, draft);
   const spec = draft.sym ? specs[draft.sym] : undefined;
   const mark = draft.sym ? market.data?.markets[draft.sym]?.mark ?? null : null;
@@ -175,7 +177,7 @@ export function PlanWizard({ kind }: { kind: Kind }) {
         {current === DIRECTION && <DirectionStep kind={kind} value={draft.bias} onPick={(bias) => { set({ bias }); setStep(SETTINGS); }} />}
         {current === SETTINGS && (
           <SettingsStep
-            kind={kind} draft={draft} set={set} problems={problems} input={input} specs={specs} prices={market.data?.markets ?? {}} balance={balance} read={read.data}
+            kind={kind} draft={draft} set={set} problems={problems} input={input} specs={specs} prices={market.data?.markets ?? {}} balance={balance} total={total} read={read.data}
             sim={Boolean(cfg?.sim || cfg?.paper)} ok={ok} next={() => setStep(REVIEW)} changeMarket={() => setStep(MARKET)}
           />
         )}
@@ -243,9 +245,9 @@ function DirectionStep({ kind, value, onPick }: { kind: Kind; value: Bias | null
 
 const trendTone = (t: Trend) => (t === 'bullish' ? 'bid' : t === 'bearish' ? 'ask' : 'neutral');
 
-function SettingsStep({ kind, draft, set, problems, input, specs, prices, balance, read, sim, ok, next, changeMarket }: {
+function SettingsStep({ kind, draft, set, problems, input, specs, prices, balance, total, read, sim, ok, next, changeMarket }: {
   kind: Kind; draft: Draft; set: (p: Partial<Draft>) => void; problems: Partial<Record<PlanField, string>>; input: PlanInput | null;
-  specs: Partial<Record<MarketSym, MarketSpec>>; prices: DashboardState['markets']; balance: number | null; read: Read | undefined;
+  specs: Partial<Record<MarketSym, MarketSpec>>; prices: DashboardState['markets']; balance: number | null; total: number | null; read: Read | undefined;
   sim: boolean; ok: boolean; next: () => void; changeMarket: () => void;
 }) {
   const sym = draft.sym;
@@ -289,10 +291,10 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
               </div>
             )}
 
-            <Row id="margin" label="Margin" note={balance != null ? `Collateral each ${kind === 'trade' ? 'scalp' : 'position'} takes. Your Perpl balance is ${money(balance, 2)}.` : 'Collateral the position takes from your Perpl balance.'} error={problems.marginUsd}>
+            <Row id="margin" label="Margin" note={balance != null ? `Collateral each ${kind === 'trade' ? 'scalp' : 'position'} takes. ${money(balance, 2)} is free${total != null && total - balance >= 0.01 ? ` of your ${money(total, 2)}; the rest backs your market maker and running plans` : ''}.` : 'Collateral the position takes from your Perpl balance.'} error={problems.marginUsd}>
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                 <Money id="margin" value={draft.margin} invalid={!!problems.marginUsd} onChange={(margin) => set({ margin })} />
-                <div role="group" aria-label="Margin as a share of the balance" className={SEG}>
+                <div role="group" aria-label="Margin as a share of what is free" className={SEG}>
                   {[0.1, 0.25, 0.5].map((f) => {
                     const v = balance != null ? Math.floor(balance * f * 100) / 100 : NaN;
                     return <Chip key={f} type="radio" name="margin-share" checked={parse(draft.margin) === v} disabled={!(v >= PLAN_RULES.minMarginUsd)} onChange={() => set({ margin: String(v) })}>{f * 100}%</Chip>;
@@ -404,7 +406,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
     return (
       <>
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
-          <Line k="Balance on Perpl" v={balance == null ? '-' : money(balance, 2)} />
+          <Line k="Free on Perpl" v={balance == null ? '-' : money(balance, 2)} />
           <Line k="Margin" v={t ? money(t.marginUsd, 2) : '-'} />
           <Line k="Each scalp" v={n && t ? `${n.size} ${t.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
           <Line k="Trigger" v={t ? `${t.frame}, ${mode ? MODE_LABEL[mode].toLowerCase() : 'waiting'}` : '-'} />
@@ -425,7 +427,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
   return (
     <>
       <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
-        <Line k="Balance on Perpl" v={balance == null ? '-' : money(balance, 2)} />
+        <Line k="Free on Perpl" v={balance == null ? '-' : money(balance, 2)} />
         <Line k="Margin" v={w ? money(w.marginUsd, 2) : '-'} />
         <Line k="Position" v={n && w ? `${n.size} ${w.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
         <Line k="Execution" v={w ? `${w.slices} slices, ${STYLE_LABEL[w.style].toLowerCase()}` : '-'} />
@@ -486,7 +488,7 @@ function ReviewStep({ input, spec, mark, balance, read, sim, busy, error, onPlac
           </div>
         ))}
       </dl>
-      {balance != null && input.marginUsd > balance * 0.9 && <div className="mt-6"><Notice tone="warn">This uses most of your balance. It leaves little room for the market maker or another plan.</Notice></div>}
+      {balance != null && input.marginUsd > balance * 0.9 && <div className="mt-6"><Notice tone="warn">This uses most of what is free. It leaves little room for the market maker or another plan.</Notice></div>}
       {error && <p role="alert" className="mt-6 text-[13px] text-ask-fg">{error}</p>}
       <div className="mt-8 flex flex-wrap gap-2.5">
         <Button size="lg" onClick={onPlace} disabled={busy}>{busy ? 'Starting' : input.kind === 'trade' ? 'Start scalping' : 'Start TWAP'}</Button>

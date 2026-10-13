@@ -75,8 +75,8 @@ export default function Onboarding() {
         {current === 2 && <KeyStep sim={Boolean(cfg?.sim || cfg?.paper)} paper={Boolean(cfg?.paper)} perplUrl={cfg?.perplAppUrl ?? ''} hasKey={me.hasKey} revoked={me.keyStatus === 'revoked'} next={async () => { await Promise.all([refresh(), account.refetch()]); setLinked(true); setStep(3); }} />}
         {current === 3 && (
           <LimitsStep
-            initial={policy.data?.pending?.policy ?? policy.data?.policy ? draftFrom(policy.data?.pending?.policy ?? policy.data?.policy) : draftForBalance(account.data?.balanceUsd ?? 0, cfg?.caps ?? null)}
-            balance={account.data?.balanceUsd ?? 0} linked={linked}
+            initial={policy.data?.pending?.policy ?? policy.data?.policy ? draftFrom(policy.data?.pending?.policy ?? policy.data?.policy) : draftForBalance(account.data?.makerAvailableUsd ?? account.data?.balanceUsd ?? 0, cfg?.caps ?? null)}
+            balance={account.data?.makerAvailableUsd ?? account.data?.balanceUsd ?? 0} linked={linked}
             available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={cfg?.caps ?? null} specs={cfg?.specs ?? {}}
             next={async () => { await refresh(); setStep(4); }}
           />

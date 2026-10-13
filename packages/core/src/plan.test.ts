@@ -59,7 +59,7 @@ describe('plan problems', () => {
   });
 
   it('checks margin against the balance and the size step', () => {
-    expect(planProblems(trade({ marginUsd: 2_000 }), BTC, ctx()).marginUsd).toMatch(/Perpl balance/);
+    expect(planProblems(trade({ marginUsd: 2_000 }), BTC, ctx()).marginUsd).toMatch(/still free in your Perpl account/);
     expect(planProblems(trade({ marginUsd: 0.1, leverage: 1 }), BTC, ctx()).marginUsd).toMatch(/At least/);
     // ETH steps are 0.001 (about $2.70): $1 at 1x buys less than one.
     expect(planProblems(trade({ sym: 'ETH', marginUsd: 1, leverage: 1 }), ETH, ctx({ mark: 2_700 })).marginUsd).toMatch(/Too small/);

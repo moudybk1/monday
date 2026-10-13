@@ -10,7 +10,13 @@ import { Button, Field, INPUT, Notice, Skeleton, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { fmtUsd, shortAddr } from '@/lib/format';
 
-export interface PerplAccount { exists: boolean; accountId: number | null; balanceUsd: number | null; minDepositUsd: number; depositUrl: string }
+export interface PerplAccount {
+  exists: boolean; accountId: number | null; balanceUsd: number | null; minDepositUsd: number; depositUrl: string;
+  /** Still free for a new plan: the balance less what the market maker and the running plans hold. */
+  availableUsd: number | null;
+  /** Still free for the market maker: the balance less what the running plans hold. */
+  makerAvailableUsd: number | null;
+}
 
 export function Heading({ title, children }: { title: string; children: React.ReactNode }) {
   return (

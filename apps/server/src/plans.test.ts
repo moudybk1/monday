@@ -221,3 +221,15 @@ describe('TWAP', () => {
     expect(u.v.position('BTC').size).toBe(0); // no more slices after the stop
   });
 });
+
+describe('Balance', () => {
+  it('a plan gets only what is left: the market maker\'s hold and the running plans\' margins come off the balance', async () => {
+    const t = await setup();
+    const bal = t.v.account().balanceUsd;
+    // The market maker holds half: a plan asking for 60% is refused, and the error names what is left.
+    expect(() => t.book.create(trade({ marginUsd: bal * 0.6 }), [], bal * 0.5)).toThrow(`More than the $${(bal * 0.5).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} still free`);
+    // With the market maker holding nothing, the same plan fits.
+    await t.create(trade({ marginUsd: bal * 0.6 }));
+    expect(t.plan()).toMatchObject({ status: 'waiting' });
+  });
+});

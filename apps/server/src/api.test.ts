@@ -7,7 +7,7 @@ const { buildApi } = await import('./api');
 /** The API with a scripted runner behind every user: it records what it was told to do. */
 async function harness() {
   const calls: string[] = [];
-  const runner = { status: 'quoting', lastSeenAt: 0, kill: async () => void calls.push('kill'), pause: async () => void calls.push('pause'), state: () => ({}), subscribe: () => () => {}, makerMarkets: () => [] };
+  const runner = { status: 'quoting', lastSeenAt: 0, kill: async () => void calls.push('kill'), pause: async () => void calls.push('pause'), state: () => ({}), subscribe: () => () => {}, makerMarkets: () => [], committed: () => ({ makerUsd: 0, plansUsd: 0 }) };
   const app = await buildApi({
     driver: { kind: 'sim', feed: { specs: () => ({}), snapshot: () => null, candles: async () => [] }, minDepositUsd: () => 10 } as never,
     world: null, house: () => null, runnerFor: () => runner as never, dropRunner: () => {}, health: () => ({ ok: true }),
