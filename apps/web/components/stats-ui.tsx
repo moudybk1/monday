@@ -92,12 +92,13 @@ export function Delta({ now, prev, up = 'good', suffix, className }: { now: numb
 }
 
 export function Kpi({ k, v, n, format, sub, t, hint, delta, spark }: {
-  k: string; v?: ReactNode; n?: number | null; format?: (v: number) => string; sub?: ReactNode; t?: number | null; hint?: string; delta?: ReactNode; spark?: ReactNode;
+  k: ReactNode; v?: ReactNode; n?: number | null; format?: (v: number) => string; sub?: ReactNode; t?: number | null; hint?: string; delta?: ReactNode; spark?: ReactNode;
 }) {
   // Four fixed rows on the parent grid's subgrid, so label, value, delta and sub line up across a row of tiles.
+  // A tile with a hint underlines its label with dots: the plain-words definition is one hover away (and on the page below the row).
   return (
     <div className="row-span-4 grid min-w-0 grid-rows-subgrid gap-y-1.5 bg-canvas px-3 py-2.5" title={hint}>
-      <dt className="label truncate">{k}</dt>
+      <dt className={cx('label truncate', hint && 'underline decoration-dotted decoration-line-2 underline-offset-[3px]')}>{k}</dt>
       <dd className="flex min-w-0 items-center justify-between gap-2">
         <span className={cx('num flex-none text-[19px] font-medium leading-none tracking-tight', t === undefined ? 'text-fg' : tone(t))}>
           {n != null && format ? <Num value={n} format={format} /> : v}

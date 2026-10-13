@@ -6,7 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { PxActivity, PxCohorts, PxFlows, PxFunding, PxHistory, PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxSignal, PxTrader, PxTraderStats, PxWindow } from '@monday/core';
-import { CATS, EASE, HeatGrid, LineChart, Share, SignedBars, Sparkline, StackedBars, type Series, type Tone } from '@/components/charts';
+import { CATS, Donut, EASE, HeatGrid, LineChart, Share, SignedBars, Sparkline, StackedBars, type Series, type Tone } from '@/components/charts';
 import { AccountLink, Delta, Kpi, Num, Segments, Skew, Tabs, ago, liqText, liqTone, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
 import { Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -33,6 +33,86 @@ const lost = (b: { lo: number | null }) => b.lo == null || b.lo < 0;
 const per8h = (rate: number, intervalMin: number) => rate * (480 / Math.max(1, intervalMin)) * 100;
 const int = (n: number) => Math.round(n).toLocaleString('en-US');
 
+/** The terms on this page, in plain words. Each tile carries its own line as a hint; the row under the tiles shows them all. */
+const GLOSSARY: readonly (readonly [string, string])[] = [
+  ['Volume', 'The dollar value of everything traded. A trade counts once, at its price.'],
+  ['Open interest', 'The size of all positions open right now, counted on one side: every long has a short against it.'],
+  ['TVL', 'Collateral the exchange holds for everyone: free balances plus what is locked in positions.'],
+  ['Fees', 'What traders paid the exchange on their fills. Taking liquidity costs more than making it.'],
+  ['Traders', 'Accounts that filled at least one order in the window.'],
+  ['Net flow', 'Deposits minus withdrawals: whether money came into the exchange or left it, on balance.'],
+  ['Liquidated', 'Positions the exchange closed because their collateral ran too low, valued at the mark price.'],
+  ['Funding', 'A payment between longs and shorts every funding interval, shown per 8 hours. Positive means longs pay shorts.'],
+  ['Long / short', 'Open accounts on each side. Notional is always equal on both sides of a perp, so the count is what skews.'],
+  ['Mark price', 'The price the exchange values positions at and liquidates against, taken from several spot venues.'],
+];
+const hintOf = (k: string) => GLOSSARY.find(([g]) => g === k)?.[1];
+
+const N = ({ children }: { children: React.ReactNode }) => <span className="num text-fg">{children}</span>;
+/** "12% more than yesterday", "about the same as yesterday", "2.3x yesterday". Null without a comparison. */
+function vs(cur: number | null | undefined, prev: number | null | undefined, what: string): string | null {
+  if (!cur || !prev) return null;
+  const r = cur / prev;
+  if (Math.abs(r - 1) < 0.02) return `about the same as ${what}`;
+  if (r >= 2) return `${r.toFixed(1)}x ${what}`;
+  return `${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? 'more' : 'less'} than ${what}`;
+}
+
+/**
+ * The last day in three sentences, written by rules from the same figures as the tiles and refreshed with them, so a
+ * reader who never scrolls still leaves knowing what happened.
+ */
+function Summary({ o, dayAgo }: { o: PxOverview; dayAgo: { oiUsd: number } | null }) {
+  const h = o.headline;
+  const today = Math.floor(o.at / DAY) * DAY;
+  const yesterday = o.daily.find((d) => d.t === today - DAY);
+  const todayRow = o.daily.find((d) => d.t === today);
+  const marketsVol = o.markets.reduce((s, m) => s + m.volume24hUsd, 0);
+  const top = [...o.markets].sort((a, b) => b.volume24hUsd - a.volume24hUsd)[0];
+  const topShare = top && marketsVol ? top.volume24hUsd / marketsVol : 0;
+  const volVs = vs(h.volume24hUsd, yesterday?.volumeUsd, 'yesterday');
+  const liq = h.liquidations24hUsd;
+  // Which side was hit: from today's indexed day, a hint beside the 24-hour figure.
+  const longShare = liq && todayRow?.coverage === 'full' && todayRow.liquidationsUsd && todayRow.liqLongUsd != null ? todayRow.liqLongUsd / todayRow.liquidationsUsd : null;
+  const oiVs = dayAgo ? vs(h.openInterestUsd, dayAgo.oiUsd, 'a day ago') : null;
+  const flow = h.netFlow24hUsd;
+  return (
+    <div className="panel min-w-0 rise px-3 py-2.5" style={{ '--i': 0.5 } as React.CSSProperties}>
+      <p className="label">The last 24 hours, in plain words</p>
+      <p className="mt-1.5 max-w-[96ch] text-[14px] leading-relaxed text-fg-2">
+        Perpl traded <N>{money(h.volume24hUsd)}</N>{volVs ? `, ${volVs}` : ''}{h.activeTraders24h != null ? <>, across <N>{int(h.activeTraders24h)}</N> accounts</> : null}{top && topShare ? <>; <N>{top.sym}</N> was <N>{Math.round(topShare * 100)}%</N> of it</> : null}.{' '}
+        {liq == null ? 'Liquidations for the day are still being indexed.' : liq > 0 ? <>The exchange liquidated <N>{money(liq)}</N> of positions{longShare != null ? `, ${longShare >= 0.5 ? 'mostly longs' : 'mostly shorts'}` : ''}.</> : 'No position was liquidated.'}{' '}
+        {flow != null ? <>On balance <N>{money(Math.abs(flow))}</N> of collateral {flow >= 0 ? 'came in' : 'left'}</> : <>Open interest is <N>{money(h.openInterestUsd)}</N></>}
+        {flow != null ? <>, and open interest is <N>{money(h.openInterestUsd)}</N>{oiVs ? `, ${oiVs}` : ''}.</> : oiVs ? `, ${oiVs}.` : '.'}
+      </p>
+    </div>
+  );
+}
+
+/** Where the window's volume sits, and where today's open interest sits, market by market. */
+function Shares({ o, win, winDays, today }: { o: PxOverview; win: PxWindow; winDays: number; today: number }) {
+  const label = win === '24h' ? 'last 24h' : win === 'all' ? 'all time' : `last ${winDays} days`;
+  const vol = win === '24h'
+    ? o.markets.map((m) => ({ name: m.sym, value: m.volume24hUsd }))
+    : Object.entries(o.daily.filter((d) => win === 'all' || d.t >= today - (winDays - 1) * DAY).reduce<Record<string, number>>((acc, d) => {
+      for (const [k, v] of Object.entries(d.byMarket)) acc[k] = (acc[k] ?? 0) + v;
+      return acc;
+    }, {})).map(([name, value]) => ({ name, value }));
+  const oi = o.markets.map((m) => ({ name: m.sym, value: m.openInterestUsd }));
+  const total = (xs: { value: number }[]) => xs.reduce((s, x) => s + x.value, 0);
+  const centre = (v: number, k: string) => <><span className="num text-[15px] font-medium text-fg">{money(v)}</span><span className="label mt-0.5">{k}</span></>;
+  return (
+    <div className="grid gap-1 lg:grid-cols-2">
+      <Panel title={`Volume by market, ${label}`} aside={<span className="hidden sm:inline">share of what was traded</span>} bodyClassName="p-3">
+        <Donut parts={vol} format={money} label={`Volume by market, ${label}`} centre={centre(total(vol), 'traded')} />
+      </Panel>
+      <Panel title="Open interest by market" aside={<span className="hidden sm:inline">share of positions open now</span>} bodyClassName="p-3">
+        <Donut parts={oi} format={money} label="Open interest by market" centre={centre(total(oi), 'open now')} />
+      </Panel>
+    </div>
+  );
+}
+
 export default function StatsPage() {
   return <Suspense fallback={<Loading />}><Stats /></Suspense>;
 }
@@ -52,6 +132,9 @@ function Stats() {
   useEffect(() => {
     const m = params.get('market');
     if (m) setSym(m);
+    // The ask bar's "range" is the page's window: one control for every number and the chart.
+    const r = params.get('range');
+    if (r != null && ['0', '7', '30', '90'].includes(r)) setWin(r === '7' ? '7d' : r === '0' ? 'all' : '30d');
   }, [params]);
 
   if (ov.isLoading) return <Loading />;
@@ -91,26 +174,37 @@ function Stats() {
         <Segments label="Window" value={win} onChange={setWin} options={[['24h', '24H'], ['7d', '7D'], ['30d', '30D'], ['all', 'All']] as const} />
       </div>
 
+      <Summary o={o} dayAgo={dayAgo} />
+
       <dl className="panel min-w-0 rise grid grid-cols-2 gap-px bg-line md:grid-cols-4 2xl:grid-cols-8" style={{ '--i': 1 } as React.CSSProperties}>
-        <Kpi k={`Volume ${win === 'all' ? 'all time' : win}`} n={vol} format={money} delta={<Delta now={win === '24h' ? h.volume24hUsd : cur((d) => d.volumeUsd)} prev={prev((d) => d.volumeUsd)} suffix={vsLabel} />} sub={win === '24h' ? `${money(h.volume7dUsd)} in 7 days` : `${money(vol / Math.min(winDays, o.daily.length))} a day`} spark={<Sparkline values={spark((d) => d.volumeUsd)} />} />
-        <Kpi k="Open interest" n={h.openInterestUsd} format={money} delta={<Delta now={h.openInterestUsd} prev={dayAgo?.oiUsd} up="none" suffix="24h" />} sub="one side, at mark" spark={<Sparkline values={sampled((p) => p.oiUsd)} tone="accent" />} />
-        <Kpi k="TVL" n={h.tvlUsd} format={money} delta={<Delta now={h.tvlUsd} prev={dayAgo?.tvlUsd} suffix="24h" />} sub="held by the Exchange" spark={<Sparkline values={sampled((p) => p.tvlUsd)} tone="accent" />} />
+        <Kpi k={`Volume ${win === 'all' ? 'all time' : win}`} hint={hintOf('Volume')} n={vol} format={money} delta={<Delta now={win === '24h' ? h.volume24hUsd : cur((d) => d.volumeUsd)} prev={prev((d) => d.volumeUsd)} suffix={vsLabel} />} sub={win === '24h' ? `${money(h.volume7dUsd)} in 7 days` : `${money(vol / Math.min(winDays, o.daily.length))} a day`} spark={<Sparkline values={spark((d) => d.volumeUsd)} />} />
+        <Kpi k="Open interest" hint={hintOf('Open interest')} n={h.openInterestUsd} format={money} delta={<Delta now={h.openInterestUsd} prev={dayAgo?.oiUsd} up="none" suffix="24h" />} sub="all open positions, one side" spark={<Sparkline values={sampled((p) => p.oiUsd)} tone="accent" />} />
+        <Kpi k="TVL" hint={hintOf('TVL')} n={h.tvlUsd} format={money} delta={<Delta now={h.tvlUsd} prev={dayAgo?.tvlUsd} suffix="24h" />} sub="collateral the exchange holds" spark={<Sparkline values={sampled((p) => p.tvlUsd)} tone="accent" />} />
         {/* A fee rate is only meaningful when fees and volume cover the same days. */}
-        <Kpi k={`Fees ${win === 'all' ? 'all time' : win}`} v={fees == null ? 'n/a' : undefined} n={fees} format={(v) => money(v, true)} delta={<Delta now={win === '24h' ? h.fees24hUsd : cur((d) => d.feesUsd)} prev={win === '24h' ? o.daily.find((d) => d.t === today - DAY)?.feesUsd : prev((d) => d.feesUsd)} suffix={vsLabel} />} sub={!feesDone ? PARTIAL : vol ? `${((fees ?? 0) / vol * 1e4).toFixed(2)} bps of volume` : undefined} spark={<Sparkline values={spark((d) => d.feesUsd)} />} />
-        <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} v={traders == null ? 'n/a' : undefined} n={traders} format={int} delta={win === '24h' ? <Delta now={h.activeTraders24h} prev={o.daily.find((d) => d.t === today - DAY)?.traders} suffix="vs yesterday" /> : undefined} sub={tradersDone ? 'accounts with a fill' : PARTIAL} spark={<Sparkline values={spark((d) => d.traders)} />} />
-        <Kpi k="Net flow 24h" v={h.netFlow24hUsd == null ? 'n/a' : undefined} n={h.netFlow24hUsd} format={signedMoney} t={h.netFlow24hUsd} sub={h.complete['24h'] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
-        <Kpi k="Liquidated 24h" v={h.liquidations24hUsd == null ? 'n/a' : undefined} n={h.liquidations24hUsd} format={money} sub={h.complete['24h'] ? 'notional at mark' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
+        <Kpi k={`Fees ${win === 'all' ? 'all time' : win}`} hint={hintOf('Fees')} v={fees == null ? 'n/a' : undefined} n={fees} format={(v) => money(v, true)} delta={<Delta now={win === '24h' ? h.fees24hUsd : cur((d) => d.feesUsd)} prev={win === '24h' ? o.daily.find((d) => d.t === today - DAY)?.feesUsd : prev((d) => d.feesUsd)} suffix={vsLabel} />} sub={!feesDone ? PARTIAL : vol ? `${((fees ?? 0) / vol * 100).toFixed(3)}% of volume` : undefined} spark={<Sparkline values={spark((d) => d.feesUsd)} />} />
+        <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} hint={hintOf('Traders')} v={traders == null ? 'n/a' : undefined} n={traders} format={int} delta={win === '24h' ? <Delta now={h.activeTraders24h} prev={o.daily.find((d) => d.t === today - DAY)?.traders} suffix="vs yesterday" /> : undefined} sub={tradersDone ? 'accounts that traded' : PARTIAL} spark={<Sparkline values={spark((d) => d.traders)} />} />
+        <Kpi k="Net flow 24h" hint={hintOf('Net flow')} v={h.netFlow24hUsd == null ? 'n/a' : undefined} n={h.netFlow24hUsd} format={signedMoney} t={h.netFlow24hUsd} sub={h.complete['24h'] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
+        <Kpi k="Liquidated 24h" hint={hintOf('Liquidated')} v={h.liquidations24hUsd == null ? 'n/a' : undefined} n={h.liquidations24hUsd} format={money} sub={h.complete['24h'] ? 'closed by the exchange' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
         <Kpi k="Accounts" n={h.accounts} format={int} delta={h.newAccounts24h != null ? <span className="num text-[12px] text-bid-fg">+{h.newAccounts24h} <span className="font-sans text-fg-3">24h</span></span> : undefined} sub="ever opened" spark={<Sparkline values={spark((d) => d.newAccounts)} />} />
       </dl>
 
+      <details className="panel min-w-0 rise px-3 py-2 text-[13px] text-fg-2" style={{ '--i': 1.5 } as React.CSSProperties}>
+        <summary className="cursor-pointer select-none text-fg-3 hover:text-fg">What these numbers mean</summary>
+        <dl className="mt-2 grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
+          {GLOSSARY.map(([k, v]) => <div key={k} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2"><dt className="font-semibold text-fg">{k}</dt><dd>{v}</dd></div>)}
+        </dl>
+      </details>
+
       <div className="min-w-0 rise grid gap-1 xl:h-[460px] xl:grid-cols-[minmax(0,1fr)_400px]" style={{ '--i': 2 } as React.CSSProperties}>
-        <History o={o} sym={sym} onSym={setSym} />
+        <History o={o} sym={sym} onSym={setSym} win={win} />
         <LiquidationMap risk={risk.data} error={risk.isError} sym={sym === ALL ? undefined : sym} onSym={setSym} />
       </div>
 
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Spotlight liqs={liqs.data} now={now} /></div>
 
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} risk={risk.data} hist={hist7.data} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
+
+      <div className="min-w-0 rise" style={{ '--i': 3.5 } as React.CSSProperties}><Shares o={o} win={win} winDays={winDays} today={today} /></div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 4 } as React.CSSProperties}>
         <Panel title="Closest to liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
@@ -144,17 +238,16 @@ function Stats() {
 }
 
 /** Every metric in one panel: daily bars for the flows, sampled lines for the levels, Perpl's own history for funding. */
-function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: string) => void }) {
+function History({ o, sym, onSym, win }: { o: PxOverview; sym: string; onSym: (s: string) => void; win: PxWindow }) {
   const params = useSearchParams();
   const [metric, setMetric] = useState<Metric>('volume');
-  const [range, setRange] = useState<7 | 30 | 90 | 0>(30);
   const [stack, setStack] = useState(false);
   useEffect(() => {
     const m = params.get('metric');
     if (METRICS.some(([k]) => k === m)) setMetric(m as Metric);
-    const r = params.get('range');
-    if (r != null && ['0', '7', '30', '90'].includes(r)) setRange(Number(r) as 7 | 30 | 90 | 0);
   }, [params]);
+  // One window for the whole page: the chart follows it. A day is one bar, so 24H shows the last 7 days, today at the right.
+  const range: 7 | 30 | 0 = win === '30d' ? 30 : win === 'all' ? 0 : 7;
   const sampledDays = range === 7 ? 7 : 30;
   const hist = useQuery({ queryKey: ['stats-history', sampledDays], queryFn: () => api<PxHistory>(`/stats/history?days=${sampledDays}`), refetchInterval: 60_000, enabled: SAMPLED.includes(metric) });
   const fund = useQuery({ queryKey: ['stats-funding', sampledDays], queryFn: () => api<PxFunding>(`/stats/funding?days=${sampledDays}`), refetchInterval: 600_000, enabled: metric === 'funding' });
@@ -246,9 +339,7 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
           {o.markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
         </select>
         {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[12px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By market</button>}
-        {SAMPLED.includes(metric) || metric === 'funding'
-          ? <Segments label="Range" value={range === 7 ? 7 : 30} onChange={(v) => setRange(v)} options={[[7, '7D'], [30, '30D']] as const} />
-          : <Segments label="Range" value={range} onChange={setRange} options={[[7, '7D'], [30, '30D'], [90, '90D'], [0, 'All']] as const} />}
+        <span className="num">{SAMPLED.includes(metric) || metric === 'funding' ? `last ${sampledDays} days` : range === 0 ? 'every day since launch' : `last ${range} days${win === '24h' ? ', today at the right' : ''}`}</span>
       </div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={`${metric}${stack}${sym}`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.12 } }} transition={{ duration: 0.25, ease: EASE }}>
