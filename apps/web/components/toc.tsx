@@ -23,7 +23,7 @@ export function Toc({ items }: { items: { id: string; label: string }[] }) {
     return () => io.disconnect();
   }, [items]);
   return (
-    <ol className="relative grid gap-0.5 border-l border-line-2 text-[13px]">
+    <ol className="relative grid gap-0.5 border-l border-line-2 text-[14px]">
       {items.map((t) => (
         <li key={t.id} className="relative">
           {on === t.id && <motion.span layoutId="toc-on" aria-hidden className="absolute -left-px inset-y-0 w-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 38 }} />}

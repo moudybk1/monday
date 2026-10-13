@@ -51,7 +51,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
   return (
     <section className="panel flex-none" aria-label="Agent">
       <header className="flex h-8 flex-none items-center justify-between border-b border-line px-2.5">
-        <h2 className="text-[12px] font-semibold">Agent</h2>
+        <h2 className="text-[13px] font-semibold">Agent</h2>
         <Tag tone={state.closing ? 'warn' : status.live ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{status.text}</Tag>
       </header>
 
@@ -59,26 +59,26 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
         <div className={cell}>
           <dt className="label">Equity</dt>
           <dd className="num mt-1.5 text-[20px] font-medium leading-none tracking-tight">{fmtUsd(state.account.equityUsd)}</dd>
-          <dd className="num mt-1.5 text-[11px] text-fg-3">acct {state.account.id || 'none'}</dd>
+          <dd className="num mt-1.5 text-[12px] text-fg-3">acct {state.account.id || 'none'}</dd>
         </div>
         <div className={cell}>
           <dt className="label" title="Trading result since 00:00 UTC: equity change minus deposits and withdrawals. Fees and funding are already inside it.">Today</dt>
           <dd className={cx('num mt-1.5 text-[20px] font-medium leading-none tracking-tight', tone(pnl.todayUsd))}>{fmtSigned(pnl.todayUsd)}</dd>
-          <dd className="num mt-1.5 truncate text-[11px] text-fg-3">
+          <dd className="num mt-1.5 truncate text-[12px] text-fg-3">
             <span className={tone(pnl.realizedUsd)}>{fmtSigned(pnl.realizedUsd)}</span> real <span className={tone(pnl.unrealizedUsd)}>{fmtSigned(pnl.unrealizedUsd)}</span> open, fees {fmtUsd(pnl.feesUsd, 3)}
           </dd>
         </div>
         <div className={cell}>
           <dt className="label">Session</dt>
-          <dd className="num mt-1.5 text-[12px]">
+          <dd className="num mt-1.5 text-[13px]">
             {live ? <><span className={tone(live.pnlUsd)}>{fmtSigned(live.pnlUsd)}</span> <span className="text-fg-3">since {fmtTime(live.startedAt, false)}</span></>
               // The market maker is not quoting, but Agentic Trade or TWAP is: their session is the one running.
               : plans.length ? <><span className={tone(plansPnl)}>{fmtSigned(plansPnl)}</span> <span className="text-fg-3">{plans.length === 1 ? `${plans[0].input.sym} ${KIND_LABEL[plans[0].input.kind]}` : `${plans.length} plans`}</span></>
               : <span className="text-fg-3">not running</span>}
           </dd>
-          {!live && plans.length > 0 && <dd className="mt-1 text-[11px] text-fg-3">market maker not running, see Plans</dd>}
+          {!live && plans.length > 0 && <dd className="mt-1 text-[12px] text-fg-3">market maker not running, see Plans</dd>}
           {live && (
-            <dd className="num mt-1 text-[11px] text-fg-3">
+            <dd className="num mt-1 text-[12px] text-fg-3">
               stop {live.stopLossUsd != null ? <span className="text-ask-fg">-{usd(live.stopLossUsd, 2)}</span> : 'none'} / target {live.takeProfitUsd != null ? <span className="text-bid-fg">+{usd(live.takeProfitUsd, 2)}</span> : 'none'}
               {plans.length > 0 && `, ${plans.length} plan${plans.length > 1 ? 's' : ''} too`}
             </dd>
@@ -86,7 +86,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
         </div>
         <div className={cell}>
           <dt className="label">Stop loss (day)</dt>
-          <dd className="num mt-1.5 flex items-center gap-2 text-[12px]">
+          <dd className="num mt-1.5 flex items-center gap-2 text-[13px]">
             <span className={used >= 70 ? 'text-ask-fg' : 'text-fg'}>{Math.round(used)}%</span>
             <span className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-[1px] bg-raised-2" aria-hidden>
               <span className="absolute inset-y-0 left-0 transition-[width] duration-500" style={{ width: `${used}%`, background: used >= 70 ? 'var(--ask)' : 'var(--fg-3)' }} />
@@ -99,13 +99,13 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
       <div className="border-t border-line px-2.5 py-2">
         {quoting ? (
           // A running market maker is stopped where the plans are: one place for everything that trades.
-          <div className="flex items-center justify-between gap-2 text-[11.5px] text-fg-3">
+          <div className="flex items-center justify-between gap-2 text-[13px] text-fg-3">
             <span>Quoting. Stop it under Plans.</span>
             <Button size="xs" variant="ghost" onClick={onShowPlans}>Open Plans</Button>
           </div>
         ) : (
           // Stopped, killed or never started: the market maker starts again from Setup, like any other mode.
-          <div className="flex items-center justify-between gap-2 text-[11.5px] text-fg-3">
+          <div className="flex items-center justify-between gap-2 text-[13px] text-fg-3">
             <span>{state.closing ? 'Closing: waiting for Perpl to confirm.' : `${statusText(state)}. Start it from Setup.`}</span>
             {!state.closing && <ButtonLink href="/app/setup" size="xs" variant="ghost">Set up again</ButtonLink>}
           </div>
@@ -113,7 +113,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
       </div>
 
       <div className="scroll border-t border-line">
-      <table className="w-full min-w-[21rem] text-[11.5px]">
+      <table className="w-full min-w-[21rem] text-[13px]">
         <thead>
           <tr className="label h-6 text-left [&>th]:font-normal">
             <th className="pl-2.5">Mkt</th>
@@ -136,7 +136,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
               return (
                 <>
                   <span className={side === 'bid' ? 'text-bid-fg' : 'text-ask-fg'}>{fmtPrice(x.quotes[side]!.price, x.spec)}</span>
-                  <span className={cx('block text-[10.5px] leading-tight', st.good ? 'text-fg-3' : 'text-warn')}>{st.label}</span>
+                  <span className={cx('block text-[12px] leading-tight', st.good ? 'text-fg-3' : 'text-warn')}>{st.label}</span>
                 </>
               );
             };
@@ -158,7 +158,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
                 <td className="text-right leading-tight">{q('ask')}</td>
                 <td className="pr-2.5 text-right leading-tight">
                   {x.fills1h}
-                  <span className={cx('block text-[10.5px]', x.markout1mBps == null ? 'text-fg-3' : x.markout1mBps >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{x.markout1mBps == null ? '-' : `${fmtBps(x.markout1mBps)} bps`}</span>
+                  <span className={cx('block text-[12px]', x.markout1mBps == null ? 'text-fg-3' : x.markout1mBps >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{x.markout1mBps == null ? '-' : `${fmtBps(x.markout1mBps)} bps`}</span>
                 </td>
               </tr>
             );
@@ -168,7 +168,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
       </div>
       {/* One plain sentence from the engine on what the selected market is doing or waiting for. */}
       {m && (
-        <p className="border-t border-line px-2.5 py-1.5 text-[11.5px] leading-snug text-fg-2" role="status">
+        <p className="border-t border-line px-2.5 py-1.5 text-[13px] leading-snug text-fg-2" role="status">
           <span className="font-semibold text-fg">{sym}</span> {m.why || (!m.inPolicy ? 'Not in your policy. Trade it from the market strip.' : quoting ? 'Placing quotes.' : 'Not quoting.')}
         </p>
       )}

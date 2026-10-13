@@ -39,7 +39,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
           <Notice tone="warn">Could not reach the Monday server to load decision {id}. Reload the page to try again.</Notice>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-[13px] text-fg-3">
+            <div className="flex flex-wrap items-center gap-2 text-[14px] text-fg-3">
               <Tag>{d.market}</Tag>
               <Tag tone={d.source === 'reflex' || d.source === 'kill' ? 'ask' : 'neutral'}>{SOURCE[d.source]}</Tag>
               <Tag tone={d.regime === 'storm' ? 'accent' : 'neutral'}>{d.regime}</Tag>
@@ -47,13 +47,13 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
             </div>
             <h1 className="display mt-4 text-3xl font-medium md:text-[2.75rem]">Decision {d.id}</h1>
             <p className="mt-4 max-w-[62ch] text-xl leading-snug">{d.reason}</p>
-            <p className="mt-3 text-[13px] text-fg-3">
-              For account owner <span className="num">{shortAddr(d.wallet)}</span>{d.llmModel ? <>, written by <span className="num">{d.llmModel}</span></> : ', written by deterministic rules'}.
+            <p className="mt-3 text-[14px] text-fg-3">
+              For account owner <span className="font-mono">{shortAddr(d.wallet)}</span>{d.llmModel ? <>, written by <span className="num">{d.llmModel}</span></> : ', written by deterministic rules'}.
             </p>
 
             <section className="mt-10 border-t border-line-2 pt-6">
               <h2 className="font-semibold">Verify</h2>
-              <p className="mt-1 max-w-[66ch] text-[15px] text-fg-2">
+              <p className="mt-1 max-w-[66ch] text-[16px] text-fg-2">
                 The agent hashes the parameters and the evidence with keccak256 over canonical JSON.{' '}
                 {d.txHash || d.anchor === 'pending'
                   ? 'Both hashes go to MondayRegistry on Monad. Recompute them here, then compare with the transaction.'
@@ -62,19 +62,19 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
               <dl className="mt-5 grid gap-4 text-sm">
                 {([['Parameters hash', d.paramsHash, check?.params], ['Evidence hash', d.evidenceHash, check?.evidence]] as const).map(([k, v, ok]) => (
                   <div key={k}>
-                    <dt className="flex items-center gap-2 text-[12.5px] text-fg-3">
+                    <dt className="flex items-center gap-2 text-[13px] text-fg-3">
                       {k}
                       {ok === true && <Tag tone="bid"><CheckIcon size={11} weight="bold" className="mr-1" />matches</Tag>}
                       {ok === false && <Tag tone="ask"><XIcon size={11} weight="bold" className="mr-1" />does not match</Tag>}
                     </dt>
-                    <dd className="num mt-1 break-all">{v}</dd>
+                    <dd className="mt-1 break-all font-mono">{v}</dd>
                   </div>
                 ))}
                 <div>
-                  <dt className="text-[12.5px] text-fg-3">On Monad</dt>
+                  <dt className="text-[13px] text-fg-3">On Monad</dt>
                   <dd className="mt-1">
                     {d.txHash ? (
-                      <a href={cfg ? `${cfg.explorerUrl}/tx/${d.txHash}` : undefined} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 break-all underline underline-offset-2">
+                      <a href={cfg ? `${cfg.explorerUrl}/tx/${d.txHash}` : undefined} target="_blank" rel="noreferrer" className="font-mono inline-flex items-center gap-1 break-all underline underline-offset-2">
                         {d.txHash} <ArrowUpRightIcon size={12} />
                       </a>
                     ) : (
@@ -95,12 +95,12 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
             <section className="mt-10 grid gap-8 border-t border-line-2 pt-6 md:grid-cols-2">
               <div className="min-w-0">
                 <h2 className="font-semibold">Parameters</h2>
-                <pre className="num mt-3 overflow-x-auto rounded-sm bg-raised p-4 text-[12.5px] leading-relaxed">{JSON.stringify(d.params, null, 2)}</pre>
+                <pre className="num mt-3 overflow-x-auto rounded-sm bg-raised p-4 text-[13px] leading-relaxed">{JSON.stringify(d.params, null, 2)}</pre>
               </div>
               <div className="min-w-0">
                 <h2 className="font-semibold">Evidence</h2>
-                <p className="mt-1 text-[13px] text-fg-3">Signal values, the market snapshot, and the hashes of the Smart Trader trades in the window.</p>
-                <pre className="num mt-3 max-h-[28rem] overflow-auto rounded-sm bg-raised p-4 text-[12.5px] leading-relaxed">{JSON.stringify(d.evidence, null, 2)}</pre>
+                <p className="mt-1 text-[14px] text-fg-3">Signal values, the market snapshot, and the hashes of the Smart Trader trades in the window.</p>
+                <pre className="num mt-3 max-h-[28rem] overflow-auto rounded-sm bg-raised p-4 text-[13px] leading-relaxed">{JSON.stringify(d.evidence, null, 2)}</pre>
               </div>
             </section>
           </>

@@ -42,7 +42,7 @@ export default function Onboarding() {
       <nav aria-label="Setup steps">
         {/* How far through setup: fills as each step is done. */}
         <div className="mb-5 hidden md:block">
-          <div className="flex items-baseline justify-between text-[12px] text-fg-3"><span>Setup</span><span className="num">{current + 1} of {STEPS.length}</span></div>
+          <div className="flex items-baseline justify-between text-[13px] text-fg-3"><span>Setup</span><span className="num">{current + 1} of {STEPS.length}</span></div>
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-raised-2">
             <motion.div className="h-full rounded-full bg-accent" initial={false} animate={{ width: `${((current + 1) / STEPS.length) * 100}%` }} transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 160, damping: 26 }} />
           </div>
@@ -55,9 +55,9 @@ export default function Onboarding() {
               <li key={label} className="shrink-0">
                 <button
                   type="button" disabled={i === 0 || i > reachable} onClick={() => setStep(i)} aria-current={active ? 'step' : undefined}
-                  className={cx('flex w-full items-center gap-3 rounded-sm px-2.5 py-2.5 text-left text-[14px] transition-colors disabled:cursor-default', active ? 'bg-raised font-semibold' : 'text-fg-2', i <= reachable && i > 0 && !active && 'hover:bg-raised')}
+                  className={cx('flex w-full items-center gap-3 rounded-sm px-2.5 py-2.5 text-left text-[15px] transition-colors disabled:cursor-default', active ? 'bg-raised font-semibold' : 'text-fg-2', i <= reachable && i > 0 && !active && 'hover:bg-raised')}
                 >
-                  <span className={cx('num grid size-6 shrink-0 place-items-center rounded-sm border text-[12px]', done && !active ? 'border-fg bg-fg text-canvas' : active ? 'border-transparent bg-accent text-accent-fg' : 'border-line-2 text-fg-3')}>
+                  <span className={cx('num grid size-6 shrink-0 place-items-center rounded-sm border text-[13px]', done && !active ? 'border-fg bg-fg text-canvas' : active ? 'border-transparent bg-accent text-accent-fg' : 'border-line-2 text-fg-3')}>
                     {done && !active ? <CheckIcon size={12} weight="bold" /> : i + 1}
                   </span>
                   <span className={cx('whitespace-nowrap', !active && 'hidden md:inline')}>{label}</span>
@@ -66,7 +66,7 @@ export default function Onboarding() {
             );
           })}
         </ol>
-        <p className="mt-6 hidden text-[13px] text-fg-3 md:block">Signed in {me.demo ? 'with a demo account' : <>as <span className="num text-fg-2">{shortAddr(me.wallet)}</span></>}. Setup takes about five minutes.</p>
+        <p className="mt-6 hidden text-[14px] text-fg-3 md:block">Signed in {me.demo ? 'with a demo account' : <>as <span className="font-mono text-fg-2">{shortAddr(me.wallet)}</span></>}. Setup takes about five minutes.</p>
       </nav>
 
       {/* Each step slides in when it opens: keyed by step, so moving between steps reads as moving forward. */}
@@ -91,7 +91,7 @@ function Heading({ title, children }: { title: string; children: React.ReactNode
   return (
     <>
       <h1 className="display text-3xl font-medium md:text-[2.5rem]">{title}</h1>
-      <p className="mt-4 max-w-[60ch] text-[15px] leading-relaxed text-fg-2">{children}</p>
+      <p className="mt-4 max-w-[60ch] text-[16px] leading-relaxed text-fg-2">{children}</p>
     </>
   );
 }
@@ -118,7 +118,7 @@ function LimitsStep({ initial, balance, linked, available, caps, specs, next }: 
       <Heading title="Set your limits">Pick a margin and a leverage, and Monday sizes the rest. The agent and the LLM are both held to these limits. Your Perpl balance is <span className="num">{fmtUsd(balance)}</span>.</Heading>
       <div className="mt-8">
         <PolicyForm value={draft} onChange={setDraft} available={available} caps={caps} balance={balance} specs={specs}>
-          {err && <p role="alert" className="text-[12px] text-ask-fg">{err}</p>}
+          {err && <p role="alert" className="text-[13px] text-ask-fg">{err}</p>}
           <Button size="lg" className="w-full" onClick={save} disabled={busy || !draftOk(draft, balance, caps, specs ?? {})}>{busy ? 'Checking limits' : 'Continue'}</Button>
         </PolicyForm>
       </div>
@@ -182,7 +182,7 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
           ['Markets', p.markets.join(', ')], ['Quote per side', usd(p.quoteSizeUsd)], ['Position limit per market', usd(p.maxInventoryUsd)],
           ['Base spread', `${p.minHalfSpreadBps} bps`], ['Stop loss', usd(p.maxDailyLossUsd)], ['Leverage', `${p.maxLeverage}x`],
         ].map(([k, v]) => (
-          <div key={k} className="border-b border-line py-3"><dt className="text-[12px] text-fg-3">{k}</dt><dd className="num mt-0.5 font-semibold">{v}</dd></div>
+          <div key={k} className="border-b border-line py-3"><dt className="text-[13px] text-fg-3">{k}</dt><dd className="num mt-0.5 font-semibold">{v}</dd></div>
         ))}
       </dl>
 
@@ -190,9 +190,9 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold">Publish the policy on Monad</p>
-            <p className="mt-0.5 text-[13px] text-fg-3">
+            <p className="mt-0.5 text-[14px] text-fg-3">
               {mustSign ? 'Two steps in your wallet: publish these limits to MondayRegistry, then, the first time only, authorise Monday\'s agent to log its decisions. The contract holds no funds.'
-                : view.onchainTx ? <>Published. <a className="num underline underline-offset-2" href={`${explorerUrl}/tx/${view.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.onchainTx)}</a></>
+                : view.onchainTx ? <>Published. <a className="font-mono underline underline-offset-2" href={`${explorerUrl}/tx/${view.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.onchainTx)}</a></>
                 : demo ? 'Skipped for demo accounts, which have no wallet to sign with. The policy is enforced off-chain.'
                 : 'MondayRegistry is not configured on this server yet, so the policy is enforced off-chain only.'}
             </p>
@@ -201,22 +201,22 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
             : mustSign ? <Button variant="ghost" onClick={sign} disabled={busy !== null}>Sign on Monad</Button>
             : <Tag tone={view.onchainTx ? 'accent' : 'neutral'}>{view.onchainTx ? 'On-chain' : 'Off-chain'}</Tag>}
         </div>
-        {mustSign && !registry.canSign && <p className="text-[13px] text-warn">The wallet connection was lost. Reconnect the wallet you signed in with to publish the policy.</p>}
+        {mustSign && !registry.canSign && <p className="text-[14px] text-warn">The wallet connection was lost. Reconnect the wallet you signed in with to publish the policy.</p>}
         {!mustSign && authorized === false && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold">Authorise the agent</p>
-              <p className="mt-0.5 text-[13px] text-fg-3">The policy is published. One more signature lets Monday&apos;s agent log its decisions in MondayRegistry; until then they are kept off-chain.</p>
+              <p className="mt-0.5 text-[14px] text-fg-3">The policy is published. One more signature lets Monday&apos;s agent log its decisions in MondayRegistry; until then they are kept off-chain.</p>
             </div>
             {registry.canSign ? <Button variant="ghost" onClick={authorize} disabled={busy !== null}>Authorise agent</Button> : <Button variant="ghost" onClick={registry.reconnect}>Reconnect wallet</Button>}
           </div>
         )}
       </div>
 
-      {busy && <p className="mt-4 text-[13px] text-fg-2" role="status">{busy}</p>}
-      {err && <p role="alert" className="mt-4 text-[13px] text-ask-fg">{err}</p>}
+      {busy && <p className="mt-4 text-[14px] text-fg-2" role="status">{busy}</p>}
+      {err && <p role="alert" className="mt-4 text-[14px] text-ask-fg">{err}</p>}
       <Button size="lg" className="mt-8" onClick={start} disabled={busy !== null || mustSign}>Start Monday</Button>
-      <p className="mt-3 text-[13px] text-fg-3">The first quotes reach the book within seconds. You can stop or kill from the dashboard at any time.</p>
+      <p className="mt-3 text-[14px] text-fg-3">The first quotes reach the book within seconds. You can stop or kill from the dashboard at any time.</p>
     </div>
   );
 }

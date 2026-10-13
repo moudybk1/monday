@@ -44,7 +44,7 @@ function niceTicks(lo: number, hi: number, n = 3): number[] {
 
 function Tip({ children, left, right, className }: { children: ReactNode; left?: number; right?: number; className?: string }) {
   return (
-    <div className={cx('pointer-events-none absolute top-1 z-10 rounded-sm border border-line-2 bg-raised-2 px-2 py-1.5 text-[11.5px] leading-tight shadow-[0_6px_20px_rgb(0_0_0/0.35)]', className)} style={{ left, right }}>
+    <div className={cx('pointer-events-none absolute top-1 z-10 rounded-sm border border-line-2 bg-raised-2 px-2 py-1.5 text-[13px] leading-tight shadow-[0_6px_20px_rgb(0_0_0/0.35)]', className)} style={{ left, right }}>
       {children}
     </div>
   );
@@ -141,7 +141,7 @@ export function LineChart({ series, height, format, baseline, label, empty = 'Co
   const frame = cx('relative', height == null && 'h-full min-h-[120px]');
   if (!geo) {
     return (
-      <div ref={ref} style={height ? { height } : undefined} className={cx(frame, 'grid place-items-center text-[12px] text-fg-3')}>
+      <div ref={ref} style={height ? { height } : undefined} className={cx(frame, 'grid place-items-center text-[13px] text-fg-3')}>
         {w > 0 && empty}
       </div>
     );
@@ -203,13 +203,13 @@ export function LineChart({ series, height, format, baseline, label, empty = 'Co
         {ticks.map((v) => (
           <g key={v}>
             <line x1={PAD.l} x2={w - PAD.r} y1={y(v)} y2={y(v)} stroke="var(--line)" />
-            <text x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="10" fill="var(--fg-3)">{format(v)}</text>
+            <text x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="12" fill="var(--fg-3)">{format(v)}</text>
           </g>
         ))}
         {baseline && (
           <g>
             <line x1={PAD.l} x2={w - PAD.r} y1={y(baseline.v)} y2={y(baseline.v)} stroke="var(--line-2)" strokeDasharray="2 4" />
-            <text x={w - PAD.r - 4} y={y(baseline.v) - 4} textAnchor="end" fontSize="10" fill="var(--fg-3)">{baseline.label}</text>
+            <text x={w - PAD.r - 4} y={y(baseline.v) - 4} textAnchor="end" fontSize="12" fill="var(--fg-3)">{baseline.label}</text>
           </g>
         )}
         {areaPath && <motion.path key={`a${key}`} d={areaPath} fill={`url(#${gid})`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.6 }} />}
@@ -223,13 +223,13 @@ export function LineChart({ series, height, format, baseline, label, empty = 'Co
           <g key={e.s.name}>
             <motion.circle cx={x(e.last.t)} cy={y(e.last.v)} r={4} fill={TONE[e.s.tone]} stroke="var(--canvas)" strokeWidth={2} initial={reduce ? false : { scale: 0 }} animate={{ scale: 1 }} transition={{ delay: reduce ? 0 : 1.1, type: 'spring', stiffness: 400, damping: 22 }} style={{ transformOrigin: `${x(e.last.t)}px ${y(e.last.v)}px` }} />
             {series.length > 1 && <rect x={w - PAD.r + 6} y={e.y - 1} width={8} height={2} fill={TONE[e.s.tone]} />}
-            <text x={w - PAD.r + (series.length > 1 ? 18 : 6)} y={e.y + 3.5} fontSize="10.5" fill="var(--fg)" className={series.length === 1 ? 'num' : undefined} fontWeight={500}>
+            <text x={w - PAD.r + (series.length > 1 ? 18 : 6)} y={e.y + 4} fontSize="12" fill="var(--fg)" className={series.length === 1 ? 'num' : undefined} fontWeight={500}>
               {series.length === 1 ? format(e.last.v) : e.s.name}
             </text>
           </g>
         ))}
         {[t0, (t0 + t1) / 2, t1].map((t, i) => (
-          <text key={i} x={x(t)} y={h - 5} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} className="num" fontSize="10" fill="var(--fg-3)">{tf(t)}</text>
+          <text key={i} x={x(t)} y={h - 5} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} className="num" fontSize="12" fill="var(--fg-3)">{tf(t)}</text>
         ))}
         {hover != null && tips.length > 0 && (
           <g pointerEvents="none">
@@ -336,14 +336,15 @@ export function SignedBars({ data, height = 220, format, label, lowLabel, highLa
           )}
           {/* Tick labels after the bars, with a canvas halo, so dense bars cannot hide them. */}
           {niceTicks(lo, hi, 4).map((v) => (
-            <text key={v} x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="10" fill="var(--fg-3)" stroke="var(--canvas)" strokeWidth="3" paintOrder="stroke">{format(v)}</text>
+            <text key={v} x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="12" fill="var(--fg-3)" stroke="var(--canvas)" strokeWidth="3" paintOrder="stroke">{format(v)}</text>
           ))}
-          <text x={PAD.l} y={height - 6} fontSize="10.5" fill="var(--fg-3)">{lowLabel}</text>
-          <text x={w - PAD.r} y={height - 6} textAnchor="end" fontSize="10.5" fill="var(--fg-3)">{highLabel}</text>
+          <text x={PAD.l} y={height - 6} fontSize="12" fill="var(--fg-3)">{lowLabel}</text>
+          <text x={w - PAD.r} y={height - 6} textAnchor="end" fontSize="12" fill="var(--fg-3)">{highLabel}</text>
           {line && (
             <g aria-hidden>
-              <line x1={w - PAD.r - 78} x2={w - PAD.r - 66} y1={PAD.t - 6} y2={PAD.t - 6} stroke="var(--fg)" strokeWidth={1.5} />
-              <text x={w - PAD.r - 62} y={PAD.t - 3} fontSize="10" fill="var(--fg-3)">{line.name}</text>
+              {/* Right-aligned to the plot; the key sits before the text, about 6.6px a character at 12px. */}
+              <line x1={w - PAD.r - line.name.length * 6.6 - 16} x2={w - PAD.r - line.name.length * 6.6 - 4} y1={PAD.t - 6} y2={PAD.t - 6} stroke="var(--fg)" strokeWidth={1.5} />
+              <text x={w - PAD.r} y={PAD.t - 2} textAnchor="end" fontSize="12" fill="var(--fg-3)">{line.name}</text>
             </g>
           )}
         </svg>
@@ -431,13 +432,13 @@ export function StackedBars({ data, series, tones, height = 220, format, label, 
             );
           })}
           {niceTicks(0, hi, 4).map((v) => (
-            <text key={v} x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="10" fill="var(--fg-3)" stroke="var(--canvas)" strokeWidth="3" paintOrder="stroke">{format(v)}</text>
+            <text key={v} x={PAD.l + 2} y={y(v) - 4} className="num" fontSize="12" fill="var(--fg-3)" stroke="var(--canvas)" strokeWidth="3" paintOrder="stroke">{format(v)}</text>
           ))}
-          <text x={PAD.l} y={height - 6} fontSize="10.5" fill="var(--fg-3)">{lowLabel}</text>
-          <text x={w - PAD.r} y={height - 6} textAnchor="end" fontSize="10.5" fill="var(--fg-3)">{highLabel}</text>
+          <text x={PAD.l} y={height - 6} fontSize="12" fill="var(--fg-3)">{lowLabel}</text>
+          <text x={w - PAD.r} y={height - 6} textAnchor="end" fontSize="12" fill="var(--fg-3)">{highLabel}</text>
         </svg>
       )}
-      <div className="absolute top-0 right-1 flex flex-wrap justify-end gap-x-2.5 gap-y-0.5 text-[10.5px] text-fg-3" aria-label="Legend">
+      <div className="absolute top-0 right-1 flex flex-wrap justify-end gap-x-2.5 gap-y-0.5 text-[12px] text-fg-3" aria-label="Legend">
         {shown.map((k) => <span key={k} className="inline-flex items-center gap-1"><span aria-hidden className="size-2 rounded-[1px]" style={{ background: TONE[toneOf(k)] }} />{k}</span>)}
       </div>
       {hover != null && (
@@ -481,7 +482,7 @@ export function HeatGrid({ rows, cols, cells, mode = 'mag', tone = 'accent', cel
   const byPos = new Map(cells.map((c) => [`${c.r}:${c.c}`, c]));
   return (
     <div className={cx('overflow-x-auto', className)} role="img" aria-label={label}>
-      <div className="grid gap-px text-[10.5px]" style={{ gridTemplateColumns: `2.6rem repeat(${cols.length}, minmax(0, 1fr))`, minWidth: cols.length * 14 + 48 }}>
+      <div className="grid gap-px text-[12px]" style={{ gridTemplateColumns: `2.6rem repeat(${cols.length}, minmax(0, 1fr))`, minWidth: cols.length * 14 + 48 }}>
         <span />
         {cols.map((c, i) => <span key={i} className="num truncate text-center text-fg-3">{i % colLabelEvery === 0 ? c : ''}</span>)}
         {rows.map((r, ri) => (

@@ -148,7 +148,7 @@ export function PlanWizard({ kind }: { kind: Kind }) {
   return (
     <div className="grid gap-10 py-10 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-10 md:py-14">
       <nav aria-label={`${TITLE[kind]} steps`}>
-        <p className="mb-3 hidden text-[12px] font-medium uppercase tracking-[0.06em] text-fg-3 md:block">{TITLE[kind]}</p>
+        <p className="mb-3 hidden text-[13px] font-medium text-fg-3 md:block">{TITLE[kind]}</p>
         <ol className="flex gap-1 overflow-x-auto md:block md:space-y-1">
           {STEPS[kind].map((label, i) => {
             const done = i < current;
@@ -159,7 +159,7 @@ export function PlanWizard({ kind }: { kind: Kind }) {
                   type="button" disabled={i > reachable} onClick={() => setStep(i)} aria-current={active ? 'step' : undefined}
                   className={cx('flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left text-sm disabled:cursor-default', active ? 'bg-raised font-semibold' : 'text-fg-2', i <= reachable && !active && 'hover:bg-raised')}
                 >
-                  <span className={cx('num grid size-6 shrink-0 place-items-center rounded-sm border text-[12px]', done ? 'border-fg bg-fg text-canvas' : active ? 'border-transparent bg-accent text-accent-fg' : 'border-line-2 text-fg-3')}>
+                  <span className={cx('num grid size-6 shrink-0 place-items-center rounded-sm border text-[13px]', done ? 'border-fg bg-fg text-canvas' : active ? 'border-transparent bg-accent text-accent-fg' : 'border-line-2 text-fg-3')}>
                     {done ? <CheckIcon size={12} weight="bold" /> : i + 1}
                   </span>
                   <span className={cx('whitespace-nowrap', !active && 'hidden md:inline')}>{label}</span>
@@ -234,7 +234,7 @@ function DirectionStep({ kind, value, onPick }: { kind: Kind; value: Bias | null
             >
               <span className={cx('grid size-9 place-items-center rounded-sm', long ? 'bg-bid/15 text-bid-fg' : 'bg-ask/15 text-ask-fg')}>{long ? <TrendUpIcon size={18} /> : <TrendDownIcon size={18} />}</span>
               <span className="text-[17px] font-semibold">{kind === 'twap' ? (long ? 'Buy (long)' : 'Sell (short)') : BIAS_LABEL[b]}</span>
-              <span className="text-[13px] text-fg-2">{long ? 'Profits when the price rises.' : 'Profits when the price falls.'} {long ? 'Buys to open, sells to close.' : 'Sells to open, buys back to close.'}</span>
+              <span className="text-[14px] text-fg-2">{long ? 'Profits when the price rises.' : 'Profits when the price falls.'} {long ? 'Buys to open, sells to close.' : 'Sells to open, buys back to close.'}</span>
             </button>
           );
         })}
@@ -276,13 +276,13 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
           <div className="grid gap-x-5 gap-y-5 p-4 @2xl:grid-cols-2">
             {/* Picked, and read, on the first step: here it only shows, with the way back. */}
             <div className="min-w-0 @2xl:col-span-2">
-              <p className="mb-2 text-[12.5px] font-medium">Market</p>
+              <p className="mb-2 text-[13px] font-medium">Market</p>
               <div className="flex flex-wrap items-center gap-2.5">
-                <span className="text-[15px] font-semibold">{sym}</span>
-                {m && <span className="num text-[13px] text-fg-2">{px(m.mark)}{m.day.changePct != null && <span className={m.day.changePct >= 0 ? 'text-bid-fg' : 'text-ask-fg'}> {m.day.changePct >= 0 ? '+' : ''}{m.day.changePct.toFixed(2)}% 24h</span>}</span>}
+                <span className="text-[16px] font-semibold">{sym}</span>
+                {m && <span className="num text-[14px] text-fg-2">{px(m.mark)}{m.day.changePct != null && <span className={m.day.changePct >= 0 ? 'text-bid-fg' : 'text-ask-fg'}> {m.day.changePct >= 0 ? '+' : ''}{m.day.changePct.toFixed(2)}% 24h</span>}</span>}
                 <Button size="xs" variant="ghost" onClick={changeMarket}>Change</Button>
               </div>
-              {problems.sym && <p className="mt-2 text-[12px] text-ask-fg">{problems.sym}</p>}
+              {problems.sym && <p className="mt-2 text-[13px] text-ask-fg">{problems.sym}</p>}
             </div>
 
             {kind === 'trade' && sym && (
@@ -381,7 +381,7 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
 function MarketReadPanel({ read, bias, frame }: { read: Read | undefined; bias: Bias; frame: ScalpFrame }) {
   const mode = read ? scalpMode(bias, read.market) : null;
   return (
-    <div className="grid gap-2 rounded-sm border border-line-2 bg-raised px-3 py-2.5 text-[12.5px]">
+    <div className="grid gap-2 rounded-sm border border-line-2 bg-raised px-3 py-2.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Market read</span>
         {read ? (
@@ -405,7 +405,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
     const mode = t && read ? scalpMode(t.bias, read.market) : null;
     return (
       <>
-        <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
+        <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[13px]">
           <Line k="Free on Perpl" v={balance == null ? '-' : money(balance, 2)} />
           <Line k="Margin" v={t ? money(t.marginUsd, 2) : '-'} />
           <Line k="Each scalp" v={n && t ? `${n.size} ${t.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
@@ -416,7 +416,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
           <Line k="Session length" v={t ? hours(t.expiryHours) : '-'} />
           <Line k="Fees per scalp, at most" v={n ? money(n.feesUsd, 2) : '-'} />
         </dl>
-        <p className="flex gap-2 border-t border-line px-3 py-2.5 text-[12px] text-fg-3">
+        <p className="flex gap-2 border-t border-line px-3 py-2.5 text-[13px] text-fg-3">
           <ShieldCheckIcon size={15} className="mt-px flex-none text-accent" />
           <span>Each scalp&apos;s stop and target rest on {venue} from its fill, so they hold while Monday is offline. A scalp never risks more than the stop loss left. Entries and targets are maker orders.</span>
         </p>
@@ -426,7 +426,7 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
   const w = input?.kind === 'twap' ? input : null;
   return (
     <>
-      <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[12.5px]">
+      <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[13px]">
         <Line k="Free on Perpl" v={balance == null ? '-' : money(balance, 2)} />
         <Line k="Margin" v={w ? money(w.marginUsd, 2) : '-'} />
         <Line k="Position" v={n && w ? `${n.size} ${w.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
@@ -437,11 +437,11 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
         <Line k="Reward to risk" v={n?.rr != null ? n.rr.toFixed(2) : '-'} />
         <Line k="Fees in and out" v={n ? money(n.feesUsd, 2) : '-'} />
       </dl>
-      <p className="flex gap-2 border-t border-line px-3 py-2.5 text-[12px] text-fg-3">
+      <p className="flex gap-2 border-t border-line px-3 py-2.5 text-[13px] text-fg-3">
         <ShieldCheckIcon size={15} className="mt-px flex-none text-accent" />
         <span>The stop loss{w?.takeProfitPct ? ' and take profit' : ''} rest on {venue} from the first fill, priced from where the TWAP starts, so they hold while Monday is offline. A fast market can fill past them.</span>
       </p>
-      {mark == null && <p className="px-3 pb-2 text-[12px] text-fg-3">Waiting for a price.</p>}
+      {mark == null && <p className="px-3 pb-2 text-[13px] text-fg-3">Waiting for a price.</p>}
     </>
   );
 }
@@ -483,13 +483,13 @@ function ReviewStep({ input, spec, mark, balance, read, sim, busy, error, onPlac
       <dl className="mt-8 grid border-t border-line-2 text-sm sm:grid-cols-2">
         {rows.map(([k, v]) => (
           <div key={k} className="border-b border-line py-3 sm:odd:pr-5 sm:even:border-l sm:even:pl-5">
-            <dt className="text-[12px] text-fg-3">{k}</dt>
+            <dt className="text-[13px] text-fg-3">{k}</dt>
             <dd className="num mt-0.5 font-semibold">{v}</dd>
           </div>
         ))}
       </dl>
       {balance != null && input.marginUsd > balance * 0.9 && <div className="mt-6"><Notice tone="warn">This uses most of what is free. It leaves little room for the market maker or another plan.</Notice></div>}
-      {error && <p role="alert" className="mt-6 text-[13px] text-ask-fg">{error}</p>}
+      {error && <p role="alert" className="mt-6 text-[14px] text-ask-fg">{error}</p>}
       <div className="mt-8 flex flex-wrap gap-2.5">
         <Button size="lg" onClick={onPlace} disabled={busy}>{busy ? 'Starting' : input.kind === 'trade' ? 'Start scalping' : 'Start TWAP'}</Button>
         <Button size="lg" variant="ghost" onClick={onEdit} disabled={busy}>Edit</Button>
@@ -507,7 +507,7 @@ function Pct({ id, value, invalid, onChange, placeholder }: { id: string; value:
   return (
     <div className="relative min-w-0">
       <input id={id} type="number" inputMode="decimal" min={0} step="any" value={value} placeholder={placeholder} aria-invalid={invalid || undefined} aria-describedby={`${id}-note`} onChange={(e) => onChange(e.target.value)} className={cx(INPUT, 'num pr-6', invalid && 'border-ask')} />
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] text-fg-3">%</span>
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[14px] text-fg-3">%</span>
     </div>
   );
 }

@@ -81,7 +81,7 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
           <div aria-hidden className="pointer-events-none absolute inset-x-[10%] -top-px z-[1] h-px bg-[linear-gradient(90deg,transparent,var(--accent)_22%,var(--accent)_78%,transparent)]" />
           <div className="relative overflow-hidden rounded-lg border border-line-2 bg-canvas shadow-[0_30px_80px_-30px_rgb(40_30_16/0.28)] dark:shadow-[0_30px_80px_-30px_rgb(0_0_0/0.6)]">
             <header className="flex h-11 items-center justify-between gap-3 border-b border-line px-4">
-              <span className="flex items-center gap-2 text-[14px] font-semibold tracking-tight"><Mark size={18} /> Monday</span>
+              <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight"><Mark size={18} /> Monday</span>
               <Tag>within your limits</Tag>
             </header>
             <div className="grid gap-px bg-line sm:grid-cols-2">
@@ -91,7 +91,7 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
                   <Gauge label="Size" value={s.storm ? '40%' : '100%'} p={s.storm ? 0.4 : 1} />
                   <div className="min-w-[11rem] flex-1">
                     <Tag tone={s.storm ? 'accent' : 'neutral'}>{s.storm ? 'storm' : 'calm'} regime</Tag>
-                    <p className="mt-2 max-w-[32ch] text-[13px] leading-snug text-fg-2">
+                    <p className="mt-2 max-w-[32ch] text-[14px] leading-snug text-fg-2">
                       {s.storm ? 'Smart Traders are buying hard. Wider and smaller until the flow cools.' : 'Normal width, full size, both sides quoted.'}
                     </p>
                   </div>
@@ -127,10 +127,10 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
             {/* Room for two entries from the start, so the second one does not move the page. */}
             <ul className="mt-3 grid min-h-[2.875rem] content-start gap-2">
               {log.map((e) => (
-                <li key={e.id} className="rise flex min-w-0 items-center gap-2 text-[12.5px]">
+                <li key={e.id} className="rise flex min-w-0 items-center gap-2 text-[13px]">
                   <Tag tone={e.who === 'Reflex' ? 'ask' : 'neutral'}>{e.who}</Tag>
                   <span className="truncate">{e.text}</span>
-                  <span className="num ml-auto pl-2 text-[11px] text-fg-3">{HASHES[(e.id + HASHES.length) % HASHES.length]}</span>
+                  <span className="num ml-auto pl-2 text-[12px] text-fg-3">{HASHES[(e.id + HASHES.length) % HASHES.length]}</span>
                 </li>
               ))}
             </ul>
@@ -138,10 +138,10 @@ export function AgentDiagram({ onchain = false, className }: { onchain?: boolean
           </div>
         </div>
       </div>
-      <figcaption className="mx-auto mt-6 flex max-w-[44rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[12.5px] text-fg-3 xl:max-w-none">
+      <figcaption className="mx-auto mt-6 flex max-w-[44rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[13px] text-fg-3 xl:max-w-none">
         <span>Drawn with example numbers and the clock sped up. In the product the engine runs every second and Kimi every 15 minutes.</span>
         {!still && (
-          <button type="button" onClick={() => setPlaying(!playing)} className="inline-flex h-8 items-center gap-2 rounded-sm border border-line-2 px-3 text-[12px] font-medium text-fg-2 hover:border-fg-3 hover:text-fg">
+          <button type="button" onClick={() => setPlaying(!playing)} className="inline-flex h-8 items-center gap-2 rounded-sm border border-line-2 px-3 text-[13px] font-medium text-fg-2 hover:border-fg-3 hover:text-fg">
             {playing ? <><PauseIcon size={13} weight="fill" /> Pause</> : <><PlayIcon size={13} weight="fill" /> Play</>}
           </button>
         )}
@@ -168,11 +168,11 @@ function Inputs({ burst }: { burst: boolean }) {
         const st = x.name === 'Smart Traders';
         return (
           <div key={x.name} className="relative xl:pr-3">
-            <p className="flex items-center gap-2 text-[14px] font-semibold tracking-tight sm:text-[15px] xl:justify-end">
+            <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight sm:text-[16px] xl:justify-end">
               {st && burst && <span className="hidden sm:inline-flex"><Tag tone="bid">buying</Tag></span>}
               {x.name}
             </p>
-            <p className="mt-1 hidden text-[13px] text-fg-3 sm:block">{x.sub}</p>
+            <p className="mt-1 hidden text-[14px] text-fg-3 sm:block">{x.sub}</p>
             {st && (
               <div aria-hidden className="mt-2.5 flex h-5 items-end gap-[3px] xl:justify-end">
                 {QUIET.map((q, i) => (
@@ -203,10 +203,10 @@ function Cell({ name, who, when, note, flash = null, className, children }: { na
       {flash && <span key={flash} aria-hidden className={cx('absolute inset-0 -z-10', flash.startsWith('num') ? 'flash-num' : 'flash-down')} />}
       <div className="flex items-baseline justify-between gap-3">
         <p className="flex items-center gap-2 text-[16px] font-semibold tracking-tight">{name}<Tag tone={who === 'Kimi' ? 'accent' : 'neutral'}>{who}</Tag></p>
-        <p className="num text-[12px] text-fg-3">{when}</p>
+        <p className="num text-[13px] text-fg-3">{when}</p>
       </div>
       <div className="mt-4">{children}</div>
-      <p className="mt-3 text-[12.5px] leading-snug text-fg-3">{note}</p>
+      <p className="mt-3 text-[13px] leading-snug text-fg-3">{note}</p>
     </div>
   );
 }
@@ -230,12 +230,12 @@ function Gauge({ label, value, p }: { label: string; value: string; p: number })
 /** One side's switch in the reflex: on while Monday quotes that side, off while it is pulled. */
 function Switch({ label, on }: { label: string; on: boolean }) {
   return (
-    <span className="flex items-center gap-2 text-[12.5px]">
+    <span className="flex items-center gap-2 text-[13px]">
       <span aria-hidden className={cx('relative h-4 w-[30px] rounded-sm border motion-safe:transition-colors motion-safe:duration-300', on ? 'border-accent/50 bg-accent/12' : 'border-ask/55 bg-ask/12')}>
         <span className={cx('absolute top-[2px] size-2.5 rounded-[2px] motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-out-expo', on ? 'translate-x-[16px] bg-accent' : 'translate-x-[2px] bg-ask')} />
       </span>
       <span className="font-medium">{label}</span>
-      <span className={cx('num text-[11px]', on ? 'text-fg-3' : 'text-ask-fg')}>{on ? 'quoted' : 'pulled'}</span>
+      <span className={cx('num text-[12px]', on ? 'text-fg-3' : 'text-ask-fg')}>{on ? 'quoted' : 'pulled'}</span>
     </span>
   );
 }
@@ -255,7 +255,7 @@ function Book({ storm, pulled }: { storm: boolean; pulled: boolean }) {
   return (
     <div className="panel">
       <header className="flex h-10 flex-none items-center justify-between gap-3 border-b border-line px-3">
-        <h3 className="text-[13px] font-semibold">Your Perpl account</h3>
+        <h3 className="text-[14px] font-semibold">Your Perpl account</h3>
         <Tag tone="accent">funds stay here</Tag>
       </header>
       <div aria-hidden className="relative h-[9.5rem]">
@@ -277,12 +277,12 @@ function Book({ storm, pulled }: { storm: boolean; pulled: boolean }) {
                   style={{ width: `${size * 78}%` }}
                 />
               </span>
-              <span className={cx('num w-[5.5rem] text-[10.5px] font-semibold uppercase tracking-[0.04em]', gone ? 'text-ask-fg' : 'text-accent')}>{gone ? 'Ask pulled' : `Monday ${side}`}</span>
+              <span className={cx('num w-[5.5rem] text-[12px] font-semibold uppercase tracking-[0.04em]', gone ? 'text-ask-fg' : 'text-accent')}>{gone ? 'Ask pulled' : `Monday ${side}`}</span>
             </div>
           );
         })}
       </div>
-      <p className="border-t border-line px-3 py-2.5 text-[12px] text-fg-3">Post-only maker orders. They never cross the book.</p>
+      <p className="border-t border-line px-3 py-2.5 text-[13px] text-fg-3">Post-only maker orders. They never cross the book.</p>
     </div>
   );
 }

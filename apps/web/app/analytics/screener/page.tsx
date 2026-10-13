@@ -86,30 +86,30 @@ function Screener() {
   return (
     <div className="grid gap-1 pt-1">
       <div className="panel min-w-0 rise flex-row flex-wrap items-center justify-between gap-2 px-2.5 py-1.5">
-        <p className="text-[12px] text-fg-2"><span className="font-semibold text-fg">Find a wallet.</span> Pick a kind of trader, narrow by size and sample, sort any column. Every row opens the wallet.</p>
+        <p className="text-[13px] text-fg-2"><span className="font-semibold text-fg">Find a wallet.</span> Pick a kind of trader, narrow by size and sample, sort any column. Every row opens the wallet.</p>
         <Segments label="Window" value={days} onChange={(v) => set({ days: v === 7 ? null : v })} options={[[1, 'Today'], [7, '7D'], [30, '30D'], [90, '90D']] as const} />
       </div>
 
       <div className="panel min-w-0 rise flex-row flex-wrap items-center gap-1.5 px-2.5 py-2" style={{ '--i': 1 } as React.CSSProperties} role="toolbar" aria-label="Presets and filters">
         {PRESETS.map((x) => (
-          <button key={x.id} type="button" onClick={() => pick(x)} aria-pressed={presets.includes(x)} title={x.hint} className={cx('h-7 rounded-sm border px-2.5 text-[12px] transition-colors duration-150', presets.includes(x) ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised hover:text-fg')}>
+          <button key={x.id} type="button" onClick={() => pick(x)} aria-pressed={presets.includes(x)} title={x.hint} className={cx('h-7 rounded-sm border px-2.5 text-[13px] transition-colors duration-150', presets.includes(x) ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised hover:text-fg')}>
             {x.label}
           </button>
         ))}
         <span className="mx-1 hidden h-5 w-px bg-line-2 sm:inline-block" aria-hidden />
-        <select value={minVolume} onChange={(e) => set({ minVolume: Number(e.target.value) })} aria-label="Minimum volume" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg">
+        <select value={minVolume} onChange={(e) => set({ minVolume: Number(e.target.value) })} aria-label="Minimum volume" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[13px] text-fg">
           {volumes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <select value={minCloses} onChange={(e) => set({ minCloses: Number(e.target.value) })} aria-label="Minimum closes" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[12px] text-fg">
+        <select value={minCloses} onChange={(e) => set({ minCloses: Number(e.target.value) })} aria-label="Minimum closes" className="h-7 rounded-sm border border-line-2 bg-raised px-1.5 text-[13px] text-fg">
           {closes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        {filtered && <button type="button" onClick={() => set({ preset: null, minVolume: null, minCloses: null, sort: null, dir: null })} className="h-7 rounded-sm px-2 text-[12px] text-fg-3 hover:bg-raised hover:text-fg">Clear</button>}
-        <span className="num ml-auto text-[11.5px] text-fg-3">{q.data ? `${visible.length.toLocaleString('en-US')} of ${rows.length.toLocaleString('en-US')} accounts` : ''}</span>
+        {filtered && <button type="button" onClick={() => set({ preset: null, minVolume: null, minCloses: null, sort: null, dir: null })} className="h-7 rounded-sm px-2 text-[13px] text-fg-3 hover:bg-raised hover:text-fg">Clear</button>}
+        <span className="num ml-auto text-[13px] text-fg-3">{q.data ? `${visible.length.toLocaleString('en-US')} of ${rows.length.toLocaleString('en-US')} accounts` : ''}</span>
       </div>
 
       <Panel title={title} aside={<span className="hidden md:inline">{hint}</span>} className="min-w-0 rise" >
         {q.isLoading ? <Skeleton className="m-2 h-64" /> : q.isError ? <div className="p-2"><Notice tone="warn">Could not load the screener. {q.error instanceof Error ? q.error.message : ''}</Notice></div> : !visible.length ? (
-          <p className="px-2.5 py-4 text-[12px] text-fg-3">No account matches. Widen the window or loosen the filters.</p>
+          <p className="px-2.5 py-4 text-[13px] text-fg-3">No account matches. Widen the window or loosen the filters.</p>
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -117,13 +117,13 @@ function Screener() {
             </div>
             {visible.length > shown && (
               <div className="border-t border-line p-2 text-center">
-                <button type="button" onClick={() => setShown(shown + PAGE)} className="h-7 rounded-sm border border-line-2 px-3 text-[12px] text-fg-2 hover:bg-raised hover:text-fg">Show {Math.min(PAGE, visible.length - shown)} more</button>
+                <button type="button" onClick={() => setShown(shown + PAGE)} className="h-7 rounded-sm border border-line-2 px-3 text-[13px] text-fg-2 hover:bg-raised hover:text-fg">Show {Math.min(PAGE, visible.length - shown)} more</button>
               </div>
             )}
           </>
         )}
       </Panel>
-      <p className="px-1 text-[11px] text-fg-3">Results over whole UTC days with today included. A close is a fill that reduced a position; a win is a close that made money after fees. Realised PnL only: open positions do not count.</p>
+      <p className="px-1 text-[12px] text-fg-3">Results over whole UTC days with today included. A close is a fill that reduced a position; a win is a close that made money after fees. Realised PnL only: open positions do not count.</p>
     </div>
   );
 }
@@ -134,7 +134,7 @@ function Table({ rows, sort, onSort, maxAbs, resetKey }: { rows: Row[]; sort: { 
   const watch = useWatchlist(useStatsNetwork());
   const open = (r: Row) => router.push(`/analytics/wallet/${r.address || r.account}`);
   return (
-    <table className="w-full min-w-[1040px] text-[11.5px]">
+    <table className="w-full min-w-[1040px] text-[13px]">
       <thead>
         <tr className="label h-7 text-left [&>th]:font-normal">
           <th className="w-8 pl-2.5">#</th>
@@ -193,5 +193,5 @@ function Table({ rows, sort, onSort, maxAbs, resetKey }: { rows: Row[]; sort: { 
 /** Days in a row with the same sign, as a chip: teal for profitable days, vermilion for losing ones. */
 function Streak({ n }: { n: number }) {
   if (!n) return <span className="text-fg-3">0</span>;
-  return <span className={cx('inline-block rounded-[2px] px-1 text-[10.5px] font-medium', n > 0 ? 'bg-bid/15 text-bid-fg' : 'bg-ask/15 text-ask-fg')}>{n > 0 ? '+' : ''}{n}d</span>;
+  return <span className={cx('inline-block rounded-[2px] px-1 text-[12px] font-medium', n > 0 ? 'bg-bid/15 text-bid-fg' : 'bg-ask/15 text-ask-fg')}>{n > 0 ? '+' : ''}{n}d</span>;
 }

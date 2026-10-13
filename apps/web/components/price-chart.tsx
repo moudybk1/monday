@@ -53,7 +53,9 @@ function palette(el: HTMLElement) {
   const bid = color('--bid'), ask = color('--ask'), accent = color('--accent'), fg = color('--fg');
   return {
     text: color('--fg-3'), fg, fg2: color('--fg-2'), line: color('--line'), line2: color('--line-2'), raised: color('--raised-2'),
-    bid, ask, bidSoft: soft(bid), askSoft: soft(ask), ind1: color('--ind-1'), ind2: color('--ind-2'), font: getComputedStyle(el).fontFamily,
+    bid, ask, bidSoft: soft(bid), askSoft: soft(ask), ind1: color('--ind-1'), ind2: color('--ind-2'),
+    // A canvas cannot ask for tabular figures, so the axes use the mono face: prices there would jitter in Manrope.
+    font: `${css.getPropertyValue('--font-figures').trim() || 'ui-monospace'}, ui-monospace, monospace`,
     // Amber is Monday's own: its fills and the spread it quotes. Smart money keeps the bid and ask colours.
     accent, band: `${accent}1f`, bidDot: `${bid}b3`, askDot: `${ask}b3`, watermark: `${fg}0f`,
   };
@@ -310,7 +312,7 @@ export function PriceChart({ sym, m, fills, now, levels = [], className, wheel =
         const p = palette(el);
         pal.current = p;
         c.applyOptions({
-          layout: { background: { type: mod.ColorType.Solid, color: 'transparent' }, textColor: p.text, fontFamily: p.font, fontSize: 11, panes: { separatorColor: p.line2, separatorHoverColor: p.line2 } },
+          layout: { background: { type: mod.ColorType.Solid, color: 'transparent' }, textColor: p.text, fontFamily: p.font, fontSize: 12, panes: { separatorColor: p.line2, separatorHoverColor: p.line2 } },
           grid: { vertLines: { color: p.line }, horzLines: { color: p.line } },
           rightPriceScale: { borderColor: p.line2 },
           timeScale: { borderColor: p.line2, secondsVisible: false, rightOffset: 5, barSpacing: 7 },
@@ -632,18 +634,18 @@ export function PriceChart({ sym, m, fills, now, levels = [], className, wheel =
         <>
           <div role="tablist" aria-label="Candle interval" className="flex">
             {(Object.keys(FRAMES) as Frame[]).map((f) => (
-              <button key={f} role="tab" aria-selected={frame === f} onClick={() => choose(f)} className={cx('num rounded-sm px-1.5 py-0.5 text-[11px]', frame === f ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
+              <button key={f} role="tab" aria-selected={frame === f} onClick={() => choose(f)} className={cx('num rounded-sm px-1.5 py-0.5 text-[12px]', frame === f ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
                 {f}
               </button>
             ))}
           </div>
           <details ref={menu} className="relative" onKeyDown={(e) => e.key === 'Escape' && menu.current && (menu.current.open = false)}>
-            <summary className="cursor-pointer list-none rounded-sm px-1.5 py-0.5 text-[11px] text-fg-3 hover:text-fg [&::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none rounded-sm px-1.5 py-0.5 text-[12px] text-fg-3 hover:text-fg [&::-webkit-details-marker]:hidden">
               Indicators{on.length ? <span className="num ml-1 text-fg-2">{on.length}</span> : null}
             </summary>
             <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-sm border border-line-2 bg-raised p-1 shadow-lg">
               {INDICATORS.map((d) => (
-                <label key={d.id} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-[12px] text-fg-2 hover:bg-raised-2 hover:text-fg">
+                <label key={d.id} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-[13px] text-fg-2 hover:bg-raised-2 hover:text-fg">
                   <input type="checkbox" checked={on.includes(d.id)} onChange={() => toggle(d.id)} className="accent-[var(--accent)]" />
                   {d.label}
                 </label>
@@ -657,17 +659,17 @@ export function PriceChart({ sym, m, fills, now, levels = [], className, wheel =
     >
       <div ref={box} className="num absolute inset-0" aria-label={`${sym} candlestick chart with Monday's offers and trades`} role="img" />
       <div className="pointer-events-none absolute left-2 right-16 top-1.5 z-[2] flex flex-col gap-0.5">
-        <div className="num flex flex-wrap items-baseline gap-x-3 text-[11px]">
+        <div className="num flex flex-wrap items-baseline gap-x-3 text-[12px]">
           <span ref={legend} />
           {candles.data && <span className="text-fg-3" title="Time until this candle closes">closes in {clock(span - (now % span))}</span>}
         </div>
-        <div ref={indLegend} className="num flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10.5px] text-fg-2" />
-        <div ref={flowLegend} className="num flex flex-wrap gap-x-2 text-[10.5px] empty:hidden" />
+        <div ref={indLegend} className="num flex flex-wrap gap-x-2.5 gap-y-0.5 text-[12px] text-fg-2" />
+        <div ref={flowLegend} className="num flex flex-wrap gap-x-2 text-[12px] empty:hidden" />
       </div>
       {!candles.data && (
         <div className="absolute inset-0 grid place-items-center">
           {!candles.failed && <Skeleton className="absolute inset-3" />}
-          <p className="relative text-[12px] text-fg-3">{candles.failed ? 'Price history is unavailable right now.' : 'Loading price history'}</p>
+          <p className="relative text-[13px] text-fg-3">{candles.failed ? 'Price history is unavailable right now.' : 'Loading price history'}</p>
         </div>
       )}
     </Panel>

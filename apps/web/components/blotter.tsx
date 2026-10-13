@@ -12,10 +12,10 @@ export function OpenOrders({ state, onPick }: { state: DashboardState; onPick?: 
   const rows: { m: MarketState; side: Side }[] = [];
   for (const m of Object.values(state.markets)) if (m) for (const side of ['bid', 'ask'] as const) if (m.quotes[side]) rows.push({ m, side });
   if (rows.length === 0) {
-    return <p className="px-2.5 py-4 text-[12px] text-fg-3">{state.status === 'quoting' ? 'No order is resting right now. Monday places one as soon as the book, the signal and your limits allow it.' : 'Monday is not quoting, so nothing rests on the book.'}</p>;
+    return <p className="px-2.5 py-4 text-[13px] text-fg-3">{state.status === 'quoting' ? 'No order is resting right now. Monday places one as soon as the book, the signal and your limits allow it.' : 'Monday is not quoting, so nothing rests on the book.'}</p>;
   }
   return (
-    <table className="w-full min-w-[720px] text-[11.5px]">
+    <table className="w-full min-w-[720px] text-[13px]">
       <thead>
         <tr className={HEAD}>
           <th className="pl-2.5">Market</th><th>Side</th><th className="text-right">Price</th><th className="text-right">Size</th><th className="text-right">Value</th>
@@ -62,7 +62,7 @@ export function Positions({ state, onPick }: { state: DashboardState; onPick?: (
   const open = rows.filter((m) => Math.abs(m.position.notionalUsd) >= 0.5);
   const total = open.reduce((a, m) => a + m.position.unrealizedUsd, 0);
   return (
-    <table className="w-full min-w-[700px] text-[11.5px]">
+    <table className="w-full min-w-[700px] text-[13px]">
       <thead>
         <tr className={HEAD}>
           <th className="pl-2.5">Market</th><th>Side</th><th title="Notional at mark over the margin Perpl holds for the position">Leverage</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Entry</th><th className="text-right">Mark</th><th className="text-right">Open PnL</th><th className="pr-2.5 text-right" title="Share of your inventory limit this position uses">Of limit</th>
@@ -106,10 +106,10 @@ export function Positions({ state, onPick }: { state: DashboardState; onPick?: (
 }
 
 export function Fills({ state, onPick }: { state: DashboardState; onPick?: (s: MarketSym) => void }) {
-  if (state.fills.length === 0) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No trades yet. A trade appears here when a taker trades against one of Monday&apos;s resting orders.</p>;
+  if (state.fills.length === 0) return <p className="px-2.5 py-4 text-[13px] text-fg-3">No trades yet. A trade appears here when a taker trades against one of Monday&apos;s resting orders.</p>;
   const mk = (v: number | null) => (v == null ? <span className="text-fg-3">wait</span> : <span className={v >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{fmtBps(v)}</span>);
   return (
-    <table className="w-full min-w-[720px] text-[11.5px]">
+    <table className="w-full min-w-[720px] text-[13px]">
       <thead>
         <tr className={HEAD}>
           <th className="pl-2.5">Time</th><th>Market</th><th>Side</th><th className="text-right">Price</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Fee</th><th className="text-right" title="Profit or loss this fill closed, before its fee. Blank when the fill opened or added to a position.">Realised PnL</th><th className="pl-4">Regime</th>
@@ -143,7 +143,7 @@ export function Fills({ state, onPick }: { state: DashboardState; onPick?: (s: M
 
 /** Why the quotes sit where they do: the model's terms for the selected market, each with a one-line reading. */
 export function Model({ m, quoting, policy }: { m: MarketState; quoting: boolean; policy: Policy }) {
-  if (!quoting || !m.model) return <p className="px-2.5 py-4 text-[12px] text-fg-3">Monday is not quoting, so there is nothing to explain yet.</p>;
+  if (!quoting || !m.model) return <p className="px-2.5 py-4 text-[13px] text-fg-3">Monday is not quoting, so there is nothing to explain yet.</p>;
   const g = m.params;
   const { quoteSizeUsd } = policy;
   // The reference mode and participation the engine uses for this policy, not the Grid and Normal defaults.
@@ -160,15 +160,15 @@ export function Model({ m, quoting, policy }: { m: MarketState; quoting: boolean
       : `of your ${usd(quoteSizeUsd)} per side`],
   ];
   return (
-    <div className="grid text-[12px] md:grid-cols-2 md:gap-x-4">
+    <div className="grid text-[13px] md:grid-cols-2 md:gap-x-4">
       {rows.map(([k, v, note]) => (
         <div key={k} className="grid grid-cols-[1fr_auto] gap-x-3 border-b border-line px-2.5 py-1.5">
           <dt className="text-fg-2">{k}</dt>
           <dd className="num text-right text-fg">{v}</dd>
-          <dd className="col-span-2 text-[11px] leading-tight text-fg-3">{note}</dd>
+          <dd className="col-span-2 text-[12px] leading-tight text-fg-3">{note}</dd>
         </div>
       ))}
-      <p className="px-2.5 py-1.5 text-[11px] text-fg-3 md:col-span-2">Set by the {m.paramsSource === 'governor' ? 'LLM governor' : 'rule-based governor'}, clamped to your policy. {g.reason}</p>
+      <p className="px-2.5 py-1.5 text-[12px] text-fg-3 md:col-span-2">Set by the {m.paramsSource === 'governor' ? 'LLM governor' : 'rule-based governor'}, clamped to your policy. {g.reason}</p>
     </div>
   );
 }

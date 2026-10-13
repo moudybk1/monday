@@ -157,7 +157,7 @@ export default function Terminal() {
             </Button>
           )}
           <Button size="sm" variant="quiet" onClick={() => guide.current?.showModal()}><QuestionIcon size={12} weight="bold" /> <span className="max-[1399px]:sr-only">Guide</span></Button>
-          <span className="flex items-center gap-1.5 text-[12px] font-medium">
+          <span className="flex items-center gap-1.5 text-[13px] font-medium">
             {/* The one status dot: it reflects real agent state. */}
             <span aria-hidden className={cx('size-1.5 rounded-full', status.live ? 'live-dot bg-bid' : state.status === 'killed' ? 'bg-ask' : 'bg-fg-3')} />
             {/* Phones show the status in the Agent panel right below; here it keeps only the dot. */}
@@ -200,13 +200,13 @@ export default function Terminal() {
               <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
                 <div role="tablist" aria-label="Blotter" className="scroll flex h-full overflow-x-auto">
                   {TABS.map(([id, label, n]) => (
-                    <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('flex items-center gap-1.5 whitespace-nowrap px-3 text-[12px]', tab === id ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
-                      {label}{n != null && <span className="num text-[10.5px] font-normal text-fg-3">{n}</span>}
+                    <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('flex items-center gap-1.5 whitespace-nowrap px-3 text-[13px]', tab === id ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
+                      {label}{n != null && <span className="num text-[12px] font-normal text-fg-3">{n}</span>}
                     </button>
                   ))}
                 </div>
                 {/* One line, cut short when the tabs need the room: it never wraps into the tab row. */}
-                <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[11.5px] text-fg-3 lg:block">
+                <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[13px] text-fg-3 lg:block">
                   {tab === 'orders' ? "the market maker's quotes; a plan's orders show under Plans"
                     : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
                     : tab === 'plans' ? `everything that trades; plan stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
@@ -230,9 +230,9 @@ export default function Terminal() {
                       {(['fills', 'plans'] as const).map((v) => (
                         <button
                           key={v} type="button" aria-pressed={past === v} onClick={() => setPast(v)}
-                          className={cx('flex h-6 items-center gap-1.5 rounded-sm px-2 text-[11.5px]', past === v ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}
+                          className={cx('flex h-6 items-center gap-1.5 rounded-sm px-2 text-[13px]', past === v ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}
                         >
-                          {v === 'fills' ? 'Maker fills' : 'Plans'}<span className="num text-[10.5px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
+                          {v === 'fills' ? 'Maker fills' : 'Plans'}<span className="num text-[12px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
                         </button>
                       ))}
                     </div>
@@ -259,12 +259,12 @@ export default function Terminal() {
             <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
               <div role="tablist" aria-label="Book or trades" className="flex h-full">
                 {(['book', 'trades'] as const).map((id) => (
-                  <button key={id} role="tab" aria-selected={side === id} onClick={() => setSide(id)} className={cx('px-3 text-[12px] capitalize', side === id ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
+                  <button key={id} role="tab" aria-selected={side === id} onClick={() => setSide(id)} className={cx('px-3 text-[13px] capitalize', side === id ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
                     {id === 'book' ? 'Order book' : 'Trades'}
                   </button>
                 ))}
               </div>
-              <span className="text-[11.5px] text-fg-3">Perpl</span>
+              <span className="text-[13px] text-fg-3">Perpl</span>
             </header>
             <div className="scroll min-h-0 flex-1">
               {side === 'book' ? <OrderBook m={m} rows={12} now={now} ownOnBook={!state.sim && !state.paper} /> : <Tape m={m} limit={40} />}
@@ -307,7 +307,7 @@ export default function Terminal() {
 
       <dialog ref={killDialog} className="m-auto w-[min(92vw,26rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg">
         <h2 className="text-[17px] font-semibold tracking-tight">Kill and flatten?</h2>
-        <p className="mt-2 text-[13px] text-fg-2">
+        <p className="mt-2 text-[14px] text-fg-2">
           Monday cancels every open order on this Perpl account, in every market, then closes every open position on it with reduce-only market orders, including Agentic Trade and TWAP plans and anything you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
         </p>
         <form method="dialog" className="mt-5 flex justify-end gap-2">
@@ -341,8 +341,8 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
   return (
     <details ref={menu} className="relative order-1 flex-none border-r border-line" onKeyDown={(e) => e.key === 'Escape' && menu.current && (menu.current.open = false)}>
       <summary aria-label={`Market: ${sym}. Change market`} className="flex h-14 min-w-[8.25rem] cursor-pointer list-none flex-col justify-center gap-1.5 px-3 hover:bg-raised [&::-webkit-details-marker]:hidden">
-        <span className="flex items-center gap-1.5 text-[15px] font-semibold leading-none tracking-tight">
-          {sym}<span className="text-[13px] font-normal text-fg-3">perp</span>
+        <span className="flex items-center gap-1.5 text-[16px] font-semibold leading-none tracking-tight">
+          {sym}<span className="text-[14px] font-normal text-fg-3">perp</span>
           <CaretDownIcon size={12} weight="bold" className="ml-auto text-fg-3" />
         </span>
         {/* What Monday is doing in this market: a pulled side outranks the policy state. */}
@@ -366,7 +366,7 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
             <button
               key={s} aria-current={s === sym}
               onClick={() => { onPick(s); if (menu.current) menu.current.open = false; }}
-              className={cx(PICK_COLS, 'num h-8 w-full px-3 text-left text-[12px] hover:bg-raised-2 [&>span:not(:first-child)]:text-right', s === sym && 'bg-raised-2')}
+              className={cx(PICK_COLS, 'num h-8 w-full px-3 text-left text-[13px] hover:bg-raised-2 [&>span:not(:first-child)]:text-right', s === sym && 'bg-raised-2')}
             >
               <span className="flex items-center gap-1.5 font-sans">
                 <span className="font-semibold">{s}</span><span className="text-fg-3">perp</span>
@@ -380,7 +380,7 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
             </button>
           );
         })}
-        <p className="border-t border-line px-3 pb-1 pt-2 text-[11px] text-fg-3">Pick a market to watch it. Trade adds it to your policy; Monday then quotes it.</p>
+        <p className="border-t border-line px-3 pb-1 pt-2 text-[12px] text-fg-3">Pick a market to watch it. Trade adds it to your policy; Monday then quotes it.</p>
       </div>
     </details>
   );
@@ -400,7 +400,7 @@ function Ticker({ m }: { m: MarketState }) {
       <span className={cx('num text-[19px] font-medium leading-none tracking-tight transition-colors duration-300', last.dir > 0 ? 'text-bid-fg' : last.dir < 0 ? 'text-ask-fg' : 'text-fg')}>
         {fmtPrice(m.mark, m.spec)}
       </span>
-      <span className={cx('num whitespace-nowrap text-[11.5px] leading-none', chg == null ? 'text-fg-3' : chg >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>
+      <span className={cx('num whitespace-nowrap text-[13px] leading-none', chg == null ? 'text-fg-3' : chg >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>
         {chg == null || abs == null ? '24h n/a' : <>{abs >= 0 ? '+' : '-'}{fmtPrice(Math.abs(abs), m.spec)}<span className="ml-2">{pct(chg)}</span></>}
       </span>
     </div>
@@ -411,8 +411,8 @@ function Ticker({ m }: { m: MarketState }) {
 function Cell({ k, hint, children, className }: { k: string; hint: string; children: React.ReactNode; className?: string }) {
   return (
     <div title={hint} className={cx('flex flex-none cursor-help flex-col justify-center gap-1.5', className)}>
-      <dt className="whitespace-nowrap text-[11px] leading-none text-fg-3 underline decoration-line-2 decoration-dotted underline-offset-[3px]">{k}</dt>
-      <dd className="num flex items-center gap-2 whitespace-nowrap text-[12.5px] leading-none text-fg">{children}</dd>
+      <dt className="whitespace-nowrap text-[12px] leading-none text-fg-3 underline decoration-line-2 decoration-dotted underline-offset-[3px]">{k}</dt>
+      <dd className="num flex items-center gap-2 whitespace-nowrap text-[13px] leading-none text-fg">{children}</dd>
     </div>
   );
 }
@@ -437,12 +437,12 @@ function Stats({ m, quoting, blend }: { m: MarketState; quoting: boolean; blend:
         <Cell k="24h range" hint="The lowest and highest price in the last 24 hours, and where the mark sits between them.">
           {at == null ? '-' : (
             <>
-              <span className="text-[11.5px] text-fg-2">{fmtPrice(low!, m.spec)}</span>
+              <span className="text-[13px] text-fg-2">{fmtPrice(low!, m.spec)}</span>
               <span className="relative h-2.5 w-14" aria-hidden>
                 <span className="absolute inset-x-0 top-1/2 h-px bg-line-2" />
                 <span className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-fg transition-[left] duration-500" style={{ left: `${at * 100}%` }} />
               </span>
-              <span className="text-[11.5px] text-fg-2">{fmtPrice(high!, m.spec)}</span>
+              <span className="text-[13px] text-fg-2">{fmtPrice(high!, m.spec)}</span>
             </>
           )}
         </Cell>
@@ -491,7 +491,7 @@ function StatusBar({ state, sim, paper, connected }: { state: DashboardState; si
     ['Chain log', h.chain ? 'on' : 'off'],
   ];
   return (
-    <footer className="panel num h-[26px] flex-none flex-row items-center gap-x-4 overflow-x-auto px-2.5 text-[10.5px] uppercase tracking-[0.05em] text-fg-3">
+    <footer className="panel num h-[28px] flex-none flex-row items-center gap-x-4 overflow-x-auto px-2.5 text-[12px] text-fg-3">
       <span className={cx('flex flex-none items-center gap-1.5', connected ? 'text-bid-fg' : 'text-warn')}>
         <span aria-hidden className={cx('size-1.5 rounded-full', connected ? 'bg-bid' : 'bg-warn')} />
         {connected ? 'Live' : 'Reconnecting'}
@@ -521,7 +521,7 @@ function Loading() {
 function NoMaker({ running, onKill }: { running: number; onKill: () => void }) {
   return (
     <Panel title="Agent" aside={running ? <span>{running} plan{running > 1 ? 's' : ''} running</span> : undefined}>
-      <div className="grid gap-3 p-3 text-[12.5px] text-fg-2">
+      <div className="grid gap-3 p-3 text-[13px] text-fg-2">
         <p>The market maker is not set up on this account.{running ? ' Your plans run on their own; follow them under Plans.' : ' Start a trade, a TWAP, or set up the market maker.'}</p>
         <div className="flex flex-wrap gap-2">
           <ButtonLink href="/app/setup/trade" size="sm">New trade</ButtonLink>

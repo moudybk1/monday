@@ -12,7 +12,7 @@ type Links = { href: string; label: string }[];
 export function SiteNav({ links }: { links: Links }) {
   const path = usePathname();
   return (
-    <nav className="hidden items-center gap-1 text-[13.5px] md:flex" aria-label="Main">
+    <nav className="hidden items-center gap-1 text-[15px] font-medium md:flex" aria-label="Main">
       {links.map((l) => {
         const on = !l.href.includes('#') && path.startsWith(new URL(l.href, 'http://x').pathname);
         return (
@@ -43,7 +43,7 @@ export function SiteMenu({ links }: { links: Links }) {
               {l.label}
             </Link>
           ))}
-          <div className="mt-1 flex h-12 items-center justify-between border-t border-line px-3 text-[13px] text-fg-3">
+          <div className="mt-1 flex h-12 items-center justify-between border-t border-line px-3 text-[14px] text-fg-3">
             Theme <ThemeToggle />
           </div>
         </nav>

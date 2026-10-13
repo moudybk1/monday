@@ -26,10 +26,10 @@ export function InsightCard({ sym, q, m, spec }: { sym: MarketSym; q: UseQueryRe
       <section aria-label={`${sym} market read`} aria-busy={!q.isError} className="overflow-hidden rounded-md border border-line-2 bg-raised">
         <div className="flex items-center justify-between border-b border-line px-4 py-3.5">
           <span className="text-[18px] font-semibold tracking-tight">{sym}</span>
-          {!q.isError && <span className="text-[12px] text-fg-3" role="status">Reading D1, H4 and H1</span>}
+          {!q.isError && <span className="text-[13px] text-fg-3" role="status">Reading D1, H4 and H1</span>}
         </div>
         {q.isError ? (
-          <p className="px-4 py-5 text-[13px] text-ask-fg">Could not read {sym} right now. <button type="button" className="underline underline-offset-2" onClick={() => void q.refetch()}>Try again</button></p>
+          <p className="px-4 py-5 text-[14px] text-ask-fg">Could not read {sym} right now. <button type="button" className="underline underline-offset-2" onClick={() => void q.refetch()}>Try again</button></p>
         ) : (
           <>
             <div className="grid grid-cols-3 divide-x divide-line">{FRAMES.map(([k]) => <div key={k} className="grid gap-2 px-4 py-3"><Skeleton className="h-3 w-10" /><Skeleton className="h-10" /><Skeleton className="h-3 w-20" /></div>)}</div>
@@ -56,12 +56,12 @@ export function InsightCard({ sym, q, m, spec }: { sym: MarketSym; q: UseQueryRe
       >
         <div className="flex flex-wrap items-baseline gap-x-2.5">
           <span className="text-[18px] font-semibold tracking-tight">{sym}</span>
-          <span className="num text-[15px]">{fmtPrice(m?.mark ?? r.price, spec)}</span>
-          {change != null && <span className={cx('num text-[12.5px]', change >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{change >= 0 ? '+' : ''}{change.toFixed(2)}% 24h</span>}
+          <span className="num text-[16px]">{fmtPrice(m?.mark ?? r.price, spec)}</span>
+          {change != null && <span className={cx('num text-[13px]', change >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{change >= 0 ? '+' : ''}{change.toFixed(2)}% 24h</span>}
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="text-[12px] text-fg-2">{caption}</span>
-          <span className={cx('inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.06em]', look.chip)}>
+          <span className="text-[13px] text-fg-2">{caption}</span>
+          <span className={cx('inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[13px] font-semibold uppercase tracking-[0.06em]', look.chip)}>
             <look.Icon size={14} weight="bold" />{r.market === 'mixed' ? 'Mixed' : TREND_LABEL[r.market]}
           </span>
         </div>
@@ -71,12 +71,12 @@ export function InsightCard({ sym, q, m, spec }: { sym: MarketSym; q: UseQueryRe
         {FRAMES.map(([k, name], i) => <Frame key={k} name={name} trend={r[k]} f={r.frames[k]} delay={reduce ? 0 : 0.1 + i * 0.08} />)}
       </div>
 
-      <p className="border-t border-line px-4 py-4 text-[14px] leading-relaxed">
+      <p className="border-t border-line px-4 py-4 text-[15px] leading-relaxed">
         <span className="block border-l-2 border-accent/70 pl-3">{r.summary}</span>
       </p>
 
       {levels.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-line px-4 py-2.5 text-[12px]">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line px-4 py-2.5 text-[13px]">
           <span className="label mr-1">Levels</span>
           {levels.map((l) => (
             <span key={`${l.kind}${l.tf}`} className={cx('inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5', l.kind === 'Resistance' ? 'border-ask/30' : 'border-bid/30')}>
@@ -98,10 +98,10 @@ function Frame({ name, trend, f, delay }: { name: string; trend: Trend; f: Frame
       <span aria-hidden className={cx('absolute inset-x-0 top-0 h-0.5', look.bar)} />
       <div className="flex items-center justify-between gap-2">
         <span className="label">{name}</span>
-        <span className={cx('inline-flex items-center gap-1 text-[12.5px] font-semibold', look.text)}><look.Icon size={13} weight="bold" />{TREND_LABEL[trend]}</span>
+        <span className={cx('inline-flex items-center gap-1 text-[13px] font-semibold', look.text)}><look.Icon size={13} weight="bold" />{TREND_LABEL[trend]}</span>
       </div>
       <div className="mt-2.5 h-11"><Sparkline values={f.closes} tone={look.spark} /></div>
-      <p className="num mt-2 truncate text-[11.5px] text-fg-3">
+      <p className="num mt-2 truncate text-[13px] text-fg-3">
         <span className={f.distPct >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{f.distPct >= 0 ? '+' : ''}{f.distPct.toFixed(2)}%</span> vs 20 EMA
       </p>
     </motion.div>

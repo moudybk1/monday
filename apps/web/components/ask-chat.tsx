@@ -100,10 +100,10 @@ export function AskChat() {
           <motion.button
             key="fab" type="button" onClick={() => setOpen(true)} aria-label="Ask Monday"
             initial={reduce ? false : { opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.18 }}
-            className="fixed right-4 bottom-4 z-40 flex h-11 items-center gap-2 rounded-full bg-accent pr-4 pl-3.5 text-[13px] font-semibold text-accent-fg shadow-[0_8px_28px_rgb(0_0_0/0.35)] hover:brightness-110"
+            className="fixed right-4 bottom-4 z-40 flex h-11 items-center gap-2 rounded-full bg-accent pr-4 pl-3.5 text-[14px] font-semibold text-accent-fg shadow-[0_8px_28px_rgb(0_0_0/0.35)] hover:brightness-110"
           >
             <ChatCircleDotsIcon size={18} weight="fill" /> Ask Monday
-            <kbd className="num hidden rounded-[3px] bg-black/15 px-1 text-[10px] font-medium sm:inline">⌘K</kbd>
+            <kbd className="num hidden rounded-[3px] bg-black/15 px-1 text-[12px] font-medium sm:inline">⌘K</kbd>
           </motion.button>
         )}
         {open && (
@@ -114,12 +114,12 @@ export function AskChat() {
           >
             <header className="flex h-11 flex-none items-center gap-2 border-b border-line px-3">
               <SparkleIcon size={14} weight="fill" className="text-accent" />
-              <span className="text-[13px] font-semibold">Ask Monday</span>
+              <span className="text-[14px] font-semibold">Ask Monday</span>
               <Tag tone="accent">Powered by Kimi</Tag>
               <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="ml-auto grid size-7 place-items-center rounded-sm text-fg-3 hover:bg-raised-2 hover:text-fg"><XIcon size={14} /></button>
             </header>
 
-            <div className="scroll min-h-0 flex-1 px-3 py-3 text-[12.5px]">
+            <div className="scroll min-h-0 flex-1 px-3 py-3 text-[13px]">
               {msgs.length === 0 && (
                 <div>
                   <p className="text-fg-2">Ask about Perpl: volume, funding, long/short, who is winning, any wallet or market. Every answer comes with the figures and where they are from.</p>
@@ -145,7 +145,7 @@ export function AskChat() {
               {!busy && (
                 <div className="no-bar mb-2 flex gap-1 overflow-x-auto">
                   {suggestions(path).map((s) => (
-                    <button key={s} type="button" onClick={() => void send(s)} className="flex-none rounded-full border border-line-2 px-2.5 py-1 text-[11.5px] whitespace-nowrap text-fg-2 hover:border-accent/45 hover:text-fg">{s}</button>
+                    <button key={s} type="button" onClick={() => void send(s)} className="flex-none rounded-full border border-line-2 px-2.5 py-1 text-[13px] whitespace-nowrap text-fg-2 hover:border-accent/45 hover:text-fg">{s}</button>
                   ))}
                 </div>
               )}
@@ -153,7 +153,7 @@ export function AskChat() {
                 <input
                   ref={input} value={q} onChange={(e) => setQ(e.target.value)} disabled={busy} spellCheck={false} maxLength={300}
                   placeholder={wallet ? 'Ask about this wallet, or anything on Perpl' : 'Ask about Perpl, a wallet or a market'}
-                  className="h-9 min-w-0 flex-1 bg-transparent text-[12.5px] text-fg placeholder:text-fg-3 focus:outline-none disabled:opacity-60"
+                  className="h-9 min-w-0 flex-1 bg-transparent text-[13px] text-fg placeholder:text-fg-3 focus:outline-none disabled:opacity-60"
                 />
                 <button type="submit" disabled={busy || !q.trim()} aria-label="Send" className="grid size-7 place-items-center rounded-sm bg-accent text-accent-fg disabled:opacity-40"><ArrowUpIcon size={13} weight="bold" /></button>
               </form>
@@ -171,7 +171,7 @@ function Answer({ m, onExplain }: { m: Msg; onExplain: (id: number, w: string) =
     <div className="mr-6 grid gap-2 rounded-md border border-line bg-canvas px-2.5 py-2">
       <p className="leading-snug text-fg">{a.text}</p>
       {a.table && (
-        <table className="w-full text-[11.5px]">
+        <table className="w-full text-[13px]">
           {a.table.cols.some(Boolean) && (
             <thead><tr className="label text-left [&>th]:font-normal">{a.table.cols.map((c, i) => <th key={i} className={cx('pb-1', i > 0 && 'text-right')}>{c}</th>)}</tr></thead>
           )}
@@ -188,24 +188,24 @@ function Answer({ m, onExplain }: { m: Msg; onExplain: (id: number, w: string) =
           </tbody>
         </table>
       )}
-      {a.dropped && <p className="text-[11px] text-warn">Not applied: {a.dropped}</p>}
+      {a.dropped && <p className="text-[12px] text-warn">Not applied: {a.dropped}</p>}
       {m.explain && (
         <div className="rounded-sm border border-accent/30 bg-accent/6 px-2 py-1.5">
           {m.explain.text ? <p className="leading-snug">{m.explain.text}</p>
             : m.explain.error ? <p className="text-warn">{m.explain.error}</p>
             : <p className="flex items-center gap-2 text-fg-3"><CircleNotchIcon size={12} className="animate-spin text-accent" /> Kimi is writing the summary…</p>}
-          {m.explain.text && <p className="mt-1 text-[10.5px] text-fg-3">{m.explain.fromFacts ? 'Kimi was slow, so these are the wallet\'s own figures.' : 'Written by Kimi from this wallet\'s figures only.'}</p>}
+          {m.explain.text && <p className="mt-1 text-[12px] text-fg-3">{m.explain.fromFacts ? 'Kimi was slow, so these are the wallet\'s own figures.' : 'Written by Kimi from this wallet\'s figures only.'}</p>}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
         {a.actions.map((x) => (
-          <Link key={x.href} href={at(x.href)} className="rounded-sm border border-accent/45 bg-accent/12 px-2 py-1 text-[11.5px] text-accent hover:bg-accent/20">{x.label}</Link>
+          <Link key={x.href} href={at(x.href)} className="rounded-sm border border-accent/45 bg-accent/12 px-2 py-1 text-[13px] text-accent hover:bg-accent/20">{x.label}</Link>
         ))}
         {a.wallet && !m.explain && (
-          <button type="button" onClick={() => onExplain(m.id, a.wallet!)} className="inline-flex items-center gap-1 rounded-sm border border-line-2 px-2 py-1 text-[11.5px] text-fg-2 hover:text-fg"><SparkleIcon size={11} weight="fill" className="text-accent" /> Explain in plain words</button>
+          <button type="button" onClick={() => onExplain(m.id, a.wallet!)} className="inline-flex items-center gap-1 rounded-sm border border-line-2 px-2 py-1 text-[13px] text-fg-2 hover:text-fg"><SparkleIcon size={11} weight="fill" className="text-accent" /> Explain in plain words</button>
         )}
       </div>
-      <p className="flex items-center gap-1.5 text-[10.5px] text-fg-3">
+      <p className="flex items-center gap-1.5 text-[12px] text-fg-3">
         {a.by === 'kimi' && <span className="rounded-[3px] border border-accent/40 px-1 text-accent">Kimi</span>}
         <span>{a.source}</span>
       </p>

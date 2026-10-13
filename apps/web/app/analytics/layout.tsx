@@ -53,7 +53,7 @@ function Header() {
     : `Perpl events indexed to block ${Math.min(ix.block, ix.head).toLocaleString('en-US')} of ${ix.head.toLocaleString('en-US')} via ${ix.source === 'hypersync' ? 'Envio HyperSync' : 'Monad RPC'}${ix.lagSec != null ? `, last trade ${ago(ix.lagSec)} ago` : ''}.${ix.backfillDays ? ` ${ix.backfillDays} earlier days are still being indexed, newest first.` : ''}`;
   return (
     <AppHeader>
-      <span className="hidden items-center gap-1.5 text-[11px] text-fg-3 md:flex" title={title}>
+      <span className="hidden items-center gap-1.5 text-[12px] text-fg-3 md:flex" title={title}>
         <span aria-hidden className={cx('size-1.5 rounded-full', live ? 'live-dot bg-bid' : off ? 'bg-ask' : 'bg-warn')} />
         {!ix ? 'connecting' : off ? (ix.lagSec != null ? `history ${ago(ix.lagSec)} behind, indexer off` : 'indexer off') : !live ? 'catching up' : ix.backfillDays ? `live, ${ix.backfillDays} days backfilling` : 'live'}
       </span>
@@ -69,7 +69,7 @@ function SubNav() {
     <div className="panel mt-1 flex-row flex-wrap items-stretch justify-between overflow-visible">
       <div role="tablist" aria-label="Analytics" className="no-bar flex h-10 overflow-x-auto">
         {TABS.map((t) => (
-          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex flex-none items-center px-3.5 text-[13px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
+          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex flex-none items-center px-3.5 text-[14px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
             {t.label}
             {t.on(pathname) && <motion.span layoutId="analytics-tab" aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
           </Link>
@@ -100,10 +100,10 @@ function WalletSearch() {
       <input
         id="wallet-search" value={q} onChange={(e) => { setQ(e.target.value); setBad(false); }} spellCheck={false} autoComplete="off"
         placeholder="Wallet address or account #" aria-invalid={bad} aria-describedby={bad ? 'wallet-search-error' : undefined}
-        className={cx(INPUT, 'num h-7 text-[12px] sm:w-72', bad && 'border-ask focus:border-ask')}
+        className={cx(INPUT, 'num h-7 text-[13px] sm:w-72', bad && 'border-ask focus:border-ask')}
       />
       {bad && (
-        <p id="wallet-search-error" role="alert" className="absolute right-1.5 top-full z-20 rounded-sm border border-line-2 bg-raised px-2 py-1 text-[11.5px] text-ask-fg shadow-lg max-sm:left-1.5">
+        <p id="wallet-search-error" role="alert" className="absolute right-1.5 top-full z-20 rounded-sm border border-line-2 bg-raised px-2 py-1 text-[13px] text-ask-fg shadow-lg max-sm:left-1.5">
           Enter a full 0x address (42 characters) or a Perpl account number.
         </p>
       )}

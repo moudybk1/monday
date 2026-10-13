@@ -38,7 +38,7 @@ export function Chain({ d, explorerUrl }: { d: Pick<Decision, 'txHash' | 'anchor
  */
 export function DecisionLog({ decisions, explorerUrl, chainOn, limit = 40, onPick }: { decisions: Decision[]; explorerUrl?: string; chainOn?: boolean; limit?: number; onPick?: (s: MarketSym) => void }) {
   if (decisions.length === 0) {
-    return <p className="px-2.5 py-4 text-[12px] text-fg-3">No decisions yet. The governor writes its first within seconds of starting, then every 15 minutes or when flow changes.</p>;
+    return <p className="px-2.5 py-4 text-[13px] text-fg-3">No decisions yet. The governor writes its first within seconds of starting, then every 15 minutes or when flow changes.</p>;
   }
   return (
     <ol>
@@ -46,17 +46,17 @@ export function DecisionLog({ decisions, explorerUrl, chainOn, limit = 40, onPic
         const urgent = d.source === 'kill' || (d.source === 'reflex' && ('pull' in d.params || 'widen' in d.params));
         return (
           <li key={d.id} className={cx('rise grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-2 border-b border-line py-1.5 pl-2 pr-2.5 sm:grid-cols-[4.25rem_9.5rem_minmax(0,1fr)_auto]', urgent ? 'border-l-2 border-l-ask' : 'border-l-2 border-l-transparent')}>
-            <span className="num pt-px text-[11.5px] text-fg-3">{fmtTime(d.at)}</span>
+            <span className="num pt-px text-[13px] text-fg-3">{fmtTime(d.at)}</span>
             <span className="flex flex-wrap items-start gap-1">
               <SymButton sym={d.market} onPick={onPick}><Tag>{d.market}</Tag></SymButton>
               <Tag tone={urgent ? 'ask' : 'neutral'}>{SOURCE[d.source]}</Tag>
               {(d.source === 'governor' || d.source === 'fallback') && <Tag tone={d.regime === 'storm' ? 'accent' : 'neutral'}>{d.regime}</Tag>}
             </span>
             <span className="col-span-2 min-w-0 sm:col-span-1">
-              <span className="block text-[12.5px] leading-snug text-fg text-pretty">{d.reason}</span>
-              {summary(d) && <span className="num block whitespace-pre pt-0.5 text-[11px] text-fg-3">{summary(d)}</span>}
+              <span className="block text-[13px] leading-snug text-fg text-pretty">{d.reason}</span>
+              {summary(d) && <span className="num block whitespace-pre pt-0.5 text-[12px] text-fg-3">{summary(d)}</span>}
             </span>
-            <span className="num col-span-2 flex items-start gap-2.5 pt-px text-[11px] text-fg-3 sm:col-span-1">
+            <span className="num col-span-2 flex items-start gap-2.5 pt-px text-[12px] text-fg-3 sm:col-span-1">
               <Chain d={d} explorerUrl={explorerUrl} chainOn={chainOn} />
               <Link href={at(`/decisions/${d.id}`)} className="text-fg-2 underline decoration-line-2 underline-offset-2 hover:text-fg">record</Link>
             </span>

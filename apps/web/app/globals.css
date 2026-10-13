@@ -6,8 +6,10 @@
   Grounded in how live terminals are actually built (Hyperliquid, Perpl, Lighter, dYdX measured in
   the browser, plus Bloomberg's published approach):
   - Dark first. Long sessions, low light. Near-black, never pure black; four close surface steps.
-  - 12px is the workhorse size. Hierarchy comes from text tone and weight, not from scale.
-  - Numbers are set in a mono face with tabular figures so columns align and digits do not jitter.
+  - Readable first: 13px is the workhorse size and nothing is set under 12px (2026-10-14, after a readability audit
+    found 74-98% of the analytics text under 12px). Hierarchy comes from text tone and weight more than from scale.
+  - One sans, Manrope, for text and numbers: figures are tabular (.num), so columns align and digits do not jitter, as
+    on Hyperliquid and Perpl. Geist Mono only where every character counts: hashes, addresses, transactions.
   - Colour is rationed: teal and vermilion mean bid and ask (validated for colour-blind separation;
     pink-red against green fails it), amber means "this is Monday's", everything else is grey.
   - Panels have hard edges and scroll inside themselves. The page itself does not scroll on desktop.
@@ -119,7 +121,7 @@
   }
   body {
     font-family: var(--font-sans);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.5;
     min-height: 100dvh;
   }
@@ -146,20 +148,17 @@
 }
 
 @layer components {
-  /* Every figure: mono, tabular, no coding ligatures. */
+  /* Every figure: tabular digits in the text face, so columns align and live prices do not jitter. */
   .num {
-    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-variant-ligatures: none;
-    letter-spacing: -0.01em;
   }
-  /* Column heads and status-bar keys. Functional, small, and the only uppercase in the product. */
+  /* Column heads and keys: small, quiet, sentence case. */
   .label {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    line-height: 1;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
     color: var(--fg-3);
   }
   .display {

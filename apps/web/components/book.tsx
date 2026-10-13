@@ -31,19 +31,19 @@ const COLS = 'grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.9fr)] it
 
 function Level({ r, side, max, m, ahead }: { r: Row; side: Side; max: number; m: MarketState; ahead: number | null }) {
   return (
-    <li className={cx(COLS, 'num relative h-[21px] text-[12px]', r.mine && 'flash bg-accent/14')}>
+    <li className={cx(COLS, 'num relative h-[21px] text-[13px]', r.mine && 'flash bg-accent/14')}>
       {/* Depth: a tint anchored to the right edge, behind the figures. */}
       <span aria-hidden className="absolute inset-y-px right-0" style={{ width: `${(r.cumUsd / max) * 100}%`, background: side === 'bid' ? 'var(--bid)' : 'var(--ask)', opacity: r.mine ? 0 : 0.13 }} />
       {/* Amber on the leading edge: this level is Monday's order. */}
       {r.mine && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
       <span className={cx('relative flex items-center gap-1.5', side === 'bid' ? 'text-bid-fg' : 'text-ask-fg')}>
         {fmtPrice(r.price, m.spec)}
-        {r.mine && <span className="rounded-[2px] bg-accent px-1 text-[9.5px] font-semibold leading-[14px] tracking-wide text-accent-fg">MONDAY</span>}
+        {r.mine && <span className="rounded-[2px] bg-accent px-1 text-[12px] font-semibold leading-[14px] tracking-wide text-accent-fg">MONDAY</span>}
       </span>
       <span className={cx('relative text-right', r.mine ? 'text-accent' : 'text-fg')}>{fmtSize(r.size, m.spec)}</span>
       {/* On Monday's row the useful number is not the depth but the queue: how much must trade before its order does. */}
       {r.mine && ahead != null
-        ? <span className="relative whitespace-nowrap text-right text-[11px] text-accent" title="Resting ahead of Monday's order in line at this side">{ahead < 1 ? '1st in line' : `${usdCompact(ahead)} ahead`}</span>
+        ? <span className="relative whitespace-nowrap text-right text-[12px] text-accent" title="Resting ahead of Monday's order in line at this side">{ahead < 1 ? '1st in line' : `${usdCompact(ahead)} ahead`}</span>
         : <span className="relative text-right text-fg-3">{usdCompact(r.cumUsd)}</span>}
     </li>
   );
@@ -52,8 +52,8 @@ function Level({ r, side, max, m, ahead }: { r: Row; side: Side; max: number; m:
 function Pulled({ side, m, now }: { side: Side; m: MarketState; now: number }) {
   const left = Math.max(0, Math.round((m.reflex!.until - now) / 1000));
   return (
-    <li className="hatch num flex h-[21px] items-center justify-between border-y border-line-2 px-2.5 text-[11px]">
-      <span className="font-medium uppercase tracking-wide text-accent">Monday&apos;s {side} pulled</span>
+    <li className="hatch num flex h-[21px] items-center justify-between border-y border-line-2 px-2.5 text-[12px]">
+      <span className="font-medium text-accent">Monday&apos;s {side} pulled</span>
       <span className="text-fg-2">
         {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
       </span>
@@ -84,10 +84,10 @@ export function OrderBook({ m, rows = 10, now = Date.now(), ownOnBook = false }:
       </ol>
       {/* The spread row every terminal has: the gap in ticks and bps, and the mark beside it. */}
       <div className="flex h-7 items-center justify-between border-y border-line bg-raised px-2.5">
-        <span className="num text-[13px] font-semibold tracking-tight" title="Mark price, what Perpl values positions at. It can sit outside the best bid and ask.">
-          {fmtPrice(m.mark, m.spec)} <span className="text-[10px] font-normal uppercase tracking-[0.04em] text-fg-3">mark</span>
+        <span className="num text-[14px] font-semibold tracking-tight" title="Mark price, what Perpl values positions at. It can sit outside the best bid and ask.">
+          {fmtPrice(m.mark, m.spec)} <span className="text-[12px] font-normal text-fg-3">mark</span>
         </span>
-        <span className="num text-[11px] text-fg-3">
+        <span className="num text-[12px] text-fg-3">
           {spread != null && spreadBps != null ? <>spread {fmtPrice(spread, m.spec)} <span className="text-fg-2">{spreadBps.toFixed(spreadBps < 1 ? 2 : 1)} bps</span></> : 'no book'}
         </span>
       </div>

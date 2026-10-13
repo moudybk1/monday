@@ -63,7 +63,7 @@ export function HeroTerminal({ className }: { className?: string }) {
           <>
             <Skeleton className="h-12" />
             <Skeleton className={cx('h-[420px]', grid)} />
-            <p className="px-2 py-1.5 text-[12px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough below shows what Monday does.' : 'Connecting to the live market.'}</p>
+            <p className="px-2 py-1.5 text-[13px] text-fg-3">{overdue ? 'The live market feed is not reachable right now. The walkthrough below shows what Monday does.' : 'Connecting to the live market.'}</p>
           </>
         ) : (
           <>
@@ -73,11 +73,11 @@ export function HeroTerminal({ className }: { className?: string }) {
                 const c = x.day.changePct;
                 return (
                   <button key={s} role="tab" aria-selected={s === sym} onClick={() => setPicked(s)} className={cx('flex h-12 min-w-[6.5rem] flex-1 flex-col justify-center whitespace-nowrap border-r border-line px-2.5 text-left transition-colors last:border-r-0', s === sym ? 'bg-raised shadow-[inset_0_-2px_0_var(--accent)]' : 'hover:bg-raised')}>
-                    <span className="flex items-baseline justify-between gap-2 text-[12px] font-semibold leading-tight">
+                    <span className="flex items-baseline justify-between gap-2 text-[13px] font-semibold leading-tight">
                       {s}
-                      {c != null && <span className={cx('num text-[11px] font-medium', c >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{pctText(c)}</span>}
+                      {c != null && <span className={cx('num text-[12px] font-medium', c >= 0 ? 'text-bid-fg' : 'text-ask-fg')}>{pctText(c)}</span>}
                     </span>
-                    <span className="num text-[11.5px] leading-tight text-fg-2">{fmtPrice(x.mark, x.spec)}</span>
+                    <span className="num text-[13px] leading-tight text-fg-2">{fmtPrice(x.mark, x.spec)}</span>
                   </button>
                 );
               })}
@@ -87,7 +87,7 @@ export function HeroTerminal({ className }: { className?: string }) {
                 : state.status === 'quoting' ? <Tag tone="accent">Monday is quoting</Tag> : <Tag>book only</Tag>}
               {state.status === 'quoting' && <Tag>{m.params.regime} regime</Tag>}
               {/* The one live indicator on the page: real state, not decoration. */}
-              <span className="num ml-auto inline-flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.04em] text-fg-2">
+              <span className="num ml-auto inline-flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.04em] text-fg-2">
                 <span aria-hidden className={cx('size-1.5 rounded-full', connected ? 'live-dot bg-bid' : 'bg-warn')} />
                 {connected ? `Live, ${state.sim ? 'simulated book' : state.paper ? 'paper on Perpl' : 'Perpl'}` : 'Reconnecting'}
               </span>
@@ -107,7 +107,7 @@ export function HeroTerminal({ className }: { className?: string }) {
       </div>
       {state && m && (
         // "Live" only while the stream is: a frozen book must say it is frozen.
-        <figcaption className={cx('mt-3 text-[12.5px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
+        <figcaption className={cx('mt-3 text-[13px]', connected ? 'text-fg-3' : 'text-warn')} aria-live="polite">
           {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
             : state.sim ? "Monday's house account quoting on a simulated book, streaming from its server. Pick a market. "
             : state.paper ? "Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
@@ -328,7 +328,7 @@ function Big({ k, n, format, sub }: { k: string; n: number | null; format: (v: n
     <div className="bg-canvas px-4 py-4">
       <dt className="label">{k}</dt>
       <dd className="num mt-2.5 text-[26px] font-medium leading-none tracking-tight">{n == null ? 'n/a' : <Num value={n} format={format} />}</dd>
-      {sub && <dd className="mt-2 truncate text-[11.5px] leading-none text-fg-3">{sub}</dd>}
+      {sub && <dd className="mt-2 truncate text-[13px] leading-none text-fg-3">{sub}</dd>}
     </div>
   );
 }
@@ -344,7 +344,7 @@ export function PerplStats() {
     return () => { stopped = true; clearInterval(t); };
   }, []);
   if (o === undefined) return <Skeleton className="h-[22rem]" />;
-  if (!o) return <p className="text-[13px] text-fg-3">The Perpl figures are not reachable from this server right now.</p>;
+  if (!o) return <p className="text-[14px] text-fg-3">The Perpl figures are not reachable from this server right now.</p>;
   const h = o.headline;
   const rows = [...o.markets].sort((a, b) => b.volume24hUsd - a.volume24hUsd).slice(0, 6);
   const since = o.indexer.since ? new Date(o.indexer.since).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : null;
@@ -359,7 +359,7 @@ export function PerplStats() {
         <Big k="Volume all time" n={h.volumeAllUsd} format={money} sub={since ? `since ${since}` : undefined} />
       </dl>
       <Panel title="Markets" aside={<span>24h, busiest first</span>}>
-        <table className="w-full table-fixed text-[12px]">
+        <table className="w-full table-fixed text-[13px]">
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
               <th className="w-[5.5rem] pl-3">Market</th>
@@ -483,7 +483,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
                   className={cx('block w-full border-l-2 py-4 pl-4 pr-2 text-left transition-colors duration-300', on ? 'border-accent' : 'border-transparent hover:bg-raised/60')}
                 >
                   <span className={cx('block text-[18px] font-semibold tracking-tight', on ? 'text-fg' : 'text-fg-3')}>{s.verb}</span>
-                  <span className={cx('mt-1 block max-w-[46ch] text-[14px] leading-snug', on ? 'text-fg-2' : 'text-fg-3')}>{s.text}</span>
+                  <span className={cx('mt-1 block max-w-[46ch] text-[15px] leading-snug', on ? 'text-fg-2' : 'text-fg-3')}>{s.text}</span>
                 </button>
                 {/* How long this step has left: drawn only while it plays, so a pause never shows a frozen bar. */}
                 {on && play === 'playing' && seen && !reduce && (
@@ -494,10 +494,10 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           })}
         </ol>
         <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button type="button" onClick={toggle} className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-2 px-3 text-[12.5px] font-medium text-fg-2 hover:border-fg-3 hover:text-fg">
+          <button type="button" onClick={toggle} className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-2 px-3 text-[13px] font-medium text-fg-2 hover:border-fg-3 hover:text-fg">
             {play === 'playing' ? <><PauseIcon size={14} weight="fill" /> Pause</> : play === 'done' ? <><ArrowCounterClockwiseIcon size={14} /> Replay</> : <><PlayIcon size={14} weight="fill" /> Play</>}
           </button>
-          <p className="text-[12px] text-fg-3">Example data, drawn with the terminal&apos;s own components. In the product the reflex acts within a second and the governor every 15 minutes.</p>
+          <p className="text-[13px] text-fg-3">Example data, drawn with the terminal&apos;s own components. In the product the reflex acts within a second and the governor every 15 minutes.</p>
         </div>
       </div>
       <div className="grid gap-1 self-start rounded-md border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
@@ -511,7 +511,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
           <Panel title="Decisions" className="min-h-[10rem] flex-1">
             <AnimatePresence initial={false} mode="popLayout">
               {step < 2 && (
-                <motion.p key="none" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="px-2.5 py-3 text-[12.5px] text-fg-3">
+                <motion.p key="none" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="px-2.5 py-3 text-[13px] text-fg-3">
                   Calm regime. Normal width, full size, both sides quoted.
                 </motion.p>
               )}
@@ -521,8 +521,8 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
                   className={cx('border-b border-line py-2 pl-2.5 pr-2.5', c.source === 'reflex' ? 'border-l-2 border-l-ask' : 'border-l-2 border-l-transparent')}
                 >
                   <div className="flex gap-1"><Tag>BTC</Tag><Tag tone={c.source === 'reflex' ? 'ask' : 'neutral'}>{c.source === 'reflex' ? 'Reflex' : 'Governor'}</Tag>{c.source === 'governor' && <Tag tone="accent">storm</Tag>}</div>
-                  <p className="mt-1.5 text-[12.5px] leading-snug">{c.reason}</p>
-                  {c.source === 'governor' && <p className="num mt-1 text-[11px] text-fg-3">{onchain ? 'hash logged on Monad' : 'reason and data hash recorded'}</p>}
+                  <p className="mt-1.5 text-[13px] leading-snug">{c.reason}</p>
+                  {c.source === 'governor' && <p className="num mt-1 text-[12px] text-fg-3">{onchain ? 'hash logged on Monad' : 'reason and data hash recorded'}</p>}
                 </motion.div>
               ))}
             </AnimatePresence>

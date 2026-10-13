@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 // One centred column pair: the contents on the left, the article beside it, nothing left empty on the right.
 const WRAP = 'mx-auto max-w-[63rem] px-4 sm:px-8 lg:box-content';
-const P = 'mt-4 text-[15.5px] leading-relaxed text-fg-2';
+const P = 'mt-4 text-[16px] leading-relaxed text-fg-2';
 const H3 = 'mt-10 text-[19px] font-semibold tracking-tight';
 
 const TOC = [
@@ -84,8 +84,8 @@ export default function SystemPage() {
                       <p className="text-[17px] font-semibold tracking-tight">{l.name}</p>
                       <Tag tone={l.who === 'Kimi' ? 'accent' : 'neutral'}>{l.who}</Tag>
                     </div>
-                    <p className="num mt-1 text-[12px] text-fg-3">{l.when}</p>
-                    <p className="mt-3 text-[14px] text-fg-2">{l.text}</p>
+                    <p className="num mt-1 text-[13px] text-fg-3">{l.when}</p>
+                    <p className="mt-3 text-[15px] text-fg-2">{l.text}</p>
                   </li>
                 ))}
               </ol>
@@ -105,7 +105,7 @@ export default function SystemPage() {
 
             <Section id="engine" title="The engine">
               <p className={P}>Every second, for each market the user picked:</p>
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Fair price">Perpl&apos;s mid, blended toward the reference market&apos;s by the user&apos;s reference mode (none, halfway, or a chosen weight), and ignored past a 50 bps gap.</Item>
                 <Item k="Spread">The larger of the user&apos;s minimum and 1.5 times the one-minute volatility, times the governor&apos;s spread multiple, plus the maker fee.</Item>
                 <Item k="Skew">Leans with the position (to shed it), the order book, the five-minute trend, and Smart Trader flow when the study allows leaning.</Item>
@@ -120,7 +120,7 @@ export default function SystemPage() {
 
             <Section id="reflexes" title="Reflexes">
               <p className={P}>Plain code, no model in the loop:</p>
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Smart Trader burst">An unusual five-minute flow widens the side it runs into for five minutes; a stronger one, or a single $250k trade, pulls it.</Item>
                 <Item k="Reference first">A 1.5 bps move in three seconds widens the side it runs into, 3 bps pulls it, for six seconds: before Perpl&apos;s book catches up.</Item>
                 <Item k="After a fill">A fill widens that side for 30 seconds; two in a minute pull it. The taker who hit it is often still working.</Item>
@@ -139,7 +139,7 @@ export default function SystemPage() {
               </p>
 
               <h3 className={H3}>What Kimi decides</h3>
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Spread">1 to 4 times normal.</Item>
                 <Item k="Size">0 to 1.5 times normal.</Item>
                 <Item k="Position cap">Any amount up to the user&apos;s own limit, never above it.</Item>
@@ -165,8 +165,8 @@ export default function SystemPage() {
               <ul className="mt-6 grid gap-3">
                 {EXAMPLES.map((e) => (
                   <li key={e.id} className="panel p-4">
-                    <p className="text-[14.5px] text-fg">&ldquo;{e.reason}&rdquo;</p>
-                    <p className="num mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-3">
+                    <p className="text-[15px] text-fg">&ldquo;{e.reason}&rdquo;</p>
+                    <p className="num mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-3">
                       <span>BTC, {e.when}</span><span>{e.set}</span>
                       <Link href={at(`/decisions/${e.id}`)} className="text-fg-2 underline decoration-line-2 underline-offset-2 hover:text-fg">record #{e.id}</Link>
                     </p>
@@ -180,7 +180,7 @@ export default function SystemPage() {
               </p>
 
               <h3 className={H3}>What Kimi brings</h3>
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Judgement">It combines flow, volatility, fill quality, the position and the loss limit into one call, which rules can only do signal by signal.</Item>
                 <Item k="Safety">Its departures from the rules all went toward caution, and it stayed inside the bounds every time.</Item>
                 <Item k="Explanation">Every setting comes with a reason in plain words, so a user who is not a trader can see why their bot is quoting the way it is, and check it later.</Item>
@@ -188,7 +188,7 @@ export default function SystemPage() {
             </Section>
 
             <Section id="risk" title="Risk controls">
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Stop loss">The user&apos;s daily limit: reached, Monday stops, cancels and closes positions for the day. It reads cash that fills explain, so Perpl sending cash and position updates seconds apart cannot fire it falsely.</Item>
                 <Item k="Urgent exits">Once a position&apos;s open loss reaches a quarter of the stop loss, after an hour, or far past its limit, Monday stops waiting for a profit and works the exit at the best price.</Item>
                 <Item k="Every order">A 1% band around the oracle price, and position, account and leverage checks before anything is sent.</Item>
@@ -202,7 +202,7 @@ export default function SystemPage() {
               <p className={P}>
                 A public dashboard for all of Perpl, no wallet needed. Every trade since launch is indexed from the Exchange contract&apos;s events through Envio HyperSync: fills with their fees, position changes, liquidations, deposits and withdrawals. Perpl&apos;s own API and contract reads add live funding, the book and every open position.
               </p>
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Protocol">Volume, open interest, TVL, fees and traders over 24 hours, 7 and 30 days and all time; daily series; collateral flows; funding and long/short per market; a liquidation map and the positions closest to it; who makes money; when Perpl trades.</Item>
                 <Item k="Wallets">Search by address or account: equity, open positions with liquidation price, trade history with realised PnL, win rate, profit factor, drawdown, streaks, hold time, best and worst markets, rank. Compare up to four side by side.</Item>
                 <Item k="Screener">Presets for winners, streaks, whales, makers, takers, liquidated and losers, thresholds, a watchlist, and leaderboards for 1, 7, 30 and 90 days.</Item>
@@ -222,7 +222,7 @@ export default function SystemPage() {
             </Section>
 
             <Section id="limits" title="Honest limits">
-              <ul className="mt-3 grid gap-2.5 text-[15px] text-fg-2">
+              <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Profit is not promised">Market making at retail size and full maker fees is hard on Perpl, and earlier versions of Monday lost small amounts. The exit rules of 12 October have done better so far, on a day of data.</Item>
                 <Item k="Kimi manages risk">It decides how carefully to quote. It does not create an edge on its own, and the record above covers two days.</Item>
                 <Item k="The signal defends">The study finds Smart Trader flow leading the next move only on SOL so far, and weakly, so elsewhere Monday uses it to step aside, not to lean.</Item>
@@ -262,9 +262,9 @@ function Item({ k, children }: { k: string; children: React.ReactNode }) {
 function Stat({ k, v, sub }: { k: string; v: string; sub: string }) {
   return (
     <div className="panel px-3.5 py-3">
-      <dt className="text-[12px] text-fg-3">{k}</dt>
+      <dt className="text-[13px] text-fg-3">{k}</dt>
       <dd className="num mt-1.5 text-[28px] font-medium leading-none tracking-tight">{v}</dd>
-      <dd className="num mt-2 text-[11.5px] text-fg-3">{sub}</dd>
+      <dd className="num mt-2 text-[13px] text-fg-3">{sub}</dd>
     </div>
   );
 }

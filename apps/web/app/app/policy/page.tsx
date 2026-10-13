@@ -139,7 +139,7 @@ export default function PolicyPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="display text-[1.75rem] font-medium">Setup</h1>
-          <p className="mt-1 text-[13px] text-fg-2">The rules Monday trades by. They stay in force until you change them.</p>
+          <p className="mt-1 text-[14px] text-fg-2">The rules Monday trades by. They stay in force until you change them.</p>
         </div>
         {me.accountId != null && <Tag>Perpl account {me.accountId}</Tag>}
       </header>
@@ -159,34 +159,34 @@ export default function PolicyPage() {
 
       {/* Take profit goes with Start and stays with that run: while it runs, show the run's target, not a draft that would not apply. */}
       <PolicyForm takeProfit={!running} value={draft} onChange={(d) => { setDraft(d); setNote(null); }} available={cfg ? (Object.keys(cfg.specs) as PolicyDraft['markets']) : ['BTC']} caps={caps} balance={balance} specs={specs}>
-        <div className="flex items-center justify-between text-[12px]">
+        <div className="flex items-center justify-between text-[13px]">
           <span className="text-fg-3">Settings</span>
           <Tag tone={unsaved || pending ? 'warn' : 'neutral'}>{unsaved ? 'Unsaved changes' : pending ? 'Waiting for signature' : 'In force'}</Tag>
         </div>
         {running && (
-          <div className="flex items-center justify-between text-[12px]">
+          <div className="flex items-center justify-between text-[13px]">
             <span className="text-fg-3">Take profit, this run</span>
             <span className="num text-fg">{bot.session?.takeProfitUsd != null ? fmtUsd(bot.session.takeProfitUsd) : 'Uncapped'}</span>
           </div>
         )}
         {bot && (
-          <div className="flex items-center justify-between text-[12px]">
+          <div className="flex items-center justify-between text-[13px]">
             <span className="text-fg-3">Bot</span>
             <Tag tone={bot.closing ? 'warn' : bot.status === 'quoting' ? 'bid' : bot.status === 'killed' ? 'ask' : 'neutral'}>{statusText(bot)}{bot.status === 'killed' && bot.killReason ? `: ${bot.killReason.replace('_', ' ')}` : ''}</Tag>
           </div>
         )}
         {action}
-        {note && <p role={note.ok ? 'status' : 'alert'} className={note.ok ? 'text-[12px] text-fg-2' : 'text-[12px] text-ask-fg'}>{note.text}</p>}
-        <p className="text-[12px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
+        {note && <p role={note.ok ? 'status' : 'alert'} className={note.ok ? 'text-[13px] text-fg-2' : 'text-[13px] text-ask-fg'}>{note.text}</p>}
+        <p className="text-[13px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
         {view.data.onchainTx && (
-          <p className="text-[12px] text-fg-3">
-            In force on Monad since {cfg ? <a className="num underline underline-offset-2" href={`${cfg.explorerUrl}/tx/${view.data.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.data.onchainTx)}</a> : <span className="num">{shortHash(view.data.onchainTx)}</span>}.
+          <p className="text-[13px] text-fg-3">
+            In force on Monad since {cfg ? <a className="font-mono underline underline-offset-2" href={`${cfg.explorerUrl}/tx/${view.data.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.data.onchainTx)}</a> : <span className="num">{shortHash(view.data.onchainTx)}</span>}.
           </p>
         )}
       </PolicyForm>
 
       <Panel title="Account access">
-        <div className="grid gap-5 p-4 text-[12.5px] sm:grid-cols-3">
+        <div className="grid gap-5 p-4 text-[13px] sm:grid-cols-3">
           <div>
             <p className="font-medium">Withdraw</p>
             <p className="mt-1 text-fg-2">Always on Perpl, from your own wallet. Stop Monday first so no order is resting while you move funds.</p>

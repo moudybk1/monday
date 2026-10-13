@@ -61,8 +61,8 @@ export default function Setup() {
               {c.status}
             </div>
             <h2 id={`${c.id}-title`} className="mt-5 text-[18px] font-semibold tracking-tight">{c.title}</h2>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-fg-2">{c.text}</p>
-            <ul className="mt-5 mb-6 grid gap-1.5 border-t border-line pt-4 text-[12.5px] text-fg-2">
+            <p className="mt-2 text-[14px] leading-relaxed text-fg-2">{c.text}</p>
+            <ul className="mt-5 mb-6 grid gap-1.5 border-t border-line pt-4 text-[13px] text-fg-2">
               {c.facts.map((f) => (
                 <li key={f} className="flex items-center gap-2"><span aria-hidden className="size-1 flex-none rounded-full bg-fg-3" />{f}</li>
               ))}

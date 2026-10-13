@@ -84,7 +84,7 @@ function Stats() {
   return (
     <div className="grid gap-1 pt-1">
       <div className="panel min-w-0 rise flex-row flex-wrap items-center justify-between gap-2 px-2.5 py-1.5" style={{ '--i': 0 } as React.CSSProperties}>
-        <p className="text-[12px] text-fg-2">
+        <p className="text-[13px] text-fg-2">
           <span className="font-semibold text-fg">Perpl</span>, the perp order book on Monad. Live from Perpl&apos;s API and the Exchange contract{o.indexer.source === 'off' ? '' : <>, fills and flows indexed {o.indexer.source === 'hypersync' ? 'from genesis with Envio HyperSync' : 'over Monad RPC'}</>}.
         </p>
         <Segments label="Window" value={win} onChange={setWin} options={[['24h', '24H'], ['7d', '7D'], ['30d', '30D'], ['all', 'All']] as const} />
@@ -99,7 +99,7 @@ function Stats() {
         <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} v={traders == null ? 'n/a' : undefined} n={traders} format={int} delta={win === '24h' ? <Delta now={h.activeTraders24h} prev={o.daily.find((d) => d.t === today - DAY)?.traders} suffix="vs yesterday" /> : undefined} sub={tradersDone ? 'accounts with a fill' : PARTIAL} spark={<Sparkline values={spark((d) => d.traders)} />} />
         <Kpi k="Net flow 24h" v={h.netFlow24hUsd == null ? 'n/a' : undefined} n={h.netFlow24hUsd} format={signedMoney} t={h.netFlow24hUsd} sub={h.complete['24h'] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
         <Kpi k="Liquidated 24h" v={h.liquidations24hUsd == null ? 'n/a' : undefined} n={h.liquidations24hUsd} format={money} sub={h.complete['24h'] ? 'notional at mark' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
-        <Kpi k="Accounts" n={h.accounts} format={int} delta={h.newAccounts24h != null ? <span className="num text-[11px] text-bid-fg">+{h.newAccounts24h} <span className="font-sans text-fg-3">24h</span></span> : undefined} sub="ever opened" spark={<Sparkline values={spark((d) => d.newAccounts)} />} />
+        <Kpi k="Accounts" n={h.accounts} format={int} delta={h.newAccounts24h != null ? <span className="num text-[12px] text-bid-fg">+{h.newAccounts24h} <span className="font-sans text-fg-3">24h</span></span> : undefined} sub="ever opened" spark={<Sparkline values={spark((d) => d.newAccounts)} />} />
       </dl>
 
       <div className="min-w-0 rise grid gap-1 xl:h-[460px] xl:grid-cols-[minmax(0,1fr)_400px]" style={{ '--i': 2 } as React.CSSProperties}>
@@ -213,7 +213,7 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
       : [{ name: title, tone: 'accent', points: pts }];
     const n = series[0]?.points.length ?? 0;
     body = !hd ? <Pending error={hist.isError} className="h-[360px]" /> : n < 3
-      ? <p className="flex h-[360px] items-center justify-center px-6 text-center text-[12px] text-fg-3">Sampling every five minutes{hd.since ? ` since ${shortTime(hd.since)}` : ''}. The line appears after a few samples.</p>
+      ? <p className="flex h-[360px] items-center justify-center px-6 text-center text-[13px] text-fg-3">Sampling every five minutes{hd.since ? ` since ${shortTime(hd.since)}` : ''}. The line appears after a few samples.</p>
       : <div style={{ height: H }}><LineChart label={`${title}${marketLabel} over time`} format={metric === 'skew' ? (sym === ALL ? (v) => `${v.toFixed(0)}% long` : int) : money} timeFormat={sampledDays === 7 ? shortTime : shortDay} series={series} area={metric !== 'skew'} /></div>;
     note = <>{metric === 'skew' ? (sym === ALL ? 'Share of open accounts that are long, the four largest markets by open interest. ' : 'Accounts long and short. Notional is always equal on both sides of a perp, so the count is the skew. ') : ''}Read from the Exchange every five minutes{hd?.since ? `, since ${shortTime(hd.since)}` : ''}.</>;
   } else {
@@ -227,7 +227,7 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
       byDay.set(k, [...(byDay.get(k) ?? []), apr(p.rate, fm!.intervalMin)]);
     }
     const days = [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([t, rs]) => ({ t, v: rs.reduce((a, b) => a + b, 0) / rs.length, n: rs.length }));
-    body = !fd ? <Pending error={fund.isError} className="h-[360px]" /> : !days.length ? <p className="flex h-[360px] items-center justify-center text-[12px] text-fg-3">No funding history for {fsym}.</p>
+    body = !fd ? <Pending error={fund.isError} className="h-[360px]" /> : !days.length ? <p className="flex h-[360px] items-center justify-center text-[13px] text-fg-3">No funding history for {fsym}.</p>
       : <SignedBars height={H} label={`Average funding on ${fsym} per day, annualised`} format={(v) => `${v.toFixed(1)}%`} lowLabel={shortDay(days[0].t)} highLabel={shortDay(days.at(-1)!.t)} data={days.map((d) => ({ key: day(d.t), v: d.v, tip: `${shortDay(d.t)}: ${pct(d.v, 1)} a year on average over ${d.n} intervals, ${d.v >= 0 ? 'longs paid shorts' : 'shorts paid longs'}` }))} />;
     note = <>{fsym}: each day&apos;s average rate, annualised. Teal days longs paid shorts, vermilion days the reverse. From Perpl&apos;s funding history{sym === ALL ? '; pick a market above for another' : ''}.</>;
   }
@@ -239,22 +239,22 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
       bodyClassName="p-2.5"
       className="min-h-[330px] xl:h-full"
     >
-      <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 text-[11.5px] text-fg-3">
-        <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="h-6 rounded-sm border border-line-2 bg-raised px-1 text-[11px] text-fg">
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 text-[13px] text-fg-3">
+        <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="h-6 rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg">
           <option>{ALL}</option>
           {o.markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
         </select>
-        {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[11px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By market</button>}
+        {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[12px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By market</button>}
         {SAMPLED.includes(metric) || metric === 'funding'
           ? <Segments label="Range" value={range === 7 ? 7 : 30} onChange={(v) => setRange(v)} options={[[7, '7D'], [30, '30D']] as const} />
           : <Segments label="Range" value={range} onChange={setRange} options={[[7, '7D'], [30, '30D'], [90, '90D'], [0, 'All']] as const} />}
       </div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={`${metric}${stack}${sym}`} initial={reduce ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.12 } }} transition={{ duration: 0.25, ease: EASE }}>
-          {rows.length || SAMPLED.includes(metric) || metric === 'funding' ? body : <p className="flex h-[350px] items-center justify-center text-[12px] text-fg-3">The indexer has not covered a full day yet. This chart fills in as it catches up.</p>}
+          {rows.length || SAMPLED.includes(metric) || metric === 'funding' ? body : <p className="flex h-[350px] items-center justify-center text-[13px] text-fg-3">The indexer has not covered a full day yet. This chart fills in as it catches up.</p>}
         </motion.div>
       </AnimatePresence>
-      <p className="mt-1 text-[11px] text-fg-3">
+      <p className="mt-1 text-[12px] text-fg-3">
         {metric !== 'volume' && !SAMPLED.includes(metric) && metric !== 'funding' && (o.indexer.backfillDays ? `${o.indexer.backfillDays} days are still being indexed, newest first: hatched days have no data yet, faded ones are partial. ` : 'Every day is indexed from the Exchange\'s events. ')}
         {note}
       </p>
@@ -278,27 +278,27 @@ function LiquidationMap({ risk, error, sym, onSym }: { risk?: Risk; error: boole
     <Panel
       title={`Liquidation map: ${m.sym}`}
       aside={
-        <select value={m.sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="num h-6 rounded-sm border border-line-2 bg-raised px-1 text-[11px] text-fg">
+        <select value={m.sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="num h-6 rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg">
           {risk.markets.map((x) => <option key={x.sym} value={x.sym}>{x.sym}</option>)}
         </select>
       }
       bodyClassName="px-2.5 py-2"
       className="min-h-[330px] xl:h-full"
     >
-      <div className="grid grid-cols-2 gap-px bg-line text-[11px]">
-        <div className="bg-canvas px-2 py-1.5"><span className="label">Longs at risk</span><p className="num mt-1 text-[13px] text-bid-fg">{money(m.atRiskLongUsd)}</p></div>
-        <div className="bg-canvas px-2 py-1.5"><span className="label">Shorts at risk</span><p className="num mt-1 text-[13px] text-ask-fg">{money(m.atRiskShortUsd)}</p></div>
+      <div className="grid grid-cols-2 gap-px bg-line text-[12px]">
+        <div className="bg-canvas px-2 py-1.5"><span className="label">Longs at risk</span><p className="num mt-1 text-[14px] text-bid-fg">{money(m.atRiskLongUsd)}</p></div>
+        <div className="bg-canvas px-2 py-1.5"><span className="label">Shorts at risk</span><p className="num mt-1 text-[14px] text-ask-fg">{money(m.atRiskShortUsd)}</p></div>
       </div>
-      <p className="mt-1.5 text-[11px] text-fg-3">Open notional by liquidation price. Shorts liquidate above mark, longs below. At risk means within 5%.</p>
+      <p className="mt-1.5 text-[12px] text-fg-3">Open notional by liquidation price. Shorts liquidate above mark, longs below. At risk means within 5%.</p>
       <WhatIf m={m} move={move} onMove={setMove} />
-      <div className="num mt-2 grid gap-px text-[10.5px]">
+      <div className="num mt-2 grid gap-px text-[12px]">
         {rows.map((r, i) => (
           <div key={`${r.side}${r.pct}`} className="grid grid-cols-[4.5rem_1fr_3.5rem] items-center gap-2" title={`${r.side === 'long' ? 'Longs' : 'Shorts'} liquidating ${r.pct - 1} to ${r.pct}% ${r.side === 'long' ? 'below' : 'above'} mark: ${money(r.usd)}`}>
             <span className="text-right text-fg-3">{price(r.px)}</span>
             <motion.span className="h-[7px] rounded-r-[1px]" style={{ minWidth: r.usd ? 2 : 0, background: r.side === 'long' ? 'var(--bid)' : 'var(--ask)' }} initial={reduce ? false : { width: 0 }} animate={{ width: `${(r.usd / max) * 100}%` }} transition={{ duration: 0.7, ease: EASE, delay: Math.min(i * 0.02, 0.4) }} />
             <span className={cx('text-right', r.usd ? 'text-fg-2' : 'text-fg-3/50')}>{r.usd ? money(r.usd) : ''}</span>
             {i === map.length - 1 && (
-              <div className="col-span-3 my-0.5 flex items-center gap-2 text-[10.5px] text-accent"><span className="w-[4.5rem] text-right">{price(m.mark)}</span><span className="h-px flex-1 bg-accent/60" /><span>mark</span></div>
+              <div className="col-span-3 my-0.5 flex items-center gap-2 text-[12px] text-accent"><span className="w-[4.5rem] text-right">{price(m.mark)}</span><span className="h-px flex-1 bg-accent/60" /><span>mark</span></div>
             )}
           </div>
         ))}
@@ -313,13 +313,13 @@ function WhatIf({ m, move, onMove }: { m: Risk['markets'][number]; move: number;
   const usd = m.map.filter((b) => b.pct <= Math.ceil(dist)).reduce((s, b) => s + (move < 0 ? b.longUsd : b.shortUsd), 0);
   const px = m.mark * (1 + move / 100);
   return (
-    <div className="mt-2 rounded-sm border border-line bg-raised px-2 py-1.5 text-[11px]">
+    <div className="mt-2 rounded-sm border border-line bg-raised px-2 py-1.5 text-[12px]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-fg-2">If {m.sym} {move < 0 ? 'falls' : 'rises'} <span className="num text-fg">{dist.toFixed(1)}%</span> to <span className="num text-fg">{price(px)}</span></span>
-        <span className={cx('num text-[12.5px] font-medium', usd ? (move < 0 ? 'text-bid-fg' : 'text-ask-fg') : 'text-fg-3')}><Num value={usd} format={money} /> <span className="font-sans text-[11px] text-fg-3">of {move < 0 ? 'longs' : 'shorts'}</span></span>
+        <span className={cx('num text-[13px] font-medium', usd ? (move < 0 ? 'text-bid-fg' : 'text-ask-fg') : 'text-fg-3')}><Num value={usd} format={money} /> <span className="font-sans text-[12px] text-fg-3">of {move < 0 ? 'longs' : 'shorts'}</span></span>
       </div>
       <input type="range" min={-10} max={10} step={0.5} value={move} onChange={(e) => onMove(Number(e.target.value))} aria-label="Price move, percent" className="range mt-1 w-full" style={{ '--p': (move + 10) / 20 } as React.CSSProperties} />
-      <div className="flex justify-between text-[10px] text-fg-3"><span>-10%</span><span>mark</span><span>+10%</span></div>
+      <div className="flex justify-between text-[12px] text-fg-3"><span>-10%</span><span>mark</span><span>+10%</span></div>
     </div>
   );
 }
@@ -353,7 +353,7 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
   return (
     <Panel title="Markets" aside={<span className="hidden lg:inline">click a market to focus the chart and the map. Long/short is open accounts; vs ref. market compares 24h volume with the market where these perps are priced first</span>}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] text-[11.5px]">
+        <table className="w-full min-w-[1180px] text-[13px]">
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
               <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 days</th>
@@ -415,7 +415,7 @@ function Spotlight({ liqs, now }: { liqs?: PxLiquidation[]; now: number }) {
         <div key={c.k} className="min-w-0 bg-canvas px-3 py-2.5">
           <dt className="label truncate">{c.k}</dt>
           <dd className={cx('num mt-1.5 text-[17px] font-medium leading-none tracking-tight', c.n == null ? 'text-fg-3' : c.t === undefined ? 'text-fg' : tone(c.t))}>{c.n == null ? (win.isLoading ? '…' : 'n/a') : <Num value={c.n} format={c.format} />}</dd>
-          <dd className="mt-1.5 flex items-center gap-2 truncate text-[11px] text-fg-3">{c.who && c.n != null && <AccountLink account={c.who.account} address={c.who.address} className="text-fg-2" />}<span className="truncate">{c.sub}</span></dd>
+          <dd className="mt-1.5 flex items-center gap-2 truncate text-[12px] text-fg-3">{c.who && c.n != null && <AccountLink account={c.who.account} address={c.who.address} className="text-fg-2" />}<span className="truncate">{c.sub}</span></dd>
         </div>
       ))}
     </dl>
@@ -434,7 +434,7 @@ function Activity() {
         <>
           <HeatGrid label="Volume by weekday and hour" rows={DAYS} cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))} colLabelEvery={3} cell={18}
             cells={a.cells.map((c) => ({ r: c.dow, c: c.hour, v: c.usd, tip: `${DAYS[c.dow]} ${String(c.hour).padStart(2, '0')}:00 UTC: ${money(c.usd)} over ${int(c.trades)} trades` }))} />
-          <p className="mt-2 text-[11.5px] text-fg-3">
+          <p className="mt-2 text-[13px] text-fg-3">
             {money(a.usd)} over {int(a.trades)} trades, {money(a.trades ? a.usd / a.trades : 0)} each on average.{peak ? ` Busiest hour: ${DAYS[peak.dow]} ${String(peak.hour).padStart(2, '0')}:00 UTC, ${money(peak.usd)}.` : ''}
           </p>
         </>
@@ -451,7 +451,7 @@ function FundingNow({ o }: { o: PxOverview }) {
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.apr)));
   return (
     <Panel title="Funding" aside={<span className="hidden sm:inline">8h average, annualised, positive: longs pay shorts</span>} bodyClassName="px-2.5 py-2" className="min-h-[260px]">
-      <div className="num grid gap-1 text-[11px]">
+      <div className="num grid gap-1 text-[12px]">
         {rows.map((r, i) => (
           <div key={r.sym} className="grid grid-cols-[2.5rem_1fr_4rem] items-center gap-2">
             <span className="font-sans font-medium text-fg">{r.sym}</span>
@@ -463,7 +463,7 @@ function FundingNow({ o }: { o: PxOverview }) {
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[11.5px] text-fg-3">A crowded side pays the other every funding interval. Perpl sets each interval&apos;s rate in steps of 0.001%, so the last 8 hours are averaged. The chart&apos;s Funding tab shows how each rate moved.</p>
+      <p className="mt-2 text-[13px] text-fg-3">A crowded side pays the other every funding interval. Perpl sets each interval&apos;s rate in steps of 0.001%, so the last 8 hours are averaged. The chart&apos;s Funding tab shows how each rate moved.</p>
     </Panel>
   );
 }
@@ -480,12 +480,12 @@ function Flows({ win }: { win: PxWindow }) {
     <Panel title={`Collateral flows ${days === 1 ? '24h' : `${days}D`}`} aside={<Segments label="Side" value={side} onChange={setSide} options={[['deposits', 'In'], ['withdrawals', 'Out']] as const} />} className="min-h-[260px] max-h-[360px]">
       {!f ? <Pending error={q.isError} className="m-2 h-44" /> : (
         <>
-          <div className="grid grid-cols-2 gap-px border-b border-line bg-line text-[11px]">
-            <div className="bg-canvas px-2.5 py-1.5"><span className="label">Deposited</span><p className="num mt-1 text-[13px] text-bid-fg">{money(f.depositsUsd)} <span className="text-fg-3">by {f.depositors}</span></p></div>
-            <div className="bg-canvas px-2.5 py-1.5"><span className="label">Withdrawn</span><p className="num mt-1 text-[13px] text-ask-fg">{money(f.withdrawalsUsd)} <span className="text-fg-3">by {f.withdrawers}</span></p></div>
+          <div className="grid grid-cols-2 gap-px border-b border-line bg-line text-[12px]">
+            <div className="bg-canvas px-2.5 py-1.5"><span className="label">Deposited</span><p className="num mt-1 text-[14px] text-bid-fg">{money(f.depositsUsd)} <span className="text-fg-3">by {f.depositors}</span></p></div>
+            <div className="bg-canvas px-2.5 py-1.5"><span className="label">Withdrawn</span><p className="num mt-1 text-[14px] text-ask-fg">{money(f.withdrawalsUsd)} <span className="text-fg-3">by {f.withdrawers}</span></p></div>
           </div>
-          {!rows.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">None in this window.</p> : (
-            <table className="w-full text-[11.5px]">
+          {!rows.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">None in this window.</p> : (
+            <table className="w-full text-[13px]">
               <tbody className="num">
                 {rows.map((r) => (
                   <tr key={r.account} className="h-[26px] border-t border-line first:border-t-0">
@@ -516,18 +516,18 @@ function WhoWins({ win }: { win: PxWindow }) {
     <Panel title="Who makes money" aside={<span className="hidden sm:inline">realised, after fees, {label}</span>} bodyClassName="p-2.5" className="min-h-[260px]">
       {!s ? <Pending error={q.isError} className="h-48" /> : (
         <>
-          <div className="grid grid-cols-2 gap-px bg-line text-[11px]">
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Profitable</span><p className="num mt-1 text-[13px] text-bid-fg">{share(s.profitable)}</p><p className="truncate text-fg-3">{int(s.profitable)} of {int(decided)} with a result</p></div>
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Median result</span><p className={cx('num mt-1 text-[13px]', tone(s.medianNetUsd))}>{s.medianNetUsd == null ? 'n/a' : signedMoney(s.medianNetUsd)}</p><p className="truncate text-fg-3">mean {s.meanNetUsd == null ? 'n/a' : signedMoney(s.meanNetUsd)}</p></div>
+          <div className="grid grid-cols-2 gap-px bg-line text-[12px]">
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Profitable</span><p className="num mt-1 text-[14px] text-bid-fg">{share(s.profitable)}</p><p className="truncate text-fg-3">{int(s.profitable)} of {int(decided)} with a result</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Median result</span><p className={cx('num mt-1 text-[14px]', tone(s.medianNetUsd))}>{s.medianNetUsd == null ? 'n/a' : signedMoney(s.medianNetUsd)}</p><p className="truncate text-fg-3">mean {s.meanNetUsd == null ? 'n/a' : signedMoney(s.meanNetUsd)}</p></div>
           </div>
           {decided ? (
             <SignedBars
               height={150} label={`Accounts by net PnL, ${label}`} format={(v) => int(Math.abs(v))} lowLabel={s.buckets[0].label} highLabel={s.buckets.at(-1)!.label}
               data={s.buckets.map((b) => ({ key: b.label, v: lost(b) ? -b.n : b.n, tip: `${int(b.n)} account${b.n === 1 ? '' : 's'} ${lost(b) ? 'lost' : 'made'} ${b.label.replace(/^-|-\$/g, (m) => (m === '-' ? '' : '$'))}` }))}
             />
-          ) : <p className="flex h-[150px] items-center justify-center text-[12px] text-fg-3">No realised results in this window yet.</p>}
-          <p className="text-[11px] text-fg-3">Losses to the left, gains to the right, one bar per band. {s.flat ? `${int(s.flat)} more traded without closing anything.` : ''}</p>
-          <div className="num mt-2 grid gap-1 text-[11px]">
+          ) : <p className="flex h-[150px] items-center justify-center text-[13px] text-fg-3">No realised results in this window yet.</p>}
+          <p className="text-[12px] text-fg-3">Losses to the left, gains to the right, one bar per band. {s.flat ? `${int(s.flat)} more traded without closing anything.` : ''}</p>
+          <div className="num mt-2 grid gap-1 text-[12px]">
             {([['Top 10 accounts', s.top10Share], ['Top 50 accounts', s.top50Share]] as const).map(([k, v]) => (
               <div key={k} className="grid grid-cols-[7rem_1fr_3rem] items-center gap-2"><span className="font-sans text-fg-3">{k}</span><Share value={v} tone="muted" /><span className="text-right text-fg">{(v * 100).toFixed(0)}%</span></div>
             ))}
@@ -548,7 +548,7 @@ function Retention() {
     <Panel title="Retention" aside={<span className="hidden xl:inline">share of a week&apos;s new traders active again later</span>} className="min-h-[260px]">
       {!c ? <Pending error={q.isError} className="m-2 h-48" /> : (
         <>
-          <table className="w-full text-[11.5px]">
+          <table className="w-full text-[13px]">
             <thead>
               <tr className="label h-6 text-left [&>th]:font-normal"><th className="pl-2.5">Week of</th><th className="text-right">New</th>{c.offsets.map((k) => <th key={k} className="text-center">+{k} wk</th>)}</tr>
             </thead>
@@ -564,7 +564,7 @@ function Retention() {
               ))}
             </tbody>
           </table>
-          <p className="px-2.5 py-1.5 text-[11px] text-fg-3">A trader joins the week of their first fill (weeks start Monday, UTC) and counts as back if they filled in that later week. A blank cell is a week that has not ended yet; faded weeks are not fully indexed yet.</p>
+          <p className="px-2.5 py-1.5 text-[12px] text-fg-3">A trader joins the week of their first fill (weeks start Monday, UTC) and counts as back if they filled in that later week. A blank cell is a week that has not ended yet; faded weeks are not fully indexed yet.</p>
         </>
       )}
     </Panel>
@@ -591,8 +591,8 @@ function Signals() {
   }
   return (
     <Panel title="Signals" aside={<span className="hidden sm:inline">largest flows and liquidations this week; positions over $50k as they open</span>} className="h-[360px]">
-      {!q.data ? <Pending error={q.isError} className="m-2 h-48" /> : !q.data.length ? <p className="px-2.5 py-3 text-[12px] text-fg-3">Nothing large this week.</p> : (
-        <ul className="text-[11.5px]">
+      {!q.data ? <Pending error={q.isError} className="m-2 h-48" /> : !q.data.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">Nothing large this week.</p> : (
+        <ul className="text-[13px]">
           {q.data.map((x) => {
             const { Icon, cls, verb } = SIGNAL[x.kind];
             return (
@@ -615,7 +615,7 @@ function Signals() {
 
 function PositionList({ rows }: { rows: PxPosition[] }) {
   return (
-    <table className="w-full text-[11.5px]">
+    <table className="w-full text-[13px]">
       <thead>
         <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal">
           <th className="pl-2.5">Account</th><th>Market</th><th className="text-right">Size</th><th className="text-right">Lev</th><th className="pr-2.5 text-right">To liq</th>
@@ -647,9 +647,9 @@ function LiquidationFeed({ rows, error, since }: { rows?: PxLiquidation[]; error
     seen.current = new Set(rows.map(key));
   }
   if (!rows) return <Pending error={error} className="m-2 h-60" />;
-  if (!rows.length) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No liquidations{since ? ` since ${shortDay(since)}` : ''}. New ones appear here within seconds.</p>;
+  if (!rows.length) return <p className="px-2.5 py-4 text-[13px] text-fg-3">No liquidations{since ? ` since ${shortDay(since)}` : ''}. New ones appear here within seconds.</p>;
   return (
-    <table className="w-full text-[11.5px]">
+    <table className="w-full text-[13px]">
       <thead>
         <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal">
           <th className="pl-2.5">Age</th><th>Account</th><th>Market</th><th className="text-right">Size</th><th className="pr-2.5 text-right">PnL</th>
@@ -689,9 +689,9 @@ function Traders({ complete }: { complete: (days: 1 | 7 | 30 | 90) => boolean })
       }
       className="h-[460px]"
     >
-      {!complete(days) && <p className="border-b border-line px-2.5 py-1 text-[11px] text-warn">Partial history: some of these days are still being indexed.</p>}
-      {!q.data ? <Pending error={q.isError} className="m-2 h-60" /> : !rows.length ? <p className="px-2.5 py-4 text-[12px] text-fg-3">No indexed fills in this window.</p> : (
-        <table className="w-full text-[11.5px]">
+      {!complete(days) && <p className="border-b border-line px-2.5 py-1 text-[12px] text-warn">Partial history: some of these days are still being indexed.</p>}
+      {!q.data ? <Pending error={q.isError} className="m-2 h-60" /> : !rows.length ? <p className="px-2.5 py-4 text-[13px] text-fg-3">No indexed fills in this window.</p> : (
+        <table className="w-full text-[13px]">
           <thead>
             <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal">
               <th className="pl-2.5">#</th><th>Account</th><th className="w-[30%]" /><th className="text-right">Net PnL</th><th className="text-right">Volume</th><th className="pr-2.5 text-right">Fills</th>
@@ -717,7 +717,7 @@ function Traders({ complete }: { complete: (days: 1 | 7 | 30 | 90) => boolean })
 
 /** A panel still waiting for its first answer. A failed request says so instead of pulsing forever; polling retries it. */
 function Pending({ error, className }: { error: boolean; className?: string }) {
-  return error ? <p className="px-2.5 py-3 text-[12px] text-warn">Could not load this. It tries again on its own.</p> : <Skeleton className={className} />;
+  return error ? <p className="px-2.5 py-3 text-[13px] text-warn">Could not load this. It tries again on its own.</p> : <Skeleton className={className} />;
 }
 
 function Loading() {

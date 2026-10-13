@@ -16,12 +16,12 @@ export function Tape({ m, limit = 30 }: { m: MarketState; limit?: number }) {
         <span className="text-right">Time</span>
       </div>
       {m.tape.length === 0 ? (
-        <p className="px-2.5 py-4 text-[12px] text-fg-3">No prints yet. Trades appear here as they happen.</p>
+        <p className="px-2.5 py-4 text-[13px] text-fg-3">No prints yet. Trades appear here as they happen.</p>
       ) : (
         <ol>
           {/* Keyed by print, so a new print mounts a new row and flashes once in its own colour. */}
           {m.tape.slice(0, limit).map((t, i) => (
-            <li key={`${t.ts}:${t.price}:${t.size}:${i}`} role="row" className={cx(COLS, 'num h-[21px] text-[12px]', i === 0 && (t.side === 'buy' ? 'flash-up' : 'flash-down'))}>
+            <li key={`${t.ts}:${t.price}:${t.size}:${i}`} role="row" className={cx(COLS, 'num h-[21px] text-[13px]', i === 0 && (t.side === 'buy' ? 'flash-up' : 'flash-down'))}>
               <span className={t.side === 'buy' ? 'text-bid-fg' : 'text-ask-fg'}>{fmtPrice(t.price, m.spec)}</span>
               <span className="text-right text-fg">{fmtSize(t.size, m.spec)}</span>
               <span className="text-right text-fg-3">{fmtTime(t.ts)}</span>
