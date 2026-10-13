@@ -29,7 +29,8 @@ const shortDay = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: '
 const shortTime = (t: number) => new Date(t).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 /** A loss bucket starts below zero; the bottom one is open-ended (lo null). The top one (hi null) is the biggest winners. */
 const lost = (b: { lo: number | null }) => b.lo == null || b.lo < 0;
-const apr = (rate: number, intervalMin: number) => rate * ((365 * 24 * 60) / Math.max(1, intervalMin)) * 100;
+/** Funding as a percentage paid every 8 hours, the convention on most perp venues, from a rate per interval. */
+const per8h = (rate: number, intervalMin: number) => rate * (480 / Math.max(1, intervalMin)) * 100;
 const int = (n: number) => Math.round(n).toLocaleString('en-US');
 
 export default function StatsPage() {
@@ -224,12 +225,12 @@ function History({ o, sym, onSym }: { o: PxOverview; sym: string; onSym: (s: str
     const byDay = new Map<number, number[]>();
     for (const p of fm?.points ?? []) {
       const k = Math.floor(p.t / DAY) * DAY;
-      byDay.set(k, [...(byDay.get(k) ?? []), apr(p.rate, fm!.intervalMin)]);
+      byDay.set(k, [...(byDay.get(k) ?? []), per8h(p.rate, fm!.intervalMin)]);
     }
     const days = [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([t, rs]) => ({ t, v: rs.reduce((a, b) => a + b, 0) / rs.length, n: rs.length }));
     body = !fd ? <Pending error={fund.isError} className="h-[360px]" /> : !days.length ? <p className="flex h-[360px] items-center justify-center text-[13px] text-fg-3">No funding history for {fsym}.</p>
-      : <SignedBars height={H} label={`Average funding on ${fsym} per day, annualised`} format={(v) => `${v.toFixed(1)}%`} lowLabel={shortDay(days[0].t)} highLabel={shortDay(days.at(-1)!.t)} data={days.map((d) => ({ key: day(d.t), v: d.v, tip: `${shortDay(d.t)}: ${pct(d.v, 1)} a year on average over ${d.n} intervals, ${d.v >= 0 ? 'longs paid shorts' : 'shorts paid longs'}` }))} />;
-    note = <>{fsym}: each day&apos;s average rate, annualised. Teal days longs paid shorts, vermilion days the reverse. From Perpl&apos;s funding history{sym === ALL ? '; pick a market above for another' : ''}.</>;
+      : <SignedBars height={H} label={`Average funding on ${fsym} per 8 hours, by day`} format={(v) => `${v.toFixed(4)}%`} lowLabel={shortDay(days[0].t)} highLabel={shortDay(days.at(-1)!.t)} data={days.map((d) => ({ key: day(d.t), v: d.v, tip: `${shortDay(d.t)}: ${pct(d.v, 4)} per 8 hours on average over ${d.n} intervals, ${d.v >= 0 ? 'longs paid shorts' : 'shorts paid longs'}` }))} />;
+    note = <>{fsym}: each day&apos;s average rate per 8 hours. Teal days longs paid shorts, vermilion days the reverse. From Perpl&apos;s funding history{sym === ALL ? '; pick a market above for another' : ''}.</>;
   }
 
   return (
@@ -329,10 +330,11 @@ function setups(m: PxOverview['markets'][number], o: PxOverview, risk?: Risk): {
   const out: { text: string; tone: 'warn' | 'ask' | 'accent' | 'neutral'; title: string }[] = [];
   const n = m.longs + m.shorts;
   const skew = n ? m.longs / n : 0.5;
-  const a = apr(m.fundingRate, m.fundingIntervalMin);
+  const a = per8h(m.fundingRate, m.fundingIntervalMin);
   if (n >= 10 && skew >= 0.7) out.push({ text: 'Crowded long', tone: 'warn', title: `${(skew * 100).toFixed(0)}% of ${n} open accounts are long` });
   if (n >= 10 && skew <= 0.3) out.push({ text: 'Crowded short', tone: 'warn', title: `${((1 - skew) * 100).toFixed(0)}% of ${n} open accounts are short` });
-  if (Math.abs(a) >= 30) out.push({ text: `Funding ${pct(a, 0)}`, tone: a > 0 ? 'ask' : 'accent', title: `${a > 0 ? 'Longs pay shorts' : 'Shorts pay longs'} ${Math.abs(a).toFixed(0)}% a year at the last 8 hours' average rate` });
+  // 0.03% every 8 hours is about 33% a year: a side that is paying to stay crowded.
+  if (Math.abs(a) >= 0.03) out.push({ text: `Funding ${pct(a, 3)}`, tone: a > 0 ? 'ask' : 'accent', title: `${a > 0 ? 'Longs pay shorts' : 'Shorts pay longs'} ${Math.abs(a).toFixed(4)}% every 8 hours at the last 8 hours' average rate` });
   const prev = o.daily.slice(-8, -1).map((d) => d.byMarket[m.sym] ?? 0);
   const avg = prev.length ? prev.reduce((x, y) => x + y, 0) / prev.length : 0;
   if (avg > 0 && m.volume24hUsd >= 2 * avg) out.push({ text: `Volume ${(m.volume24hUsd / avg).toFixed(1)}x`, tone: 'accent', title: `${money(m.volume24hUsd)} in 24h against ${money(avg)} a day over the previous week` });
@@ -357,12 +359,12 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
               <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 days</th>
-              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right" title="The mean of the last 8 hours' funding intervals, annualised">Funding 8h</th><th className="text-right">Long / short</th><th className="text-right" title="Perpl's 24h volume as a share of the reference market's">vs ref. market</th><th className="pr-2.5 pl-3">Setups</th>
+              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right" title="Paid every 8 hours, at the mean of the last 8 hours' funding intervals">Funding 8h</th><th className="text-right">Long / short</th><th className="text-right" title="Perpl's 24h volume as a share of the reference market's">vs ref. market</th><th className="pr-2.5 pl-3">Setups</th>
             </tr>
           </thead>
           <tbody className="num">
             {o.markets.map((m) => {
-              const a = apr(m.fundingRate, m.fundingIntervalMin);
+              const a = per8h(m.fundingRate, m.fundingIntervalMin);
               const on = m.sym === pick;
               const flags = setups(m, o, risk);
               const ago = oiAgo(m.sym);
@@ -381,7 +383,7 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
                   <td className="pl-3"><span className="flex items-center gap-2"><Share value={m.openInterestUsd / oiTotal} className="w-16" /><span className="w-9 text-fg-3">{((m.openInterestUsd / oiTotal) * 100).toFixed(0)}%</span></span></td>
                   {m.fundingUnknown
                     ? <td className="text-right text-fg-3" title="Perpl did not return this market's funding just now">-</td>
-                    : <td className="text-right" title={`8-hour average: ${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 1)}</span><span className="text-fg-3"> /yr</span></td>}
+                    : <td className="text-right" title={`8-hour average: ${(m.fundingRate * 100).toFixed(4)}% every ${m.fundingIntervalMin} min`}><span className={tone(m.fundingRate)}>{pct(a, 4)}</span></td>}
                   <td className="text-right"><Skew longs={m.longs} shorts={m.shorts} /></td>
                   <td className="text-right text-fg-2">{m.hlVolume24hUsd ? `${((m.volume24hUsd / m.hlVolume24hUsd) * 100).toFixed(m.volume24hUsd / m.hlVolume24hUsd < 0.01 ? 2 : 1)}%` : 'n/a'}</td>
                   <td className="pr-2.5 pl-3"><span className="flex flex-wrap gap-1">{flags.map((f) => <span key={f.text} title={f.title}><Tag tone={f.tone}>{f.text}</Tag></span>)}</span></td>
@@ -447,19 +449,19 @@ function Activity() {
 function FundingNow({ o }: { o: PxOverview }) {
   const reduce = useReducedMotion();
   // A market whose funding Perpl did not return is left out rather than drawn at 0.
-  const rows = o.markets.filter((m) => !m.fundingUnknown).map((m) => ({ sym: m.sym, apr: apr(m.fundingRate, m.fundingIntervalMin), oi: m.openInterestUsd })).sort((a, b) => b.apr - a.apr);
-  const max = Math.max(1, ...rows.map((r) => Math.abs(r.apr)));
+  const rows = o.markets.filter((m) => !m.fundingUnknown).map((m) => ({ sym: m.sym, v: per8h(m.fundingRate, m.fundingIntervalMin), oi: m.openInterestUsd })).sort((a, b) => b.v - a.v);
+  const max = Math.max(0.001, ...rows.map((r) => Math.abs(r.v))); // a floor, so near-zero rates do not fill the bar
   return (
-    <Panel title="Funding" aside={<span className="hidden sm:inline">8h average, annualised, positive: longs pay shorts</span>} bodyClassName="px-2.5 py-2" className="min-h-[260px]">
+    <Panel title="Funding" aside={<span className="hidden sm:inline">per 8 hours, positive: longs pay shorts</span>} bodyClassName="px-2.5 py-2" className="min-h-[260px]">
       <div className="num grid gap-1 text-[12px]">
         {rows.map((r, i) => (
-          <div key={r.sym} className="grid grid-cols-[2.5rem_1fr_4rem] items-center gap-2">
+          <div key={r.sym} className="grid grid-cols-[2.5rem_1fr_4.5rem] items-center gap-2">
             <span className="font-sans font-medium text-fg">{r.sym}</span>
             <span className="relative h-3" aria-hidden>
               <span className="absolute inset-y-0 left-1/2 w-px bg-line-2" />
-              <motion.span className="absolute top-[3px] bottom-[3px]" style={{ background: r.apr >= 0 ? 'var(--bid)' : 'var(--ask)', borderRadius: r.apr >= 0 ? '0 1px 1px 0' : '1px 0 0 1px', left: r.apr >= 0 ? '50%' : undefined, right: r.apr < 0 ? '50%' : undefined }} initial={reduce ? false : { width: 0 }} animate={{ width: `${(Math.abs(r.apr) / max) * 50}%` }} transition={{ duration: 0.7, ease: EASE, delay: Math.min(i * 0.03, 0.3) }} />
+              <motion.span className="absolute top-[3px] bottom-[3px]" style={{ background: r.v >= 0 ? 'var(--bid)' : 'var(--ask)', borderRadius: r.v >= 0 ? '0 1px 1px 0' : '1px 0 0 1px', left: r.v >= 0 ? '50%' : undefined, right: r.v < 0 ? '50%' : undefined }} initial={reduce ? false : { width: 0 }} animate={{ width: `${(Math.abs(r.v) / max) * 50}%` }} transition={{ duration: 0.7, ease: EASE, delay: Math.min(i * 0.03, 0.3) }} />
             </span>
-            <span className={cx('text-right', tone(r.apr))}>{pct(r.apr, 1)}</span>
+            <span className={cx('text-right', tone(r.v))}>{pct(r.v, 4)}</span>
           </div>
         ))}
       </div>

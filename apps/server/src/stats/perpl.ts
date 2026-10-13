@@ -143,7 +143,7 @@ type FundingEvent = { at: { t: number }; rate: number };
 const fundingHistories = new Map<number, () => Promise<PxFunding>>();
 /**
  * Every market's funding over the last `days` days, from Perpl's per-market history (at most 1,024 intervals a call, so a
- * market with short intervals reaches back less far). Rates are per interval; the page annualises them.
+ * market with short intervals reaches back less far). Rates are per interval; the pages show them per 8 hours.
  */
 export function fundingHistory(days: number): Promise<PxFunding> {
   let f = fundingHistories.get(days);

@@ -319,8 +319,9 @@ function BookField({ m, className }: { m?: MarketState; className?: string }) {
 // ---- Perpl by the numbers: the analytics product, live, on the landing page. ----
 
 const int = (n: number) => Math.round(n).toLocaleString('en-US');
-const apr = (r: { fundingRate: number; fundingIntervalMin: number; fundingUnknown?: true }) =>
-  r.fundingUnknown ? null : r.fundingRate * ((365 * 24 * 60) / Math.max(1, r.fundingIntervalMin)) * 100;
+/** Funding paid every 8 hours, in percent. */
+const per8h = (r: { fundingRate: number; fundingIntervalMin: number; fundingUnknown?: true }) =>
+  r.fundingUnknown ? null : r.fundingRate * (480 / Math.max(1, r.fundingIntervalMin)) * 100;
 
 /** A labelled figure that counts to its value and tints when it changes. */
 function Big({ k, n, format, sub }: { k: string; n: number | null; format: (v: number) => string; sub?: ReactNode }) {
@@ -367,12 +368,12 @@ export function PerplStats() {
               <th className="w-[4.5rem] text-right">24h</th>
               <th className="text-right">Volume</th>
               <th className="hidden text-right sm:table-cell">Open interest</th>
-              <th className="hidden w-[6.5rem] pr-3 text-right sm:table-cell">Funding APR</th>
+              <th className="hidden w-[6.5rem] pr-3 text-right sm:table-cell">Funding 8h</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const a = apr(r);
+              const a = per8h(r);
               return (
                 <tr key={r.sym} className="num h-9 border-t border-line">
                   <td className="pl-3 font-sans font-semibold">{r.sym}</td>
@@ -380,7 +381,7 @@ export function PerplStats() {
                   <td className={cx('text-right', tone(r.change24hPct))}>{pct(r.change24hPct, 2)}</td>
                   <td className="text-right">{money(r.volume24hUsd)}</td>
                   <td className="hidden text-right text-fg-2 sm:table-cell">{money(r.openInterestUsd)}</td>
-                  <td className={cx('hidden pr-3 text-right sm:table-cell', a == null ? 'text-fg-3' : tone(a))}>{a == null ? 'n/a' : pct(a, 1)}</td>
+                  <td className={cx('hidden pr-3 text-right sm:table-cell', a == null ? 'text-fg-3' : tone(a))}>{a == null ? 'n/a' : pct(a, 4)}</td>
                 </tr>
               );
             })}
