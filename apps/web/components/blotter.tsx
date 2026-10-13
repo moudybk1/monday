@@ -1,14 +1,14 @@
 'use client';
 
-import { quotingFor, usd, usdCompact, type DashboardState, type MarketState, type Policy, type Side } from '@monday/core';
+import { quotingFor, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Policy, type Side } from '@monday/core';
 import { ago, fmtBps, fmtPrice, fmtSigned, fmtSize, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { quoteStanding, tone } from './agent';
-import { cx } from './ui';
+import { SymButton, cx } from './ui';
 
 const HEAD = 'label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal';
 
 /** Monday's resting orders, one row per side per market: where each sits against the book and how long it has stood. */
-export function OpenOrders({ state }: { state: DashboardState }) {
+export function OpenOrders({ state, onPick }: { state: DashboardState; onPick?: (s: MarketSym) => void }) {
   const rows: { m: MarketState; side: Side }[] = [];
   for (const m of Object.values(state.markets)) if (m) for (const side of ['bid', 'ask'] as const) if (m.quotes[side]) rows.push({ m, side });
   if (rows.length === 0) {
@@ -32,7 +32,7 @@ export function OpenOrders({ state }: { state: DashboardState }) {
           const age = m.quoteAgeMs[side];
           return (
             <tr key={`${m.sym}:${side}`} className="h-[24px] border-t border-line">
-              <td className="pl-2.5 font-sans font-semibold">{m.sym} <span className="font-normal text-fg-3">perp</span></td>
+              <td className="pl-2.5 font-sans font-semibold"><SymButton sym={m.sym} onPick={onPick} /> <span className="font-normal text-fg-3">perp</span></td>
               <td className={cx('font-sans', side === 'bid' ? 'text-bid-fg' : 'text-ask-fg')}>{side === 'bid' ? 'Buy' : 'Sell'}</td>
               <td className="text-right">{fmtPrice(q.price, m.spec)}</td>
               <td className="text-right">{fmtSize(q.size, m.spec)}</td>
@@ -57,7 +57,7 @@ const leverageOf = (p: MarketState['position'], policy: Policy) =>
   p.marginUsd != null && p.marginUsd > 0 ? { x: Math.abs(p.notionalUsd) / p.marginUsd, from: 'perpl' as const } : { x: policy.maxLeverage, from: 'policy' as const };
 
 /** One row per market in the policy: what Monday holds, at what entry, and how it is doing at the live mark. */
-export function Positions({ state }: { state: DashboardState }) {
+export function Positions({ state, onPick }: { state: DashboardState; onPick?: (s: MarketSym) => void }) {
   const rows = Object.values(state.markets).filter((m): m is MarketState => Boolean(m) && (m!.inPolicy || m!.position.size !== 0));
   const open = rows.filter((m) => Math.abs(m.position.notionalUsd) >= 0.5);
   const total = open.reduce((a, m) => a + m.position.unrealizedUsd, 0);
@@ -76,7 +76,7 @@ export function Positions({ state }: { state: DashboardState }) {
           const pct = flat || !p.entryPrice ? 0 : (m.mark / p.entryPrice - 1) * (long ? 1 : -1) * 100;
           return (
             <tr key={m.sym} className={cx('h-[24px] border-t border-line', flat && 'text-fg-3')}>
-              <td className="pl-2.5 font-sans font-semibold text-fg">{m.sym} <span className="font-normal text-fg-3">perp</span></td>
+              <td className="pl-2.5 font-sans font-semibold text-fg"><SymButton sym={m.sym} onPick={onPick} /> <span className="font-normal text-fg-3">perp</span></td>
               <td className={cx('font-sans', !flat && (long ? 'text-bid-fg' : 'text-ask-fg'))}>{flat ? 'Flat' : long ? 'Long' : 'Short'}</td>
               <td>{flat ? '-' : (() => {
                 const l = leverageOf(p, state.policy);
@@ -105,7 +105,7 @@ export function Positions({ state }: { state: DashboardState }) {
   );
 }
 
-export function Fills({ state }: { state: DashboardState }) {
+export function Fills({ state, onPick }: { state: DashboardState; onPick?: (s: MarketSym) => void }) {
   if (state.fills.length === 0) return <p className="px-2.5 py-4 text-[12px] text-fg-3">No trades yet. A trade appears here when a taker trades against one of Monday&apos;s resting orders.</p>;
   const mk = (v: number | null) => (v == null ? <span className="text-fg-3">wait</span> : <span className={v >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{fmtBps(v)}</span>);
   return (
@@ -122,7 +122,7 @@ export function Fills({ state }: { state: DashboardState }) {
           return (
             <tr key={f.id} className="h-[22px] border-t border-line">
               <td className="pl-2.5 text-fg-3">{fmtTime(f.ts)}</td>
-              <td className="font-sans font-medium">{f.sym}</td>
+              <td className="font-sans font-medium"><SymButton sym={f.sym} onPick={onPick} /></td>
               <td className={cx('font-sans', f.side === 'bid' ? 'text-bid-fg' : 'text-ask-fg')}>{f.side === 'bid' ? 'Buy' : 'Sell'}{!f.isMaker && <span className="text-fg-3"> taker</span>}</td>
               <td className="text-right">{fmtPrice(f.price, spec)}</td>
               <td className="text-right">{fmtSize(f.size, spec)}</td>

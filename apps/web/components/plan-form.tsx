@@ -99,7 +99,6 @@ export function PlanWizard({ kind }: { kind: Kind }) {
     queryKey: ['plan-read', draft.sym], queryFn: () => api<Read>(`/plans/read?sym=${draft.sym}`), enabled: kind === 'trade' && draft.sym !== null, refetchInterval: 60_000,
   });
   const [step, setStep] = useState(DIRECTION);
-  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,8 +165,8 @@ export function PlanWizard({ kind }: { kind: Kind }) {
         )}
         {current === REVIEW && input && spec && mark && (
           <ReviewStep
-            input={input} spec={spec} mark={mark} balance={balance} read={read.data} realFunds={Boolean(cfg?.realFunds)} networkName={cfg?.networkName ?? ''} sim={Boolean(cfg?.sim || cfg?.paper)}
-            accepted={accepted} onAccept={setAccepted} busy={busy} error={error} onPlace={place} onEdit={() => setStep(SETTINGS)}
+            input={input} spec={spec} mark={mark} balance={balance} read={read.data} sim={Boolean(cfg?.sim || cfg?.paper)}
+            busy={busy} error={error} onPlace={place} onEdit={() => setStep(SETTINGS)}
           />
         )}
         {current === REVIEW && !mark && <Skeleton className="h-64" />}
@@ -404,9 +403,9 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
   );
 }
 
-function ReviewStep({ input, spec, mark, balance, read, realFunds, networkName, sim, accepted, onAccept, busy, error, onPlace, onEdit }: {
-  input: PlanInput; spec: MarketSpec; mark: number; balance: number | null; read: Read | undefined; realFunds: boolean; networkName: string; sim: boolean;
-  accepted: boolean; onAccept: (v: boolean) => void; busy: boolean; error: string | null; onPlace: () => void; onEdit: () => void;
+function ReviewStep({ input, spec, mark, balance, read, sim, busy, error, onPlace, onEdit }: {
+  input: PlanInput; spec: MarketSpec; mark: number; balance: number | null; read: Read | undefined; sim: boolean;
+  busy: boolean; error: string | null; onPlace: () => void; onEdit: () => void;
 }) {
   const n = planNumbers(input, spec, mark);
   const px = (v: number | null) => (v != null ? fmtPrice(v, spec) : '-');
@@ -448,16 +447,8 @@ function ReviewStep({ input, spec, mark, balance, read, realFunds, networkName, 
       </dl>
       {balance != null && input.marginUsd > balance * 0.9 && <div className="mt-6"><Notice tone="warn">This uses most of your balance. It leaves little room for the market maker or another plan.</Notice></div>}
       {error && <p role="alert" className="mt-6 text-[13px] text-ask-fg">{error}</p>}
-      {realFunds && (
-        <label className="mt-8 flex cursor-pointer items-start gap-3 rounded-sm border border-ask/60 bg-ask/8 p-3.5 text-[13px]">
-          <input type="checkbox" checked={accepted} onChange={(e) => onAccept(e.target.checked)} className="mt-0.5 size-4 flex-none accent-[var(--ask)]" />
-          <span>
-            <strong>This trades real funds on {networkName}.</strong> {input.kind === 'trade' ? 'Monday will open and close many short positions in your Perpl account; each pays fees, and a run of small losses adds up to the stop loss.' : 'Monday will open this position in your Perpl account.'} A stop limits a loss in a normal market, not in a gap, and leverage multiplies both ways. I accept that risk.
-          </span>
-        </label>
-      )}
       <div className="mt-8 flex flex-wrap gap-2.5">
-        <Button size="lg" onClick={onPlace} disabled={busy || (realFunds && !accepted)}>{busy ? 'Starting' : input.kind === 'trade' ? 'Start scalping' : 'Start TWAP'}</Button>
+        <Button size="lg" onClick={onPlace} disabled={busy}>{busy ? 'Starting' : input.kind === 'trade' ? 'Start scalping' : 'Start TWAP'}</Button>
         <Button size="lg" variant="ghost" onClick={onEdit} disabled={busy}>Edit</Button>
       </div>
     </div>
