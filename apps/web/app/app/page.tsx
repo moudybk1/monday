@@ -171,7 +171,7 @@ export default function Terminal() {
         {/* A kill the user pressed needs no notice, nor one a plan has moved on from; one Monday made, or one still closing, does. */}
         {state.status === 'killed' && (state.closing || (state.killReason !== 'manual' && !running.length)) && (
           // A kill ends everything: trading again starts from Setup, in any mode and any market.
-          <Notice tone="ask" action={state.closing ? undefined : <ButtonLink href="/app/setup" size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15">Set up again</ButtonLink>}>
+          <Notice tone="ask" action={state.closing ? undefined : <ButtonLink href="/app/setup" size="xs" variant="ghost" className="border-white/70 text-white hover:bg-white/15">Setup</ButtonLink>}>
             <strong>{state.closing ? 'Killed, still closing.' : 'Killed.'}</strong> {state.killReason ? KILL_WHY[state.killReason] : ''}{' '}
             {state.closing ? 'Perpl has not confirmed that every order is cancelled and every position closed. Monday retries every 10 seconds, also after a restart. You can close them on Perpl too.' : 'All orders were cancelled and positions closed. To trade again, pick a mode in Setup.'}
             {state.killReason === 'key_error' && <> <Link href="/app/connect" className="underline">Add a new key</Link>.</>}
@@ -517,16 +517,14 @@ function Loading() {
   );
 }
 
-/** The agent column for an account with no market maker set up: its plans run on their own, and Kill still covers everything. */
+/** The agent column for an account with no market maker set up: one way to Setup, and Kill still covers any running plan. */
 function NoMaker({ running, onKill }: { running: number; onKill: () => void }) {
   return (
     <Panel title="Agent" aside={running ? <span>{running} plan{running > 1 ? 's' : ''} running</span> : undefined}>
       <div className="grid gap-3 p-3 text-[13px] text-fg-2">
-        <p>The market maker is not set up on this account.{running ? ' Your plans run on their own; follow them under Plans.' : ' Start a trade, a TWAP, or set up the market maker.'}</p>
+        <p>{running ? 'Your plans are trading; follow them under Plans. Start the market maker or another plan in Setup.' : 'Nothing is trading yet. Pick a mode in Setup: the market maker, Agentic Trade or TWAP.'}</p>
         <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/app/setup/trade" size="sm">New trade</ButtonLink>
-          <ButtonLink href="/app/setup/twap" size="sm" variant="ghost">New TWAP</ButtonLink>
-          <ButtonLink href="/app/onboarding" size="sm" variant="ghost">Market maker</ButtonLink>
+          <ButtonLink href="/app/setup" size="sm">Setup</ButtonLink>
           {running > 0 && <Button size="sm" variant="danger" onClick={onKill}>Kill and flatten</Button>}
         </div>
       </div>
