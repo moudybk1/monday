@@ -89,8 +89,11 @@ function Summary({ o, dayAgo }: { o: PxOverview; dayAgo: { oiUsd: number } | nul
   );
 }
 
-/** Where the window's volume sits, and where today's open interest sits, market by market. */
-function Shares({ o, win, winDays, today }: { o: PxOverview; win: PxWindow; winDays: number; today: number }) {
+/**
+ * Three shares, market by market: the window's volume, the open interest now, and the open notional within 5% of its
+ * liquidation price (where a move would hurt first). Each ring carries its total in the middle.
+ */
+function Shares({ o, risk, riskError, win, winDays, today }: { o: PxOverview; risk?: Risk; riskError: boolean; win: PxWindow; winDays: number; today: number }) {
   const label = win === '24h' ? 'last 24h' : win === 'all' ? 'all time' : `last ${winDays} days`;
   const vol = win === '24h'
     ? o.markets.map((m) => ({ name: m.sym, value: m.volume24hUsd }))
@@ -99,15 +102,19 @@ function Shares({ o, win, winDays, today }: { o: PxOverview; win: PxWindow; winD
       return acc;
     }, {})).map(([name, value]) => ({ name, value }));
   const oi = o.markets.map((m) => ({ name: m.sym, value: m.openInterestUsd }));
+  const atRisk = risk?.markets.map((m) => ({ name: m.sym, value: m.atRiskLongUsd + m.atRiskShortUsd }));
   const total = (xs: { value: number }[]) => xs.reduce((s, x) => s + x.value, 0);
-  const centre = (v: number, k: string) => <><span className="num text-[15px] font-medium text-fg">{money(v)}</span><span className="label mt-0.5">{k}</span></>;
+  const centre = (v: number) => <span className="num text-[16px] font-medium text-fg">{money(v)}</span>;
   return (
-    <div className="grid gap-1 lg:grid-cols-2">
-      <Panel title={`Volume by market, ${label}`} aside={<span className="hidden sm:inline">share of what was traded</span>} bodyClassName="p-3">
-        <Donut parts={vol} format={money} label={`Volume by market, ${label}`} centre={centre(total(vol), 'traded')} />
+    <div className="grid gap-1 md:grid-cols-3">
+      <Panel title="Volume by market" aside={<span>{label}</span>} bodyClassName="p-3">
+        <Donut parts={vol} format={money} label={`Volume by market, ${label}`} centre={centre(total(vol))} size={120} />
       </Panel>
-      <Panel title="Open interest by market" aside={<span className="hidden sm:inline">share of positions open now</span>} bodyClassName="p-3">
-        <Donut parts={oi} format={money} label="Open interest by market" centre={centre(total(oi), 'open now')} />
+      <Panel title="Open interest by market" aside={<span>open now</span>} bodyClassName="p-3">
+        <Donut parts={oi} format={money} label="Open interest by market" centre={centre(total(oi))} size={120} />
+      </Panel>
+      <Panel title="Liquidation risk" aside={<span title="Open notional within 5% of its liquidation price, longs and shorts together, by market">within 5% of liquidation</span>} bodyClassName="p-3">
+        {atRisk ? <Donut parts={atRisk} format={money} label="Open notional within 5% of liquidation, by market" centre={centre(total(atRisk))} size={120} /> : <Pending error={riskError} className="h-[120px]" />}
       </Panel>
     </div>
   );
@@ -202,7 +209,7 @@ function Stats() {
         </dl>
       </details>
 
-      <div className="min-w-0 rise" style={{ '--i': 1.7 } as React.CSSProperties}><Shares o={o} win={win} winDays={winDays} today={today} /></div>
+      <div className="min-w-0 rise" style={{ '--i': 1.7 } as React.CSSProperties}><Shares o={o} risk={risk.data} riskError={risk.isError} win={win} winDays={winDays} today={today} /></div>
 
       <div className="min-w-0 rise grid gap-1 xl:h-[460px] xl:grid-cols-[minmax(0,1fr)_400px]" style={{ '--i': 2 } as React.CSSProperties}>
         <History o={o} sym={sym} onSym={setSym} win={win} />

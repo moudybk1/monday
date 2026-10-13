@@ -569,9 +569,9 @@ export function Donut({ parts, format, label, centre, size = 136, max = 5 }: {
     a = a1;
     return { ...s, d, share: s.value / total };
   });
-  if (!total) return <p className="flex h-[136px] items-center justify-center text-[13px] text-fg-3">Nothing in this window yet.</p>;
+  if (!total) return <p className="flex items-center justify-center text-[13px] text-fg-3" style={{ height: size }}>Nothing in this window yet.</p>;
   return (
-    <div className="flex min-w-0 items-center gap-4">
+    <div className="flex min-w-0 items-center justify-center gap-5">
       <div className="relative flex-none" style={{ width: size, height: size }}>
         <svg width={size} height={size} role="img" aria-label={label} className="block">
           {arcs.map((s, i) => (
@@ -590,12 +590,12 @@ export function Donut({ parts, format, label, centre, size = 136, max = 5 }: {
         </svg>
         <div className="pointer-events-none absolute inset-0 grid place-items-center text-center leading-tight">{centre}</div>
       </div>
-      <ul className="num grid min-w-0 flex-1 gap-1 text-[12px]" aria-label={`${label}, by part`}>
+      <ul className="num grid min-w-0 gap-1 text-[12px]" aria-label={`${label}, by part`}>
         {arcs.map((s) => (
-          <li key={s.name} onMouseEnter={() => setHover(s.name)} onMouseLeave={() => setHover(null)} className={cx('grid grid-cols-[8px_minmax(0,1fr)_2.6rem_auto] items-center gap-2 transition-opacity', hover != null && hover !== s.name && 'opacity-40')}>
+          <li key={s.name} onMouseEnter={() => setHover(s.name)} onMouseLeave={() => setHover(null)} className={cx('grid grid-cols-[8px_auto_auto_auto] items-center gap-x-3 transition-opacity', hover != null && hover !== s.name && 'opacity-40')}>
             <span className="size-2 rounded-[2px]" style={{ background: TONE[s.tone] }} aria-hidden />
-            <span className="truncate font-sans text-fg">{s.name}</span>
-            <span className="text-right text-fg-3">{(s.share * 100).toFixed(s.share < 0.095 ? 1 : 0)}%</span>
+            <span className="font-sans text-fg">{s.name}</span>
+            <span className="min-w-[2.6rem] text-right text-fg-3">{(s.share * 100).toFixed(s.share < 0.095 ? 1 : 0)}%</span>
             <span className="text-right text-fg-2">{format(s.value)}</span>
           </li>
         ))}
