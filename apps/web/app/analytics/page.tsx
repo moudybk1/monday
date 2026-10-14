@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { PxActivity, PxCohorts, PxFlows, PxFunding, PxHistory, PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxSignal, PxTrader, PxTraderStats, PxWindow } from '@monday/core';
+import type { PxActivity, PxCohorts, PxFlows, PxFunding, PxHistory, PxLiqHours, PxLiquidation, PxMarketRisk, PxOverview, PxPosition, PxSignal, PxTakerFlow, PxTrader, PxTraderStats, PxWindow } from '@monday/core';
 import { CATS, Donut, EASE, HeatGrid, LineChart, Share, SignedBars, Sparkline, StackedBars, type Series, type Tone } from '@/components/charts';
 import { AccountLink, Delta, Kpi, Num, Segments, Skew, Tabs, ago, liqText, liqTone, money, pct, price, signedMoney, tone } from '@/components/stats-ui';
 import { Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
@@ -216,6 +216,11 @@ function Stats() {
         <LiquidationMap risk={risk.data} error={risk.isError} sym={sym === ALL ? undefined : sym} onSym={setSym} />
       </div>
 
+      <div className="min-w-0 rise grid gap-1 lg:grid-cols-2" style={{ '--i': 2.5 } as React.CSSProperties}>
+        <TakerFlow sym={sym === ALL ? [...o.markets].sort((a, b) => b.volume24hUsd - a.volume24hUsd)[0]?.sym ?? 'BTC' : sym} markets={o.markets} onSym={setSym} />
+        <LiqHours win={win} sym={sym === ALL ? undefined : sym} />
+      </div>
+
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Spotlight liqs={liqs.data} now={now} /></div>
 
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} risk={risk.data} hist={hist7.data} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
@@ -358,6 +363,86 @@ function History({ o, sym, onSym, win }: { o: PxOverview; sym: string; onSym: (s
         {metric !== 'volume' && !SAMPLED.includes(metric) && metric !== 'funding' && (o.indexer.backfillDays ? `${o.indexer.backfillDays} days are still being indexed, newest first: hatched days have no data yet, faded ones are partial. ` : 'Every day is indexed from the Exchange\'s events. ')}
         {note}
       </p>
+    </Panel>
+  );
+}
+
+/**
+ * Who is pushing price: taker buys minus taker sells per quarter hour over the last day (the orders that crossed the
+ * spread), under the mark over the same hours. Picking a market here focuses the chart and the map too.
+ */
+function TakerFlow({ sym, markets, onSym }: { sym: string; markets: PxOverview['markets']; onSym: (s: string) => void }) {
+  const q = useQuery({ queryKey: ['stats-taker-flow', sym], queryFn: () => api<PxTakerFlow>(`/stats/taker-flow?sym=${sym}`), refetchInterval: 30_000 });
+  const hist = useQuery({ queryKey: ['stats-history', 1], queryFn: () => api<PxHistory>('/stats/history?days=1'), refetchInterval: 60_000 });
+  const f = q.data;
+  const from = f?.points[0]?.t ?? 0;
+  const marks = (hist.data?.markets[sym] ?? []).filter((p) => p.t >= from).map((p) => ({ t: p.t, v: p.mark }));
+  const share = f?.buyShare24h;
+  return (
+    <Panel
+      title={`Taker flow: ${sym}`}
+      aside={
+        <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="num h-6 rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg">
+          {markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
+        </select>
+      }
+      bodyClassName="p-2.5"
+      className="min-h-[330px]"
+    >
+      {!f ? <Pending error={q.isError} className="h-64" /> : (
+        <>
+          <div className="grid grid-cols-3 gap-px bg-line text-[12px]">
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Net taker buying 1h</span><p className={cx('num mt-1 text-[14px]', tone(f.net1hUsd))}>{signedMoney(f.net1hUsd)}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Net taker buying 24h</span><p className={cx('num mt-1 text-[14px]', tone(f.net24hUsd))}>{signedMoney(f.net24hUsd)}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Buys of taker volume</span><p className={cx('num mt-1 text-[14px]', share == null ? 'text-fg-3' : share > 0.5 ? 'text-bid-fg' : share < 0.5 ? 'text-ask-fg' : 'text-fg-2')}>{share == null ? 'n/a' : `${(share * 100).toFixed(0)}%`}</p></div>
+          </div>
+          {marks.length >= 3 && <div className="mt-2"><LineChart height={100} label={`${sym} mark, last 24 hours`} format={price} timeFormat={shortTime} series={[{ name: 'Mark', tone: 'fg', points: marks }]} drawKey={`mark-${sym}`} /></div>}
+          <SignedBars
+            height={150} label={`Net taker flow on ${sym} per ${f.bucketMin} minutes`} format={money} lowLabel={shortTime(f.points[0].t)} highLabel="now"
+            data={f.points.map((p) => ({ key: String(p.t), v: p.netUsd, tip: `${shortTime(p.t)}: ${signedMoney(p.netUsd)} net, ${money(p.grossUsd)} taken` }))}
+          />
+          <p className="mt-1 text-[12px] text-fg-3">Taker buys minus taker sells at fill prices: the orders that crossed the spread, the ones that move price. Teal, buyers were pushing; vermilion, sellers. Liquidations are left out.</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** When the exchange closed positions: liquidated notional per hour, longs and shorts, over the window; the tall bars are the cascades. */
+function LiqHours({ win, sym }: { win: PxWindow; sym?: string }) {
+  const days = win === '24h' ? 1 : win === '7d' ? 7 : 30;
+  const span = days === 1 ? 1 : days === 7 ? 3 : 12; // hours per bar: 24, 56 or 60 bars
+  const q = useQuery({ queryKey: ['stats-liq-hours', days, sym ?? ''], queryFn: () => api<PxLiqHours>(`/stats/liquidations/hourly?days=${days}${sym ? `&sym=${sym}` : ''}`), refetchInterval: 60_000 });
+  const d = q.data;
+  const bars = useMemo(() => {
+    const out: { t: number; longUsd: number; shortUsd: number; n: number }[] = [];
+    for (let i = 0; i < (d?.points.length ?? 0); i += span) {
+      const g = d!.points.slice(i, i + span);
+      out.push({ t: g[0].t, longUsd: g.reduce((s, p) => s + p.longUsd, 0), shortUsd: g.reduce((s, p) => s + p.shortUsd, 0), n: g.reduce((s, p) => s + p.n, 0) });
+    }
+    return out;
+  }, [d, span]);
+  const longs = bars.reduce((s, b) => s + b.longUsd, 0), shorts = bars.reduce((s, b) => s + b.shortUsd, 0), total = longs + shorts;
+  const when = (t: number) => (days === 1 ? shortTime(t) : `${shortTime(t)}${span > 1 ? ` +${span}h` : ''}`);
+  return (
+    <Panel title={`Liquidations${sym ? `: ${sym}` : ''}, ${days === 1 ? 'last 24 hours' : `last ${days} days`}`} aside={<span className="hidden sm:inline">per {span === 1 ? 'hour' : `${span} hours`}, UTC</span>} bodyClassName="p-2.5" className="min-h-[330px]">
+      {!d ? <Pending error={q.isError} className="h-64" /> : (
+        <>
+          <div className="grid grid-cols-3 gap-px bg-line text-[12px]">
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Liquidated</span><p className="num mt-1 text-[14px] text-fg">{money(total)}</p><p className="truncate text-fg-3">{int(bars.reduce((s, b) => s + b.n, 0))} positions</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Longs against shorts</span><p className="num mt-1 text-[14px]"><span className="text-bid-fg">{money(longs)}</span> <span className="text-fg-3">/</span> <span className="text-ask-fg">{money(shorts)}</span></p><p className="truncate text-fg-3">{total ? `${Math.round((longs / total) * 100)}% longs` : 'none'}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Largest</span><p className="num mt-1 text-[14px] text-fg">{d.largest ? money(d.largest.usd) : 'none'}</p><p className="truncate text-fg-3">{d.largest ? <>{d.largest.sym} <span className={d.largest.long ? 'text-bid-fg' : 'text-ask-fg'}>{d.largest.long ? 'long' : 'short'}</span>, {shortTime(d.largest.t)}</> : ''}</p></div>
+          </div>
+          {total > 0 ? (
+            <StackedBars
+              height={200} label="Liquidations over time, longs and shorts" series={['Longs', 'Shorts']} tones={{ Longs: 'bid', Shorts: 'ask' }} format={money}
+              lowLabel={bars[0] ? shortTime(bars[0].t) : ''} highLabel="now"
+              data={bars.map((b) => ({ key: String(b.t), parts: { Longs: b.longUsd, Shorts: b.shortUsd }, tip: `${when(b.t)}: ${money(b.longUsd + b.shortUsd)} over ${b.n} liquidation${b.n === 1 ? '' : 's'}` }))}
+            />
+          ) : <p className="flex h-[200px] items-center justify-center text-[13px] text-fg-3">No liquidations in this window.</p>}
+          <p className="mt-1 text-[12px] text-fg-3">Notional at the mark when the exchange closed the position. Longs are liquidated on the way down, shorts on the way up, so a tall teal bar is a drop and a tall vermilion one a squeeze.</p>
+        </>
+      )}
     </Panel>
   );
 }
@@ -694,10 +779,10 @@ function Signals() {
     <Panel title="Signals" aside={<span className="hidden sm:inline">largest flows and liquidations this week; positions over $50k as they open</span>} className="h-[360px]">
       {!q.data ? <Pending error={q.isError} className="m-2 h-48" /> : !q.data.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">Nothing large this week.</p> : (
         <ul className="text-[13px]">
-          {q.data.map((x) => {
+          {q.data.map((x, i) => {
             const { Icon, cls, verb } = SIGNAL[x.kind];
             return (
-              <motion.li key={key(x)} className={cx('grid h-[30px] grid-cols-[2.2rem_1rem_1fr_auto] items-center gap-2 border-t border-line pr-2.5 first:border-t-0', fresh.has(key(x)) && 'flash')} initial={fresh.has(key(x)) && !reduce ? { opacity: 0, y: -10 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }}>
+              <motion.li key={`${key(x)}:${i}`} className={cx('grid h-[30px] grid-cols-[2.2rem_1rem_1fr_auto] items-center gap-2 border-t border-line pr-2.5 first:border-t-0', fresh.has(key(x)) && 'flash')} initial={fresh.has(key(x)) && !reduce ? { opacity: 0, y: -10 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }}>
                 <span className="num pl-2.5 text-fg-3">{ago(x.ts)}</span>
                 <Icon size={13} weight="bold" className={cls} />
                 <span className="truncate text-fg-2">
