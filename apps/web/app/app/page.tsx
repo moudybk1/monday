@@ -21,7 +21,7 @@ import { fmtPrice, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { useLive } from '@/lib/live';
 import { useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
 
-// The layout every live terminal shares, measured on Hyperliquid and Tread: a market strip on top, the chart largest
+// The layout every live terminal shares, measured on Hyperliquid: a market strip on top, the chart largest
 // and left, the book and the tape beside it, the ticket column on the right (here the agent, since Monday trades for
 // you), the blotter under the chart, a status bar at the foot. The page does not scroll on desktop; each panel does.
 

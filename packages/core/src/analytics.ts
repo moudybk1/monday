@@ -1,4 +1,4 @@
-// Tread-style performance analytics over one account's fills. Pure: the server passes rows in, the page draws the result.
+// Performance analytics over one account's fills. Pure: the server passes rows in, the page draws the result.
 
 import type { MarketSym, Side } from './types';
 

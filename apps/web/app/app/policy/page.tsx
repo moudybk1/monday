@@ -21,7 +21,7 @@ export default function PolicyPage() {
   const authorized = useAgentAuthorized(me.demo ? null : (cfg?.registry as `0x${string}` | null | undefined), cfg?.agentAddress as `0x${string}` | null | undefined);
   const view = useQuery({ queryKey: ['policy'], queryFn: () => api<PolicyView>('/policy') });
   const balance = useQuery({ queryKey: ['perpl-account'], queryFn: () => api<{ balanceUsd: number | null }>('/perpl/account') }).data?.balanceUsd ?? null;
-  // The bot's own state, for Start and Stop here as on Tread's form. Polled: the terminal holds the live stream.
+  // The bot's own state, for Start and Stop here. Polled: the terminal holds the live stream.
   const bot = useQuery({ queryKey: ['agent-state'], queryFn: () => api<DashboardState>('/state'), refetchInterval: 5_000 }).data;
   const [draft, setDraft] = useState<PolicyDraft | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

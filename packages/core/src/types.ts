@@ -21,9 +21,9 @@ export interface PolicyLimits {
   maxLeverage: number;
 }
 
-/** Tread's reference price modes that Monday's engine implements (see quotingFor). */
+/** The reference price modes that Monday's engine implements (see quotingFor). */
 export type RefMode = 'mid' | 'grid' | 'blend';
-/** Tread's participation presets: how big each quote may be against the market's volume. */
+/** Participation presets: how big each quote may be against the market's volume. */
 export type Participation = 'aggressive' | 'normal' | 'passive';
 
 export interface Policy extends PolicyLimits {
@@ -72,7 +72,7 @@ export function fitLimits(base: PolicyLimits, balanceUsd: number, markets: numbe
 }
 
 /**
- * Tread-style sizing: commit `marginUsd` at `leverage`. A tenth of the margin is the daily loss limit; the rest carries
+ * Sizing: commit `marginUsd` at `leverage`. A tenth of the margin is the daily loss limit; the rest carries
  * inventory at that leverage, split across markets and quoted a tenth at a time. Needs exactly `marginUsd` (rounded down).
  */
 export function limitsFromMargin(marginUsd: number, leverage: number, markets: number, minHalfSpreadBps = 4): PolicyLimits {
@@ -292,7 +292,7 @@ export interface DashboardState {
    * already inside equity and are not taken off again. realized and fees cover Monday's own fills only.
    */
   pnl: { todayUsd: number; realizedUsd: number; unrealizedUsd: number; feesUsd: number; lossLimitUsedPct: number; depositsUsd: number; fundingUsd: number };
-  /** Since the last Start: Tread-style per-run stop loss and take profit, on top of the daily loss limit. */
+  /** Since the last Start: per-run stop loss and take profit, on top of the daily loss limit. */
   session: { startedAt: number; pnlUsd: number; stopLossUsd: number | null; takeProfitUsd: number | null } | null;
   health: {
     marketDataAgeMs: number; signalAgeMs: number; budgetRemaining: number; budgetPerMin: number; venueConnected: boolean; llm: boolean; llmFailing: boolean; chain: boolean;

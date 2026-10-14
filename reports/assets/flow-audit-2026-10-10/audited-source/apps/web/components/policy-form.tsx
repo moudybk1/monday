@@ -152,7 +152,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
 }
 
 /**
- * Tread-style sizing: say how much collateral to commit and at what leverage, and Monday derives the limits.
+ * Sizing: say how much collateral to commit and at what leverage, and Monday derives the limits.
  * Every change writes a Custom policy, so the numbers stay editable in the Custom column.
  */
 function MarginSizer({ markets, maxLeverage, balance, caps, current, onLimits }: { markets: MarketSym[]; maxLeverage: number; balance: number | null; caps: Caps | null; current: PolicyLimits; onLimits: (l: PolicyLimits) => void }) {

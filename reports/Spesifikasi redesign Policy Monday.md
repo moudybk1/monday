@@ -1,15 +1,14 @@
-# Spesifikasi redesign Policy Monday dengan referensi Tread
+# Spesifikasi redesign Policy Monday
 
 Tanggal: 10 Oktober 2026  
 Produk: Monday, aplikasi market making pada Perpl dengan integrasi Monad  
 Halaman utama: [Policy Monday](http://localhost:3000/app/policy)  
-Referensi produk: [Tread Volume Bot](https://app.tread.fi/volume_bot)  
 Repositori: [moudybk1/monday](https://github.com/moudybk1/monday)  
 Basis pemeriksaan: working tree lokal pada commit d157a662e75972ae261c7a6204ab6fa7f676ed53, termasuk perubahan lokal yang belum dikomit.
 
 ## 1. Keputusan produk
 
-Redesign halaman Policy menjadi tempat mengatur bot melalui satu form utama, dengan ringkasan dampak yang selalu dekat dengan input. Pola penyusunan informasi Tread sesuai untuk dijadikan referensi karena pengguna dapat memahami urutan pengaturan sebelum menjalankan bot.
+Redesign halaman Policy menjadi tempat mengatur bot melalui satu form utama, dengan ringkasan dampak yang selalu dekat dengan input. Pola penyusunan informasi terminal pembanding sesuai untuk dijadikan referensi karena pengguna dapat memahami urutan pengaturan sebelum menjalankan bot.
 
 Keputusan yang direkomendasikan untuk Monday:
 
@@ -32,11 +31,11 @@ Dokumen ini adalah spesifikasi implementasi. Rancangan dan kriteria penerimaan d
 ### 2.1 Bukti yang digunakan
 
 1. Pembacaan ulang komponen Policy, form, onboarding, penghubung wallet, endpoint policy, fungsi perhitungan pada core, serta perilaku runner pada working tree terbaru.
-2. Dokumentasi resmi Tread dan gambar antarmuka yang tersedia dalam dokumentasi tersebut.
-3. Pemeriksaan browser sebelumnya dalam percakapan ini. Tautan Tread mengarah ke terminal pada sesi tanpa login, sedangkan halaman Monday meminta koneksi wallet.
+2. Dokumentasi resmi terminal pembanding dan gambar antarmuka yang tersedia dalam dokumentasi tersebut.
+3. Pemeriksaan browser sebelumnya dalam percakapan ini. Tautan pembanding mengarah ke terminal pada sesi tanpa login, sedangkan halaman Monday meminta koneksi wallet.
 4. Laporan audit sebelumnya hanya digunakan sebagai konteks. Temuan lama tidak otomatis dianggap masih berlaku setelah ada perubahan kode.
 
-Perbandingan ini tidak mengklaim bahwa semua kontrol Tread telah diuji melalui akun yang login. Form Monday yang memerlukan autentikasi juga tidak diuji ulang menggunakan dana nyata untuk menulis dokumen ini.
+Perbandingan ini tidak mengklaim bahwa semua kontrol terminal pembanding telah diuji melalui akun yang login. Form Monday yang memerlukan autentikasi juga tidak diuji ulang menggunakan dana nyata untuk menulis dokumen ini.
 
 ### 2.2 Cara membaca status temuan
 
@@ -59,11 +58,11 @@ Perbandingan ini tidak mengklaim bahwa semua kontrol Tread telah diuji melalui a
 
 Redesign harus menyempurnakan struktur dan konsistensi fitur tersebut. Jangan menghapusnya karena sedang membangun tampilan baru.
 
-## 3. Apa yang diambil dari Tread
+## 3. Apa yang diambil dari terminal pembanding
 
-Dokumentasi Tread menempatkan pemilihan akun dan pair sebelum pengaturan modal serta leverage, kemudian mengarahkan pengguna memeriksa ringkasan sebelum memulai. Pola ini menghubungkan pilihan pengguna dengan konsekuensinya. Monday dapat menggunakan urutan serupa, dengan panel ringkasan di sebelah form pada desktop. Sumber: [Market Maker Bot](https://docs.tread.fi/bots/market-maker-bot).
+Dokumentasi terminal pembanding menempatkan pemilihan akun dan pair sebelum pengaturan modal serta leverage, kemudian mengarahkan pengguna memeriksa ringkasan sebelum memulai. Pola ini menghubungkan pilihan pengguna dengan konsekuensinya. Monday dapat menggunakan urutan serupa, dengan panel ringkasan di sebelah form pada desktop.
 
-Pengaturan reference price dan kontrol risiko lanjutan memiliki makna strategi tersendiri di Tread. Keberadaan menu tersebut bukan alasan untuk menambahkan kontrol dengan nama sama ke Monday jika mesinnya tidak mendukung perilaku itu. Sumber: [Reference Price Modes and Risk Controls](https://docs.tread.fi/bots/market-maker-bot/reference-price-modes-and-risk-controls).
+Pengaturan reference price dan kontrol risiko lanjutan memiliki makna strategi tersendiri di terminal pembanding. Keberadaan menu tersebut bukan alasan untuk menambahkan kontrol dengan nama sama ke Monday jika mesinnya tidak mendukung perilaku itu.
 
 Rekomendasi untuk Monday berdasarkan perbandingan tersebut:
 
@@ -75,7 +74,7 @@ Rekomendasi untuk Monday berdasarkan perbandingan tersebut:
 
 Fitur yang tidak masuk pekerjaan ini: target volume, durasi trading, participation rate, directional bias manual, pemilihan reference price, serta beberapa bot independen dalam satu akun. Jangan membuat kontrol yang terlihat aktif jika belum ada kontrak API dan perilaku runner untuk mengeksekusinya.
 
-Session stop loss dan take profit **sudah ada** pada kontrol agent Monday. Keduanya bukan fitur baru yang perlu ditiru dari Tread dan tidak boleh dicampur ke dalam daily policy tanpa keputusan domain yang terpisah.
+Session stop loss dan take profit **sudah ada** pada kontrol agent Monday. Keduanya bukan fitur baru yang perlu ditiru dari terminal pembanding dan tidak boleh dicampur ke dalam daily policy tanpa keputusan domain yang terpisah.
 
 ## 4. Masalah halaman saat ini
 
@@ -920,7 +919,7 @@ Implementasi dinyatakan selesai ketika satu alur utuh dapat dijalankan dan dipah
 
 ## 21. Brief siap diberikan kepada agent
 
-> Redesign halaman /app/policy Monday menjadi Bot settings dengan satu form utama dan panel ringkasan, mengikuti spesifikasi dalam dokumen ini. Gunakan pola pengelompokan informasi Tread sebagai referensi dan pertahankan identitas visual Monday.
+> Redesign halaman /app/policy Monday menjadi Bot settings dengan satu form utama dan panel ringkasan, mengikuti spesifikasi dalam dokumen ini. Gunakan pola pengelompokan informasi terminal pembanding sebagai referensi dan pertahankan identitas visual Monday.
 >
 > Mulai dengan membaca working tree terbaru, instruksi AGENTS, dan file yang dipetakan dalam dokumen. Pertahankan perubahan lokal yang sudah ada. Satukan pemilih market, template, sizing, leverage, daily loss, dan advanced settings dalam satu model draft. Hilangkan matriks lima preset dari tampilan utama serta gabungkan sizer ke alur editor tersebut.
 >

@@ -14,7 +14,7 @@ export interface PolicyDraft {
   limits: PolicyLimits;
   /** The margin as typed. Never saved: without it the form shows the collateral the limits need. */
   margin?: string;
-  /** How quotes are priced, as Tread's reference price modes: see quotingFor in core. */
+  /** How quotes are priced, as the reference price modes: see quotingFor in core. */
   refMode: RefMode;
   /** Blend mode: Hyperliquid's share of the reference price. */
   blendWeight: number;
@@ -38,7 +38,7 @@ const TEMPLATES: { id: Exclude<PresetName, 'custom'>; label: string; note: strin
   { id: 'active', label: 'Active', note: 'Larger and tighter' },
   { id: 'high', label: 'High leverage', note: 'Balanced at 10x' },
 ];
-const LOSS_PCT = [0.05, 0.1, 0.25, 0.5]; // Tread's stop loss choices; 100% would leave no margin for a position
+const LOSS_PCT = [0.05, 0.1, 0.25, 0.5]; // stop loss choices; 100% would leave no margin for a position
 const TP_PCT = [0.1, 0.25, 0.5, 1, null];
 const REF_MODES: { id: RefMode; label: string; note: string }[] = [
   { id: 'mid', label: 'Mid', note: "Quotes around Perpl's own mid. Fills most often, and Perpl's price can lag Hyperliquid's." },
@@ -67,7 +67,7 @@ function leverageCap(markets: MarketSym[], specs: Specs): { sym: MarketSym; max:
 }
 
 /**
- * Tread-style sizing: the margin, less the daily loss, at the chosen leverage carries the position limits, split
+ * Sizing: the margin, less the daily loss, at the chosen leverage carries the position limits, split
  * across markets, and a tenth of a limit is quoted per side. The operator caps win, and the quote is taken from the
  * capped limit, so a template and the margin give the same proportions under a cap.
  */
@@ -110,7 +110,7 @@ export const draftMargin = (d: PolicyDraft) => (d.margin != null ? parse(d.margi
 export const takeProfitUsd = (d: PolicyDraft) => (d.takeProfitPct ? Math.floor(draftMargin(d) * d.takeProfitPct * 100) / 100 : null);
 
 /**
- * The Setup editor, laid out like Tread's bot form: the inputs on the left, what they add up to on the right
+ * The Setup editor, laid out as a bot form: the inputs on the left, what they add up to on the right
  * next to the page's own action (`children`). Margin, leverage, daily loss and markets size the limits; typing a
  * position limit instead makes the margin follow it, so the two always agree.
  */
@@ -357,7 +357,7 @@ function Slider({ id, min, max, step, value, unit, ticks = [], onChange }: { id:
   );
 }
 
-/** Tread's preset picker: a button that names the template in use and opens the list, each with what it sets. Fills the form only. */
+/** The preset picker: a button that names the template in use and opens the list, each with what it sets. Fills the form only. */
 function TemplateMenu({ current, options, onPick }: { current: string; options: { id: string; label: string; note: string; detail: string; on: boolean; short: string | null }[]; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

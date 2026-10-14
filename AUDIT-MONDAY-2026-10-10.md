@@ -1,8 +1,8 @@
-# Audit Monday: logika, UI, UX, dan perbandingan dengan Tread
+# Audit Monday: logika, UI, UX, dan perbandingan dengan terminal lain
 
 **Tanggal audit:** 10 Oktober 2026, WIB  
 **Aplikasi:** http://localhost:3000/  
-**Pembanding:** https://app.tread.fi/  
+**Pembanding:** terminal market maker lain  
 **Workspace:** `/Users/yoga/Projects/mondaynad`  
 **Status:** laporan audit; perbaikan kode utama belum dilakukan.
 
@@ -26,7 +26,7 @@ Temuan paling mendesak berkaitan dengan Resume setelah Kill gagal, batas policy 
 
 Audit dilakukan melalui:
 
-1. Inspeksi browser pada aplikasi localhost dan terminal Tread.
+1. Inspeksi browser pada aplikasi localhost dan terminal pembanding.
 2. Pembacaan alur frontend, API, runner, strategi, analytics, serta adapter venue.
 3. Pengujian alur aplikasi menggunakan salinan proyek dengan simulator terpisah pada port 3100/3101.
 4. Reproduksi deterministik untuk kasus batas strategi dan lifecycle runner.
@@ -38,7 +38,7 @@ Halaman yang diperiksa: landing, onboarding, terminal, policy, analytics overvie
 **Batas pengujian:**
 
 - Aksi trading hanya dilakukan di simulator, bukan akun live.
-- Perbandingan Tread berdasarkan terminal dan kontrol yang tersedia tanpa login. Fitur akun yang membutuhkan autentikasi tidak diuji.
+- Perbandingan berdasarkan terminal dan kontrol yang tersedia tanpa login. Fitur akun yang membutuhkan autentikasi tidak diuji.
 - Wallet signing, eksekusi venue riil, dan transaksi registry on-chain belum diuji end-to-end.
 - Audit ini bukan sertifikasi keamanan atau bukti bahwa seluruh kemungkinan kegagalan telah tertutup.
 - Angka pasar, kondisi layanan, dan hasil Evidence merupakan snapshot saat audit.
@@ -238,11 +238,11 @@ Terminal menampilkan perubahan equity akun. My Monday menghitung realized PnL se
 
 **Rekomendasi:** gunakan label eksplisit seperti account PnL dan Monday realized PnL. Sediakan rekonsiliasi yang menjelaskan funding, unrealized PnL, deposit/withdrawal, fee, dan transaksi manual.
 
-## Perbandingan dengan Tread
+## Perbandingan dengan terminal pembanding
 
 Perbandingan berikut berfokus pada UI dan kontrol yang terlihat tanpa login. Keberadaan kontrol tidak berarti seluruh fitur akun tersebut telah diuji.
 
-| Aspek | Yang terlihat di Tread | Improve untuk Monday |
+| Aspek | Yang terlihat di terminal pembanding | Improve untuk Monday |
 |---|---|---|
 | Sebelum login | Terminal pasar dapat dieksplorasi | Sediakan terminal read-only dan jalur demo yang mudah ditemukan dari deployment live |
 | Sebelum eksekusi | Area pre-trade menampilkan order value, margin, liquidation price, dan parameter eksekusi | Buat ringkasan sebelum Start: exposure maksimum, collateral, ukuran efektif, batas kerugian, dan proteksi aktif |
@@ -252,7 +252,7 @@ Perbandingan berikut berfokus pada UI dan kontrol yang terlihat tanpa login. Keb
 | Chart | Interval, indikator, drawing tools, replay, dan zona waktu eksplisit | Dahulukan konsistensi data dan zona waktu; tambahkan alat chart sesuai kebutuhan pengguna Monday |
 | Kontrol risiko | Constraint seperti reduce-only dan passive-only diberi penjelasan | Tampilkan batas yang benar-benar aktif beserta efeknya pada quote dan posisi |
 
-Pola yang paling layak diadaptasi adalah cara Tread membantu pengguna memahami konfigurasi dan konsekuensinya sebelum bertindak. Monday tetap dapat mempertahankan fokus pada pengawasan agent otomatis, dengan kontrol manual yang sesuai kebutuhan produknya.
+Pola yang paling layak diadaptasi adalah cara terminal pembanding membantu pengguna memahami konfigurasi dan konsekuensinya sebelum bertindak. Monday tetap dapat mempertahankan fokus pada pengawasan agent otomatis, dengan kontrol manual yang sesuai kebutuhan produknya.
 
 ## Temuan P2: UI dan UX
 
@@ -442,7 +442,6 @@ Kelulusan tes existing dan build tidak menutup temuan di atas. Beberapa kasus ba
 ## Sumber dan konteks
 
 - [Monday localhost](http://localhost:3000/) — aplikasi yang diaudit.
-- [Tread](https://app.tread.fi/) — pembanding UI terminal tanpa login.
 - Source code pada workspace Monday — referensi relatif tersedia pada tiap temuan.
 - [WCAG 2.2: Contrast Minimum](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html) — acuan kontras teks.
 

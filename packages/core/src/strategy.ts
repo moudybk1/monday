@@ -21,7 +21,7 @@ export interface StrategyConfig {
   book2: number; // |imbalance| that pulls it
   bookHoldMs: number;
   exitFrac: number; // a held reflex lets go only below this share of its entry level (hysteresis)
-  blend: number; // weight of Hyperliquid's mid in the reference price (Tread's Blend mode), 0..1
+  blend: number; // weight of Hyperliquid's mid in the reference price (the Blend mode), 0..1
   blendMaxBps: number; // a bigger Perpl/Hyperliquid gap is bad data or a dislocation, not something to lean into
   participation: number; // each quote is at most this share of the market's average hourly volume
   touchMaxMult: number; // join the best price only while the governor's spread_mult is at most this (calm, active)
@@ -114,11 +114,11 @@ export const DEFAULT_CONFIG: StrategyConfig = {
 
 export const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
-/** Each quote is at most this share of the market's average hourly volume (Tread's participation presets). */
+/** Each quote is at most this share of the market's average hourly volume (the participation presets). */
 export const PARTICIPATION: Record<Participation, number> = { aggressive: 0.1, normal: 0.05, passive: 0.01 };
 
 /**
- * A user's quoting choices, Tread style, on top of DEFAULT_CONFIG. The modes only pick the reference price:
+ * A user's quoting choices, on top of DEFAULT_CONFIG. The modes only pick the reference price:
  * mid is Perpl's own mid, grid blends Hyperliquid in at half (the default, and what policies saved before had), blend
  * uses the chosen Hyperliquid weight. The exit in profit (7c), the Hyperliquid guards (7b, 7d) and the user's stop loss
  * apply in every mode: until 2026-10-11 Mid and Blend priced exits off the market, and live that closed 20 of 27 round trips
@@ -276,7 +276,7 @@ export function computeQuotes(i: QuoteInput): QuoteOutput {
   if (i.bestBid != null && askPx <= i.bestBid) askPx = ceilTo(i.bestBid + tick, tick);
   const touch: Record<Side, boolean> = { bid: i.bestBid != null && bidPx >= i.bestBid - EPS, ask: i.bestAsk != null && askPx <= i.bestAsk + EPS };
 
-  // 9. Size. The side that grows inventory shrinks linearly as |q| approaches 1. A quiet market caps it (Tread's participation rate).
+  // 9. Size. The side that grows inventory shrinks linearly as |q| approaches 1. A quiet market caps it (the participation rate).
   const sizeCapUsd = i.hourlyVolumeUsd ? cfg.participation * i.hourlyVolumeUsd : null;
   const size = (side: Side, px: number): number => {
     const grows = (side === 'bid' && q > 0) || (side === 'ask' && q < 0);

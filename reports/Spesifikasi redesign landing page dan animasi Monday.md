@@ -1729,7 +1729,7 @@ Tidak perlu mencatat setiap eksperimen desain yang dibatalkan. Jangan menambah p
 
 ## 30. Referensi pendukung
 
-1. [Spesifikasi redesign Policy Monday](</Users/yoga/Projects/mondaynad/reports/Spesifikasi redesign Policy Monday dengan referensi Tread.md>): rujukan istilah risiko, model policy, serta hubungan save, publish, dan start. Temuan harus tetap dicocokkan dengan source terbaru.
+1. [Spesifikasi redesign Policy Monday](</Users/yoga/Projects/mondaynad/reports/Spesifikasi redesign Policy Monday.md>): rujukan istilah risiko, model policy, serta hubungan save, publish, dan start. Temuan harus tetap dicocokkan dengan source terbaru.
 2. [Motion scroll animations](https://motion.dev/docs/react-scroll-animations): kemampuan animasi berdasarkan viewport dan progres scroll.
 3. [Motion reduced motion](https://motion.dev/docs/react-use-reduced-motion): penyesuaian terhadap preferensi gerakan pengguna.
 4. [Panduan performa animasi](https://web.dev/articles/animations-guide): pertimbangan biaya rendering dan pemilihan properti animasi.
