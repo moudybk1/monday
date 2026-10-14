@@ -618,3 +618,24 @@ export function quickAsk(raw: string, markets: string[], loose = false): AskInte
 
 /** "More volume than N% of traders" from a rank fraction (0 is the top). Never 100: nobody beats every trader, themselves included. */
 export const rankPct = (pct: number) => Math.min(99, Math.floor((1 - pct) * 100));
+
+/** One market's taker flow over the last day: per quarter hour, taker buys minus taker sells at fill prices (orders that crossed the spread), and the gross taken. */
+export interface PxTakerFlow {
+  sym: string;
+  at: number;
+  bucketMin: number;
+  /** Oldest first; the last bucket is the one still filling. */
+  points: { t: number; netUsd: number; grossUsd: number; buyUsd: number }[];
+  net1hUsd: number;
+  net24hUsd: number;
+  /** Taker buys as a share of all taker volume over the day. Null without any. */
+  buyShare24h: number | null;
+}
+/** Liquidations per hour over a span: notional the exchange closed on each side, and the largest single one. */
+export interface PxLiqHours {
+  days: number;
+  since: number;
+  sym: string | null;
+  points: { t: number; longUsd: number; shortUsd: number; n: number }[];
+  largest: { t: number; usd: number; sym: string; long: boolean } | null;
+}

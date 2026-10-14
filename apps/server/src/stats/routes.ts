@@ -7,7 +7,7 @@ import { z } from 'zod';
 import {
   FLOW_GROUPS, SCREEN_PRESETS, screenStats, type FlowGroup, type PxPositioning, type PxTape, type PxTapeRow,
   retentionCohorts, spanCoverage, streakOf, thin, traderDistribution, walletPerformance, weekOf, windowStartDay,
-  type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
+  type PxActivity, type PxCohorts, type PxFlowRow, type PxFlows, type PxLiqHours, type PxLiquidation, type PxMarketRisk, type PxOverview, type PxPosition, type PxScreen, type PxSignal, type PxTakerFlow, type PxTrade, type PxTrader, type PxTraderStats, type PxWallet,
 } from '@monday/core';
 import { Intent, explainWallet, resolveAsk, walletFacts } from './ask';
 import { chat, quotesOnly } from './answer';
@@ -585,6 +585,79 @@ async function tapeFor(group: FlowGroup | 'all', min: number, sym?: string): Pro
   return { at: Date.now(), rows };
 }
 
+// ---- taker flow and liquidations over time ----
+const TAKER_BUCKET = 15 * 60_000;
+const TAKER_BUCKETS = 96; // a day
+const takerFlows = new Map<number, () => Promise<PxTakerFlow>>();
+/**
+ * One market's taker flow over the last day: the fills that crossed the spread, buys less sells at their prices, per
+ * quarter hour. A liquidation is the exchange's doing and an unmatched fill (kind 6) has no position behind it, so
+ * neither counts. One market's day of taker fills is tens of thousands of rows: read once a minute, per market.
+ */
+function takerFlow(perp: number, sym: string): Promise<PxTakerFlow> {
+  let f = takerFlows.get(perp);
+  if (!f) {
+    f = cached(60_000, async () => {
+      const now = Date.now();
+      const last = Math.floor(now / TAKER_BUCKET);
+      const first = last - TAKER_BUCKETS + 1;
+      const points = Array.from({ length: TAKER_BUCKETS }, (_, i) => ({ t: (first + i) * TAKER_BUCKET, netUsd: 0, grossUsd: 0, buyUsd: 0 }));
+      const rows = all<{ ts: number; kind: number; long: number; price: number; size: number }>(
+        'select ts, kind, long, price, size from px_trades where block >= ? and perp = ? and taker = 1 and account != 0 and kind < 5 order by block, idx',
+        blockAt(first * TAKER_BUCKET), perp,
+      );
+      for (const r of rows) {
+        const b = Math.floor(r.ts / TAKER_BUCKET) - first;
+        if (b < 0 || b >= TAKER_BUCKETS) continue;
+        const kind = KINDS[r.kind];
+        const buy = kind === 'open' || kind === 'increase' || kind === 'invert' ? r.long === 1 : r.long !== 1;
+        const usd = r.price * r.size;
+        const p = points[b];
+        p.grossUsd += usd;
+        if (buy) {
+          p.buyUsd += usd;
+          p.netUsd += usd;
+        } else p.netUsd -= usd;
+      }
+      const sum = (from: number, k: keyof (typeof points)[number]) => points.slice(from).reduce((s, p) => s + p[k], 0);
+      const gross = sum(0, 'grossUsd');
+      return { sym, at: now, bucketMin: TAKER_BUCKET / 60_000, points, net1hUsd: sum(-4, 'netUsd'), net24hUsd: sum(0, 'netUsd'), buyShare24h: gross ? sum(0, 'buyUsd') / gross : null };
+    });
+    takerFlows.set(perp, f);
+  }
+  return f();
+}
+
+const liqHours = new Map<string, () => Promise<PxLiqHours>>();
+/** Liquidations per hour over the last `days`, every hour present (zero where none), for one market or all. */
+function liquidationsByHour(days: number, perp: number | null, sym: string | null): Promise<PxLiqHours> {
+  const key = `${days}:${perp ?? 'all'}`;
+  let f = liqHours.get(key);
+  if (!f) {
+    f = cached(60_000, async () => {
+      const m = await meta();
+      const now = Date.now();
+      const since = now - days * DAY;
+      const where = `where ts >= ?${perp == null ? '' : ' and perp = ?'}`;
+      const args = perp == null ? [since] : [since, perp];
+      const rows = all<{ h: number; longUsd: number; shortUsd: number; n: number }>(
+        `select cast(ts / ${HOUR} as integer) h, sum(case when long = 1 then size * mark else 0 end) longUsd, sum(case when long = 1 then 0 else size * mark end) shortUsd, count(*) n from px_liqs ${where} group by h`, ...args,
+      );
+      const byHour = new Map(rows.map((r) => [r.h, r]));
+      const first = Math.floor(since / HOUR), last = Math.floor(now / HOUR);
+      const points: PxLiqHours['points'] = [];
+      for (let h = first; h <= last; h++) {
+        const r = byHour.get(h);
+        points.push({ t: h * HOUR, longUsd: r?.longUsd ?? 0, shortUsd: r?.shortUsd ?? 0, n: r?.n ?? 0 });
+      }
+      const big = one<{ ts: number; perp: number; long: number; usd: number } | undefined>(`select ts, perp, long, size * mark usd from px_liqs ${where} order by usd desc limit 1`, ...args);
+      return { days, since, sym, points, largest: big ? { t: big.ts, usd: big.usd, sym: m.markets.get(big.perp)?.sym ?? `#${big.perp}`, long: big.long === 1 } : null };
+    });
+    liqHours.set(key, f);
+  }
+  return f();
+}
+
 export function registerStats(app: FastifyInstance) {
   // Load once at boot, so the first visitor gets numbers at once (every later refresh happens in the background).
   void overview().catch(() => {});
@@ -596,6 +669,20 @@ export function registerStats(app: FastifyInstance) {
   app.get('/api/stats/liquidations', async (req): Promise<PxLiquidation[]> => {
     const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(LIQ_ROWS).default(50) }).parse(req.query);
     return (await latestLiquidations()).slice(0, limit);
+  });
+  app.get('/api/stats/liquidations/hourly', async (req): Promise<PxLiqHours> => {
+    const q = z.object({ days: z.coerce.number().int().refine((d) => [1, 7, 30].includes(d), 'days must be 1, 7 or 30').default(7), sym: z.string().trim().toUpperCase().max(12).optional() }).parse(req.query);
+    const m = await meta();
+    const mk = q.sym ? [...m.markets.values()].find((x) => x.sym === q.sym) : undefined;
+    if (q.sym && !mk) throw Object.assign(new Error(`No ${q.sym} market.`), { statusCode: 404, code: 'not_found' });
+    return liquidationsByHour(q.days, mk?.id ?? null, mk?.sym ?? null);
+  });
+  app.get('/api/stats/taker-flow', async (req): Promise<PxTakerFlow> => {
+    const { sym } = z.object({ sym: z.string().trim().toUpperCase().max(12) }).parse(req.query);
+    const m = await meta();
+    const mk = [...m.markets.values()].find((x) => x.sym === sym);
+    if (!mk) throw Object.assign(new Error(`No ${sym} market.`), { statusCode: 404, code: 'not_found' });
+    return takerFlow(mk.id, mk.sym);
   });
   app.get('/api/stats/traders', async (req): Promise<PxTrader[]> => {
     const q = z.object({ days: z.coerce.number().int().refine((d) => TRADER_DAYS.includes(d), `days must be one of ${TRADER_DAYS.join(', ')}`).default(7), sort: z.enum(['net', 'volume', 'loss']).default('net') }).parse(req.query);
