@@ -124,7 +124,7 @@ const GATE_TEXT: Record<GateReason, string> = {
   max_leverage: 'the account would pass its leverage limit',
 };
 
-/** Since the last Start. Tread runs every bot with its own stop loss and take profit; Monday adds them per session. */
+/** Since the last Start: a stop loss and take profit per session, on top of the daily loss limit. */
 export interface SessionLimits {
   stopLossUsd: number | null;
   takeProfitUsd: number | null;
@@ -1313,7 +1313,7 @@ export class Runner {
       }
     }
 
-    // Markouts after each maker fill: 1, 5 and 10 s (Tread's view of the book reacting) and 1 and 5 min (PRD 11.4 step 7).
+    // Markouts after each maker fill: 1, 5 and 10 s (the book reacting) and 1 and 5 min (PRD 11.4 step 7).
     // Ticks are 1 s apart, so a "1 s" markout is read 1 to 2 s after the fill.
     for (const f of this.pendingMarkouts) {
       const snap = this.deps.driver.feed.snapshot(f.sym);
