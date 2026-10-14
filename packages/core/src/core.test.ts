@@ -669,7 +669,7 @@ describe('exits in profit, and no touch quote past Hyperliquid (2026-10-10)', ()
   });
 });
 
-describe('Tread-style quoting modes (2026-10-11)', () => {
+describe('quoting modes (2026-10-11)', () => {
   it('maps mid, grid and blend onto the reference blend and the profit exit, and participation onto the size cap', () => {
     expect(quotingFor({})).toEqual({ cfg: { blend: 0.5, participation: 0.05 } }); // policies saved before: grid, normal
     expect(quotingFor({ refMode: 'mid' })).toEqual({ cfg: { blend: 0, participation: 0.05 } });
