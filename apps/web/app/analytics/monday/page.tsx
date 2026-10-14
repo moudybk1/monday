@@ -10,7 +10,7 @@ import { ApiError, api } from '@/lib/api';
 import { at } from '@/lib/hosts';
 import { fmtBps, fmtSigned, fmtUsd, shortAddr } from '@/lib/format';
 
-// Tread-style performance view over Monday's own fills: is the spread paying for the adverse selection,
+// Performance view over Monday's own fills: is the spread paying for the adverse selection,
 // and under which conditions (market, regime, quoted width, hour of day)?
 
 const RANGES = [7, 30, 90] as const;
