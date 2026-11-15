@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
-import { Geist_Mono, Manrope } from 'next/font/google';
+import { Geist_Mono, Host_Grotesk, Public_Sans } from 'next/font/google';
 import './globals.css';
 
-// Text and numbers in Manrope (tall x-height, clear tabular figures at small sizes), chosen by the user on 2026-10-14
-// from a specimen against Geist, Plus Jakarta Sans and Inter. Geist Mono only for hashes and addresses.
-const sans = Manrope({ subsets: ['latin'], variable: '--font-text', display: 'swap' });
+// Text in Host Grotesk (neutral, crisp, rarely seen yet), chosen by the user on 2026-11-15 from a specimen against
+// Schibsted Grotesk, Hanken Grotesk, Onest, Albert Sans, IBM Plex Sans and Manrope, the font before it.
+// Numbers (.num) in Public Sans, the user's pick the same day after two number-font specimens.
+// Geist Mono only for hashes and addresses.
+const sans = Host_Grotesk({ subsets: ['latin'], variable: '--font-text', display: 'swap' });
+const numbers = Public_Sans({ subsets: ['latin'], variable: '--font-numbers', display: 'swap' });
 const mono = Geist_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-figures', display: 'swap', preload: false });
 
 const description = 'An AI trading terminal for Perpl: a market maker, Agentic Trade and TWAP, trading from your own account inside limits you set.';
@@ -16,15 +19,10 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title: 'Monday - AI trading terminal for Perpl', description },
 };
 
-// A terminal is dark unless the user chose otherwise. Set before first paint so the page never flashes.
-const themeScript = `try{document.documentElement.dataset.theme=localStorage.getItem('monday-theme')||'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;
-
+// Always dark: the theme switch was removed at the user's request (2026-11-15), so a light choice saved before is ignored.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
+    <html lang="en" data-theme="dark" className={`${sans.variable} ${numbers.variable} ${mono.variable}`} suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

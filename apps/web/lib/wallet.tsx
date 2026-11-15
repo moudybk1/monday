@@ -242,7 +242,7 @@ export function useRegistry() {
           try {
             await authorize(o.registry, o.agent, onStep);
           } catch {
-            throw new Error('Your limits are published on Monad and in force. Authorising the agent to log decisions did not finish: use Authorise agent to complete it.');
+            throw new Error('Your limits are published on Monad and in force. Authorising the agent to log decisions did not finish: use Authorise Agent to complete it.');
           }
         }
       }

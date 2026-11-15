@@ -34,7 +34,7 @@ export default function PolicyPage() {
     if (view.data && !draft) setDraft(draftFrom(view.data.pending?.policy ?? view.data.policy));
   }, [view.data, draft]);
   if (view.isError && !view.data) {
-    return <div className="py-8"><Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={() => void view.refetch()}>Try again</Button>}>Could not load your settings: {view.error instanceof Error ? view.error.message : 'the server did not answer.'}</Notice></div>;
+    return <div className="py-8"><Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={() => void view.refetch()}>Try Again</Button>}>Could not load your settings: {view.error instanceof Error ? view.error.message : 'the server did not answer.'}</Notice></div>;
   }
   if (!draft || !view.data) return <div className="grid gap-4 py-8"><Skeleton className="h-8 w-56" /><Skeleton className="h-96" /></div>;
 
@@ -125,14 +125,14 @@ export default function PolicyPage() {
   const ready = draftOk(draft, balance, caps, specs);
   const running = bot?.status === 'quoting';
   const action = unsaved
-    ? <Button size="lg" className="w-full" onClick={save} disabled={busy !== null || !ready}>{busy ?? (mustSign ? 'Save and sign' : 'Save settings')}</Button>
+    ? <Button size="lg" className="w-full" onClick={save} disabled={busy !== null || !ready}>{busy ?? (mustSign ? 'Save and Sign' : 'Save Settings')}</Button>
     : pending?.onchain && !registry.canSign
-      ? <Button size="lg" className="w-full" onClick={registry.reconnect}>Reconnect wallet</Button>
+      ? <Button size="lg" className="w-full" onClick={registry.reconnect}>Reconnect Wallet</Button>
       : pending?.onchain
         ? <Button size="lg" className="w-full" onClick={sign} disabled={busy !== null}>{busy ?? 'Sign on Monad'}</Button>
         : bot && bot.status === 'quoting'
-          ? <Button size="lg" variant="ghost" className="w-full" onClick={() => void botAction('pause')} disabled={busy !== null}>{busy ?? 'Stop bot'}</Button>
-          : bot && <Button size="lg" className="w-full" onClick={() => void botAction('start')} disabled={busy !== null || bot.closing != null || !draftFits(draft, balance)}>{busy ?? 'Start bot'}</Button>;
+          ? <Button size="lg" variant="ghost" className="w-full" onClick={() => void botAction('pause')} disabled={busy !== null}>{busy ?? 'Stop Bot'}</Button>
+          : bot && <Button size="lg" className="w-full" onClick={() => void botAction('start')} disabled={busy !== null || bot.closing != null || !draftFits(draft, balance)}>{busy ?? 'Start Bot'}</Button>;
 
   return (
     <div className="page-in grid gap-5 py-8">
@@ -151,8 +151,8 @@ export default function PolicyPage() {
       )}
       {!pending && authorized === false && (
         <Notice tone="warn" action={registry.canSign
-          ? <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void authorize()}>Authorise agent</Button>
-          : <Button size="sm" variant="ghost" onClick={registry.reconnect}>Reconnect wallet</Button>}>
+          ? <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void authorize()}>Authorise Agent</Button>
+          : <Button size="sm" variant="ghost" onClick={registry.reconnect}>Reconnect Wallet</Button>}>
           Your settings are published, but Monday&apos;s agent is not authorised to log its decisions in MondayRegistry yet. One signature completes it.
         </Notice>
       )}
@@ -165,7 +165,7 @@ export default function PolicyPage() {
         </div>
         {running && (
           <div className="flex items-center justify-between text-[13px]">
-            <span className="text-fg-3">Take profit, this run</span>
+            <span className="text-fg-3">Take Profit, This Run</span>
             <span className="num text-fg">{bot.session?.takeProfitUsd != null ? fmtUsd(bot.session.takeProfitUsd) : 'Uncapped'}</span>
           </div>
         )}
@@ -177,7 +177,7 @@ export default function PolicyPage() {
         )}
         {action}
         {note && <p role={note.ok ? 'status' : 'alert'} className={note.ok ? 'text-[13px] text-fg-2' : 'text-[13px] text-ask-fg'}>{note.text}</p>}
-        <p className="text-[13px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
+        <p className="text-[13px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and Flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
         {view.data.onchainTx && (
           <p className="text-[13px] text-fg-3">
             In force on Monad since {cfg ? <a className="font-mono underline underline-offset-2" href={`${cfg.explorerUrl}/tx/${view.data.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.data.onchainTx)}</a> : <span className="num">{shortHash(view.data.onchainTx)}</span>}.
@@ -185,7 +185,7 @@ export default function PolicyPage() {
         )}
       </PolicyForm>
 
-      <Panel title="Account access">
+      <Panel title="Account Access">
         <div className="grid gap-5 p-4 text-[13px] sm:grid-cols-3">
           <div>
             <p className="font-medium">Withdraw</p>
@@ -193,9 +193,9 @@ export default function PolicyPage() {
             {cfg && <a href={cfg.perplAppUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 underline underline-offset-2">Open Perpl <ArrowSquareOutIcon size={12} /></a>}
           </div>
           <div>
-            <p className="font-medium">Revoke the key</p>
+            <p className="font-medium">Revoke the Key</p>
             <p className="mt-1 text-fg-2">Delete the key on Perpl and Monday loses access at once. It notices, stops, and tells you.</p>
-            {cfg && <a href={`${cfg.perplAppUrl}/apikeys`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 underline underline-offset-2">Perpl API keys <ArrowSquareOutIcon size={12} /></a>}
+            {cfg && <a href={`${cfg.perplAppUrl}/apikeys`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 underline underline-offset-2">Perpl API Keys <ArrowSquareOutIcon size={12} /></a>}
           </div>
           <div>
             <p className="font-medium">Disconnect</p>
@@ -209,7 +209,7 @@ export default function PolicyPage() {
         <h2 className="display text-2xl">Disconnect Monday?</h2>
         <p className="mt-3 text-sm text-fg-2">Orders are cancelled and the stored key is deleted. Any open position stays in your Perpl account for you to manage. To come back you paste a key again.</p>
         <form method="dialog" className="mt-6 flex justify-end gap-2">
-          <Button type="submit" variant="ghost">Stay connected</Button>
+          <Button type="submit" variant="ghost">Stay Connected</Button>
           <Button type="submit" variant="danger" onClick={() => void remove()}>Disconnect</Button>
         </form>
       </dialog>

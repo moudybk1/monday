@@ -87,13 +87,13 @@ export default function WalletPage() {
         <Kpi k="Open PnL" n={upnl} format={signedMoney} t={upnl} sub={`${d.positions.length} open position${d.positions.length === 1 ? '' : 's'}`} />
         <Kpi k="Realised PnL" n={p.netUsd} format={signedMoney} t={p.netUsd} sub={`${signedMoney(p.pnlUsd)} price, ${signedMoney(p.fundingUsd)} funding, -${money(p.feesUsd, true)} fees`} hint="Price PnL plus funding minus fees, over indexed fills" spark={<Sparkline values={p.curve.map((c) => c.v)} tone={p.netUsd >= 0 ? 'bid' : 'ask'} />} />
         <Kpi k="Volume" n={p.volumeUsd} format={money} sub={`${p.trades.toLocaleString('en-US')} fills, ${pctOf(p.makerVolumeUsd, p.volumeUsd)} as maker`} spark={<Sparkline values={p.daily.slice(-21).map((x) => x.volumeUsd)} />} />
-        <Kpi k="Win rate" v={p.winRate == null ? 'n/a' : `${(p.winRate * 100).toFixed(1)}%`} sub={`of ${p.closes.toLocaleString('en-US')} closing fills`} />
-        <Kpi k="Profit factor" v={profitText(p)} sub={p.avgWinUsd != null && p.avgLossUsd != null ? `avg win ${money(p.avgWinUsd, true)}, avg loss ${money(p.avgLossUsd, true)}` : 'gross wins over gross losses'} />
-        <Kpi k="Max drawdown" n={p.maxDrawdownUsd} format={(v) => money(v, true)} sub={`streaks: ${p.longestWin} wins, ${p.longestLoss} losses`} />
-        <Kpi k="Avg hold" v={hold(p.avgHoldMin)} sub="open to flat, per market" />
+        <Kpi k="Win Rate" v={p.winRate == null ? 'n/a' : `${(p.winRate * 100).toFixed(1)}%`} sub={`of ${p.closes.toLocaleString('en-US')} closing fills`} />
+        <Kpi k="Profit Factor" v={profitText(p)} sub={p.avgWinUsd != null && p.avgLossUsd != null ? `avg win ${money(p.avgWinUsd, true)}, avg loss ${money(p.avgLossUsd, true)}` : 'gross wins over gross losses'} />
+        <Kpi k="Max Drawdown" n={p.maxDrawdownUsd} format={(v) => money(v, true)} sub={`streaks: ${p.longestWin} wins, ${p.longestLoss} losses`} />
+        <Kpi k="Avg Hold" v={hold(p.avgHoldMin)} sub="open to flat, per market" />
       </dl>
 
-      <Panel title="Open positions" aside={<span>live from the Exchange</span>} className="min-w-0 rise">
+      <Panel title="Open Positions" aside={<span>live from the Exchange</span>} className="min-w-0 rise">
         {!d.positions.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">No open positions.</p> : (<>
           <Margin d={d} />
           <div className="overflow-x-auto">
@@ -101,7 +101,7 @@ export default function WalletPage() {
               <thead>
                 <tr className="label h-7 text-left [&>th]:font-normal">
                   <th className="pl-2.5">Market</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="pl-3" /><th className="text-right">Entry</th><th className="text-right">Mark</th>
-                  <th className="text-right">Leverage</th><th className="text-right">Open PnL</th><th className="text-right">Liq. price</th><th className="pr-2.5 text-right">To liq.</th>
+                  <th className="text-right">Leverage</th><th className="text-right">Open PnL</th><th className="text-right">Liq. Price</th><th className="pr-2.5 text-right">To Liq.</th>
                 </tr>
               </thead>
               <tbody className="num">
@@ -133,14 +133,14 @@ export default function WalletPage() {
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={style(3)}>
         <Calendar p={p} />
         <Edge p={p} deposits={deposits} equity={d.equityUsd} partial={d.flows.length >= 200} />
-        <Panel title="When this wallet trades" aside={<span>fills by UTC hour</span>} bodyClassName="p-2.5">
+        <Panel title="When This Wallet Trades" aside={<span>fills by UTC hour</span>} bodyClassName="p-2.5">
           <HeatGrid label="Fills by hour of day" rows={['']} cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))} colLabelEvery={3} cell={26} cells={p.hours.map((n, h) => ({ r: 0, c: h, v: n, tip: `${String(h).padStart(2, '0')}:00 UTC: ${int(n)} fills` }))} />
           <Sides p={p} />
         </Panel>
       </div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]" style={style(4)}>
-        <Panel title="By market" aside={<span>best first</span>} className="h-[440px]">
+        <Panel title="By Market" aside={<span>best first</span>} className="h-[440px]">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal"><th className="pl-2.5">Market</th><th className="text-right">Net PnL</th><th className="text-right">Win</th><th className="pr-2.5 text-right">Volume</th></tr>
@@ -157,7 +157,7 @@ export default function WalletPage() {
             </tbody>
           </table>
         </Panel>
-        <Panel title="Trade history" aside={<span>newest {d.trades.length}</span>} className="h-[440px]">
+        <Panel title="Trade History" aside={<span>newest {d.trades.length}</span>} className="h-[440px]">
           {!d.trades.length ? <p className="px-2.5 py-3 text-[13px] text-fg-3">No indexed fills yet.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px] text-[13px]">
@@ -184,7 +184,7 @@ export default function WalletPage() {
             </div>
           )}
         </Panel>
-        <Panel title={d.liquidations.length ? 'Liquidations and flows' : 'Deposits and withdrawals'} aside={<span>{deposits ? `${signedMoney(deposits)} net` : ''}</span>} className="h-[440px]">
+        <Panel title={d.liquidations.length ? 'Liquidations and Flows' : 'Deposits and Withdrawals'} aside={<span>{deposits ? `${signedMoney(deposits)} net` : ''}</span>} className="h-[440px]">
           {d.liquidations.length > 0 && (
             <table className="w-full border-b border-line text-[13px]">
               <tbody className="num">
@@ -228,10 +228,10 @@ function Margin({ d }: { d: PxWallet }) {
   const ofEquity = (v: number) => (d.equityUsd > 0 ? ` (${Math.round((v / d.equityUsd) * 100)}%)` : '');
   const cells: [string, string, string, string?][] = [
     ['Notional', money(notional), 'Every open position at mark'],
-    ['Account leverage', d.equityUsd > 0 ? `${(notional / d.equityUsd).toFixed(1)}x` : 'n/a', 'Notional over equity'],
-    ['Margin in positions', money(margin), 'Collateral the open positions hold'],
-    ['Free collateral', `${money(d.balanceUsd)}${ofEquity(d.balanceUsd)}`, 'Cash not tied to a position'],
-    ['Nearest liquidation', near ? `${near.sym} ${liqText(near.liqDistancePct, 1)}` : 'none', 'How far mark must move to liquidate the closest position', near ? liqTone(near.liqDistancePct) : undefined],
+    ['Account Leverage', d.equityUsd > 0 ? `${(notional / d.equityUsd).toFixed(1)}x` : 'n/a', 'Notional over equity'],
+    ['Margin in Positions', money(margin), 'Collateral the open positions hold'],
+    ['Free Collateral', `${money(d.balanceUsd)}${ofEquity(d.balanceUsd)}`, 'Cash not tied to a position'],
+    ['Nearest Liquidation', near ? `${near.sym} ${liqText(near.liqDistancePct, 1)}` : 'none', 'How far mark must move to liquidate the closest position', near ? liqTone(near.liqDistancePct) : undefined],
   ];
   return (
     <dl className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-5">
@@ -254,7 +254,7 @@ function Curve({ p }: { p: PxWallet['performance'] }) {
   const dd = pts.length ? Math.max(0, ...pts.map((c, i) => peaks[i].v - c.v)) : 0;
   return (
     <Panel
-      title="Realised PnL over time" aside={<><span className="hidden md:inline">after fees and funding{dd ? `, deepest drawdown in range ${money(dd, true)}` : ''}</span><Segments label="Range" value={range} onChange={setRange} options={[[7, '7D'], [30, '30D'], [0, 'All']] as const} /></>}
+      title="Realised PnL Over Time" aside={<><span className="hidden md:inline">after fees and funding{dd ? `, deepest drawdown in range ${money(dd, true)}` : ''}</span><Segments label="Range" value={range} onChange={setRange} options={[[7, '7D'], [30, '30D'], [0, 'All']] as const} /></>}
       bodyClassName="p-2.5" className="h-[340px]"
     >
       <LineChart label="Cumulative realised PnL" format={(v) => money(v, true)} empty={range ? 'No fills in this range' : 'No indexed fills yet'} timeFormat={range === 7 ? (t) => new Date(t).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : shortDay} series={[{ name: 'PnL', tone: (pts.at(-1)?.v ?? 0) >= (pts[0]?.v ?? 0) ? 'bid' : 'ask', points: pts }]} under={peaks} />
@@ -273,7 +273,7 @@ function Insights({ w }: { w: PxWallet }) {
   // Asked for, not automatic: a model call per wallet, cached ten minutes on the server.
   const ex = useQuery({ queryKey: ['stats-explain', id], queryFn: () => api<Explanation>(`/stats/wallet/${id}/explain`), enabled: false, retry: false, staleTime: 600_000 });
   return (
-    <Panel title="What stands out" aside={<span>from this wallet&apos;s own numbers</span>} bodyClassName="p-2.5" className="h-[340px]">
+    <Panel title="What Stands Out" aside={<span>from this wallet&apos;s own numbers</span>} bodyClassName="p-2.5" className="h-[340px]">
       <AnimatePresence initial={false}>
         {ex.data?.text && (
           <motion.div key="explain" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-3 rounded-sm border border-accent/30 bg-accent/6 px-2.5 py-2 text-[13px] leading-snug text-fg">
@@ -284,7 +284,7 @@ function Insights({ w }: { w: PxWallet }) {
       </AnimatePresence>
       {!ex.data?.text && ex.data?.available !== false && (
         <button type="button" onClick={() => void ex.refetch()} disabled={ex.isFetching} className="mb-3 inline-flex h-7 items-center gap-1.5 rounded-sm border border-accent/45 bg-accent/12 px-2.5 text-[13px] text-accent hover:bg-accent/20 disabled:opacity-70">
-          {ex.isFetching ? <CircleNotchIcon size={12} className="animate-spin" /> : <SparkleIcon size={12} weight="fill" />}{ex.isFetching ? 'Writing…' : 'Explain in plain words'}
+          {ex.isFetching ? <CircleNotchIcon size={12} className="animate-spin" /> : <SparkleIcon size={12} weight="fill" />}{ex.isFetching ? 'Writing…' : 'Explain in Plain Words'}
         </button>
       )}
       {ex.isError && <p className="mb-2 text-[13px] text-warn">{ex.error instanceof Error ? ex.error.message : 'The model did not answer.'}</p>}
@@ -363,15 +363,15 @@ function Pair({ label, a, b, fa, fb, tones = ['bid', 'ask'], i }: { label: strin
 function Edge({ p, deposits, equity, partial }: { p: PxWallet['performance']; deposits: number; equity: number; partial: boolean }) {
   const roi = deposits > 0 && !partial ? (equity - deposits) / deposits : null;
   return (
-    <Panel title="The edge, in pairs" aside={<span>left against right</span>} bodyClassName="grid gap-3 p-2.5">
-      <Pair i={0} label="Average win against average loss" a={p.avgWinUsd ?? 0} b={p.avgLossUsd ?? 0} fa={p.avgWinUsd == null ? 'n/a' : money(p.avgWinUsd, true)} fb={p.avgLossUsd == null ? 'n/a' : money(p.avgLossUsd, true)} />
-      <Pair i={1} label="Largest win against largest loss" a={p.largestWinUsd} b={p.largestLossUsd} fa={money(p.largestWinUsd, true)} fb={money(p.largestLossUsd, true)} />
-      <Pair i={2} label="Gross won against gross lost" a={p.grossWinUsd} b={p.grossLossUsd} fa={money(p.grossWinUsd)} fb={money(p.grossLossUsd)} />
-      <Pair i={3} label="Net long against net short" a={p.sides.long.netUsd} b={p.sides.short.netUsd} fa={signedMoney(p.sides.long.netUsd)} fb={signedMoney(p.sides.short.netUsd)} tones={[p.sides.long.netUsd >= 0 ? 'bid' : 'ask', p.sides.short.netUsd >= 0 ? 'bid' : 'ask']} />
-      <Pair i={4} label="Volume made against volume taken" a={p.makerVolumeUsd} b={p.volumeUsd - p.makerVolumeUsd} fa={money(p.makerVolumeUsd)} fb={money(p.volumeUsd - p.makerVolumeUsd)} tones={['accent', 'muted']} />
-      <Pair i={5} label="Funding against fees" a={Math.max(0, p.fundingUsd)} b={p.feesUsd + Math.max(0, -p.fundingUsd)} fa={signedMoney(p.fundingUsd)} fb={`-${money(p.feesUsd, true)}`} />
+    <Panel title="The Edge, in Pairs" aside={<span>left against right</span>} bodyClassName="grid gap-3 p-2.5">
+      <Pair i={0} label="Average Win Against Average Loss" a={p.avgWinUsd ?? 0} b={p.avgLossUsd ?? 0} fa={p.avgWinUsd == null ? 'n/a' : money(p.avgWinUsd, true)} fb={p.avgLossUsd == null ? 'n/a' : money(p.avgLossUsd, true)} />
+      <Pair i={1} label="Largest Win Against Largest Loss" a={p.largestWinUsd} b={p.largestLossUsd} fa={money(p.largestWinUsd, true)} fb={money(p.largestLossUsd, true)} />
+      <Pair i={2} label="Gross Won Against Gross Lost" a={p.grossWinUsd} b={p.grossLossUsd} fa={money(p.grossWinUsd)} fb={money(p.grossLossUsd)} />
+      <Pair i={3} label="Net Long Against Net Short" a={p.sides.long.netUsd} b={p.sides.short.netUsd} fa={signedMoney(p.sides.long.netUsd)} fb={signedMoney(p.sides.short.netUsd)} tones={[p.sides.long.netUsd >= 0 ? 'bid' : 'ask', p.sides.short.netUsd >= 0 ? 'bid' : 'ask']} />
+      <Pair i={4} label="Volume Made Against Volume Taken" a={p.makerVolumeUsd} b={p.volumeUsd - p.makerVolumeUsd} fa={money(p.makerVolumeUsd)} fb={money(p.volumeUsd - p.makerVolumeUsd)} tones={['accent', 'muted']} />
+      <Pair i={5} label="Funding Against Fees" a={Math.max(0, p.fundingUsd)} b={p.feesUsd + Math.max(0, -p.fundingUsd)} fa={signedMoney(p.fundingUsd)} fb={`-${money(p.feesUsd, true)}`} />
       <div className="flex items-baseline justify-between border-t border-line pt-2 text-[13px]">
-        <span className="text-fg-3">Return on net deposits</span>
+        <span className="text-fg-3">Return on Net Deposits</span>
         <span className={cx('num', roi == null ? 'text-fg-3' : tone(roi))}>{roi == null ? (partial ? 'more than 200 flows, n/a' : 'n/a') : `${roi >= 0 ? '+' : ''}${(roi * 100).toFixed(1)}% on ${money(deposits)}`}</span>
       </div>
     </Panel>
@@ -390,7 +390,7 @@ function Sides({ p }: { p: PxWallet['performance'] }) {
   );
   return (
     <div className="mt-3 grid gap-1.5">
-      <p className="label">Closes won, and net, by side</p>
+      <p className="label">Closes Won, and Net, by Side</p>
       {row('Long', long, 'bid')}
       {row('Short', short, 'ask')}
     </div>

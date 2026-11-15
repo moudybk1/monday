@@ -5,85 +5,78 @@
 
   Grounded in how live terminals are actually built (Hyperliquid, Perpl, Lighter, dYdX measured in
   the browser, plus Bloomberg's published approach):
-  - Dark first. Long sessions, low light. Near-black, never pure black; four close surface steps.
+  - Dark first. Long sessions, low light. Near-black, never pure black; four close surface steps. Since 2026-11-15
+    the colours are the brand kit's "Dusk" palette: cool blue-black surfaces, text a step under white, and a periwinkle
+    accent (indigo on light) that marks the brand and Monday's own orders and actions, never profit or loss.
   - Readable first: 13px is the workhorse size and nothing is set under 12px (2026-10-14, after a readability audit
     found 74-98% of the analytics text under 12px). Hierarchy comes from text tone and weight more than from scale.
-  - One sans, Manrope, for text and numbers: figures are tabular (.num), so columns align and digits do not jitter, as
-    on Hyperliquid and Perpl. Geist Mono only where every character counts: hashes, addresses, transactions.
-  - Colour is rationed: teal and vermilion mean bid and ask (validated for colour-blind separation;
-    pink-red against green fails it), amber means "this is Monday's", everything else is grey.
+  - Host Grotesk for text, Public Sans for every figure (.num) with tabular digits, so columns align and live prices do
+    not jitter. Geist Mono only where every character counts: hashes, addresses, transactions.
+  - Colour is rationed: green and coral mean bid and ask, periwinkle means "this is Monday's", everything else is grey.
   - Panels have hard edges and scroll inside themselves. The page itself does not scroll on desktop.
 
   Shape rule: panels 6px, controls 4px, nothing rounder.
 */
+/* Values from the brand kit's monday-tokens.css (Dusk), except --glow, kept a soft wash of the accent. */
 :root,
 [data-theme="dark"] {
-  --void: #060708;
-  --canvas: #0c0d10;
-  --raised: #14161a;
-  --raised-2: #1e2127;
-  --line: rgb(255 255 255 / 0.075);
-  --line-2: rgb(255 255 255 / 0.15);
-  --fg: #e9ebee;
-  --fg-2: #a3a9b2;
-  --fg-3: #7b828c;
-  --accent: #ffa630;
-  --accent-fg: #0c0d10;
-  --bid: #27a583;
-  --ask: #e0633f;
-  --ask-deep: #b8401a; /* white text on it reads at 5.5:1; --ask itself does not (3.5:1) */
-  --bid-fg: #45c7a0;
-  --ask-fg: #f28563;
-  --warn: #e9b949;
-  /* Chart indicator lines. Two hues only: they must stay apart from each other and from teal, vermilion and amber
-     under colour-blind simulation (validated in both themes); further indicators use greys and dash patterns. */
-  --ind-1: #3987e5;
-  --ind-2: #d55181;
-  /* The landing hero's amber light behind the terminal. */
+  --void: #090a0e;
+  --canvas: #0e1015;
+  --raised: #151821;
+  --raised-2: #1c2029;
+  --line: #ffffff12;
+  --line-2: #ffffff21;
+  --fg: #e7e9ee;
+  --fg-2: #a4abb9;
+  --fg-3: #848b9b;
+  --accent: #a3b3ee; /* brand and primary action only, never P&L */
+  --accent-fg: #0e1015;
+  --bid: #5dbb9c;
+  --ask: #e3867b;
+  --ask-deep: #b85a50;
+  --bid-fg: #74cbae;
+  --ask-fg: #ec9a90;
+  --warn: #e2c07d;
+  /* Chart indicator lines; further indicators use greys and dash patterns. */
+  --ind-1: #7fa8e0;
+  --ind-2: #d493b0;
   --glow: color-mix(in oklab, var(--accent) 22%, transparent);
-  /* The landing's order-book field: how strongly its blurred copy lights the page. */
-  --field-glow: 0.6;
-  /* Market series on the analytics charts, in assignment order (validated: adjacent pairs stay apart under
-     colour-blind simulation on this surface). Past five, markets fold into a grey "Other". */
-  --cat-1: #4a8ee6;
-  --cat-2: #d55181;
-  --cat-3: #a68a2c;
-  --cat-4: #9b7bea;
-  --cat-5: #2fa3b5;
+  --field-glow: 0.35;
+  /* Market series on the analytics charts, in assignment order. Past five, markets fold into a grey "Other". */
+  --cat-1: #7fa8e0;
+  --cat-2: #d493b0;
+  --cat-3: #c9b07a;
+  --cat-4: #a99be0;
+  --cat-5: #6db9c4;
   color-scheme: dark;
 }
-/*
-  Light is warm, not white: an off-white with a low warm tint (luminance 0.89 against white's 1.0) cuts glare over a
-  long session, warm greys for the steps and lines, and text a shade softer than black (15:1 on the canvas). Every
-  text colour keeps at least 4.5:1 on every surface; the accent and the red text are a touch darker to hold that.
-*/
 [data-theme="light"] {
-  --void: #e6e1d8;
-  --canvas: #f5f2ec;
-  --raised: #ece8e0;
-  --raised-2: #dfd9ce;
-  --line: rgb(40 30 16 / 0.11);
-  --line-2: rgb(40 30 16 / 0.25);
-  --fg: #1d1b18;
-  --fg-2: #48443d;
-  --fg-3: #665f55;
-  --accent: #ad5900;
+  --void: #eceef3;
+  --canvas: #f5f6f9;
+  --raised: #ffffff;
+  --raised-2: #e9ecf2;
+  --line: #171a2114;
+  --line-2: #171a2129;
+  --fg: #171a21;
+  --fg-2: #4a5160;
+  --fg-3: #666d7d;
+  --accent: #4659a8;
   --accent-fg: #ffffff;
-  --bid: #0b8468;
-  --ask: #d2512a;
-  --ask-deep: #b8401a;
-  --bid-fg: #086b54;
-  --ask-fg: #a6391a;
-  --warn: #7a5200;
-  --ind-1: #2a78d6;
-  --ind-2: #df6d99;
-  --glow: color-mix(in oklab, var(--accent) 10%, transparent); /* on a warm page more amber turns muddy */
-  --field-glow: 0.22;
-  --cat-1: #2a78d6;
-  --cat-2: #c43f6f;
-  --cat-3: #8a6d00;
-  --cat-4: #6d4fcf;
-  --cat-5: #0a86a8;
+  --bid: #1a7a5f;
+  --ask: #b5463d;
+  --ask-deep: #96362f;
+  --bid-fg: #146650;
+  --ask-fg: #9e3b33;
+  --warn: #8f6312;
+  --ind-1: #3d6fb8;
+  --ind-2: #b04b78;
+  --glow: color-mix(in oklab, var(--accent) 10%, transparent);
+  --field-glow: 0.15;
+  --cat-1: #3d6fb8;
+  --cat-2: #b04b78;
+  --cat-3: #866a1f;
+  --cat-4: #6a55c2;
+  --cat-5: #1f7f8c;
   color-scheme: light;
 }
 
@@ -148,12 +141,58 @@
 }
 
 @layer components {
-  /* Every figure: tabular digits in the text face, so columns align and live prices do not jitter. */
+  /*
+    The landing's surfaces (2026-11-15, after Imagica), on the warm dark theme: headings in cream that greys toward the
+    right (every .display heading in the app shares it), smoked-glass windows round a dark panel, dark satin spheres.
+  */
+  .ink,
+  .display {
+    background: linear-gradient(105deg, var(--fg) 38%, color-mix(in oklab, var(--fg) 45%, transparent) 96%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* A smoked-glass frame round a dark panel. */
+  .frost {
+    border-radius: 24px;
+    padding: 10px;
+    background: rgb(255 255 255 / 0.035);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), 0 50px 90px -40px rgb(0 0 0 / 0.8);
+  }
+  .frost-in {
+    overflow: hidden;
+    border-radius: 15px;
+    background: color-mix(in oklab, var(--raised) 90%, transparent);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.05);
+  }
+  /* Smoked glass for chips and secondary buttons (their radius comes from the element). */
+  .bead {
+    background: color-mix(in oklab, var(--raised) 65%, transparent);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 6px 18px -8px rgb(0 0 0 / 0.6);
+  }
+  /* A dark satin sphere, lit softly from the upper left, with a faint amber edge from below. */
+  .orb {
+    pointer-events: none;
+    border-radius: 9999px;
+    background: radial-gradient(circle at 34% 28%, #3b404d 0, #272b35 20%, #181b23 52%, #0f1117 80%, #0b0c10 100%);
+    box-shadow: inset 0 -14px 40px -24px color-mix(in oklab, var(--accent) 35%, transparent), 0 60px 100px -50px rgb(0 0 0 / 0.8);
+  }
+  /* On a light page the sphere is a pale satin one instead (the System page follows the user's theme). */
+  [data-theme="light"] .orb {
+    background: radial-gradient(circle at 34% 28%, #ffffff 0, #f3f5f9 16%, #e0e4ed 50%, #c9cfdc 76%, #b9c0cf 100%);
+    box-shadow: 0 60px 100px -50px rgb(40 50 80 / 0.35);
+  }
+  /* Every figure: Public Sans with tabular digits, so columns align and live prices do not jitter. */
   .num {
+    font-family: var(--font-numbers), var(--font-sans);
     font-variant-numeric: tabular-nums;
     font-variant-ligatures: none;
   }
-  /* Column heads and keys: small, quiet, sentence case. */
+  /* Column heads and keys: small, quiet, Title Case ("Open Interest"; the user asked for it 2026-11-15). */
   .label {
     font-family: var(--font-sans);
     font-size: 12px;
@@ -236,12 +275,16 @@
     background-color: color-mix(in oklab, var(--void) 86%, transparent);
     border-color: var(--line);
   }
+  /* Scrolled away while reading down (ScrollHeader sets data-hidden), but never while focus is inside it. The System
+     page's reading bar, which sits under the header, moves up to the top edge while the header is away. */
+  .site-header[data-hidden="true"]:not(:focus-within) { transform: translateY(-100%); }
+  html:has(.site-header[data-hidden="true"]:not(:focus-within)) .progress { top: 0; }
   /* A link whose underline draws in from the left on hover, and stays for the current page. */
   .navlink { position: relative; }
   .navlink::after {
     content: "";
     position: absolute;
-    inset: auto 0.75rem 0.25rem;
+    inset: auto 0.875rem 0.3rem;
     height: 1px;
     background: currentColor;
     transform: scaleX(0);
@@ -266,6 +309,9 @@
   .spot:hover::before { opacity: 1; }
   /* Reading progress along the top of a long page, driven by the scroll position itself. */
   .progress { transform: scaleX(0); transform-origin: 0 50%; }
+  .progress-y { transform: scaleY(0); transform-origin: 50% 0; }
+  /* A wire in the landing's flow drawing: dashes that run toward Monday. */
+  .flowline { stroke-dasharray: 3 7; }
   /* A headline line that rises out of its own mask. The padding keeps descenders inside the mask. */
   .line { display: block; overflow: hidden; overflow: visible clip; padding-bottom: 0.1em; margin-bottom: -0.1em; } /* clip only vertically: a wide line is never cut */
   .line > span { display: block; }
@@ -333,6 +379,21 @@
 @keyframes header-clear {
   from { background-color: transparent; border-color: transparent; }
 }
+@keyframes progress-down {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+/* A button's arrow, swinging right and back while the button is pointed at or focused. */
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+@keyframes dash {
+  to { stroke-dashoffset: -10; }
+}
+@keyframes float {
+  50% { transform: translateY(-14px); }
+}
 @keyframes progress-grow {
   to { transform: scaleX(1); }
 }
@@ -358,10 +419,18 @@
   .flash-num { animation: flash-num 0.9s var(--ease-out-expo); }
   .flash-up { animation: flash-up 0.9s var(--ease-out-expo); }
   .flash-down { animation: flash-down 0.9s var(--ease-out-expo); }
+  .flowline { animation: dash 0.9s linear infinite; }
+  .site-header { transition: transform 0.35s var(--ease-out-expo); }
+  .progress { transition: top 0.35s var(--ease-out-expo); }
+  .group:hover .nudge,
+  .group:focus-visible .nudge { animation: nudge 0.9s ease-in-out infinite; }
+  .float { animation: float 9s ease-in-out infinite; animation-delay: var(--d, 0s); }
   .rise { animation: rise 0.6s var(--ease-out-expo) both; animation-delay: calc(var(--i, 0) * 60ms); }
   .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
-  .line > span { animation: line-in 0.82s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: var(--d, 0ms); }
-  .enter { animation: enter 0.6s var(--ease-out-expo) both; animation-delay: var(--d, 0ms); }
+  /* backwards, not both: once a line has risen its animation ends and lets go of its compositing layer (a held layer
+     kept losing the headline's clipped gradient on scroll). The end state is the element's own, so nothing jumps. */
+  .line > span { animation: line-in 0.82s cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: var(--d, 0ms); }
+  .enter { animation: enter 0.6s var(--ease-out-expo) backwards; animation-delay: var(--d, 0ms); }
   .page-in { animation: page-in 0.5s var(--ease-out-expo) both; }
   .tilt-in { animation: tilt-in 1.15s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: var(--d, 0ms); transform-origin: 50% 0; }
   .wire-x .packet { animation: travel-x var(--dur, 1.6s) linear var(--delay, 0s) infinite; }
@@ -379,4 +448,5 @@
 @supports (animation-timeline: scroll()) {
   .site-header { animation: header-clear linear both; animation-timeline: scroll(root); animation-range: 0 96px; }
   .progress { animation: progress-grow linear both; animation-timeline: scroll(root); }
+  .progress-y { animation: progress-down linear both; animation-timeline: scroll(root); }
 }

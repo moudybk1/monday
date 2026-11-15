@@ -28,8 +28,8 @@ export function FlowBars({ m }: { m: MarketState }) {
         ))}
       </div>
       <div className="label mt-1.5 flex justify-between pl-[2.375rem] pr-[9.375rem]">
-        <span>sell</span>
-        <span>buy</span>
+        <span>Sell</span>
+        <span>Buy</span>
       </div>
       {s.stale && <p className="pt-2 text-[13px] text-warn">Smart Trader data delayed. Quoting conservatively.</p>}
     </div>

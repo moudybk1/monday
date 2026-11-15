@@ -29,18 +29,18 @@ export function Heading({ title, children }: { title: string; children: React.Re
 
 export function AccountStep({ wallet, account, loading, error, retry, next }: { wallet: string | null; account?: PerplAccount; loading: boolean; error: Error | null; retry: () => void; next: () => void }) {
   if (!account && error) {
-    return <Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={retry}>Check now</Button>}>Could not look up your Perpl account: {error.message} It retries by itself every few seconds.</Notice>;
+    return <Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={retry}>Check Now</Button>}>Could not look up your Perpl account: {error.message} It retries by itself every few seconds.</Notice>;
   }
   if (loading || !account) return <div className="grid gap-4"><Skeleton className="h-10 w-80" /><Skeleton className="h-24" /></div>;
   if (!account.exists) {
     return (
       <div>
-        <Heading title="You need a Perpl account first">
+        <Heading title="You Need a Perpl Account First">
           Monday trades inside your own Perpl exchange account, and {wallet ? <span className="font-mono text-fg">{shortAddr(wallet)}</span> : 'this wallet'} does not have one yet. Open it on Perpl with the same wallet and a deposit of at least {usd(account.minDepositUsd)}. Already deposited? Then Perpl holds it under another wallet: sign out and connect that one.
         </Heading>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href={account.depositUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-sm bg-fg px-4 text-sm font-medium text-canvas hover:bg-accent hover:text-accent-fg">Open Perpl <ArrowSquareOutIcon size={14} /></a>
-          <Button variant="ghost" onClick={retry}>Check now</Button>
+          <Button variant="ghost" onClick={retry}>Check Now</Button>
         </div>
         <p className="mt-4 text-[14px] text-fg-3" role="status">Leave this tab open. It checks every few seconds and moves on once the deposit lands.</p>
       </div>
@@ -48,10 +48,10 @@ export function AccountStep({ wallet, account, loading, error, retry, next }: { 
   }
   return (
     <div>
-      <Heading title="Perpl account found">Monday will trade inside this account. Your collateral stays there the whole time, and you withdraw on Perpl whenever you like.</Heading>
+      <Heading title="Perpl Account Found">Monday will trade inside this account. Your collateral stays there the whole time, and you withdraw on Perpl whenever you like.</Heading>
       <dl className="mt-8 grid grid-cols-2 border-y border-line-2">
         <div className="py-4"><dt className="text-[13px] text-fg-3">Account</dt><dd className="num mt-1 text-xl font-semibold">{account.accountId}</dd></div>
-        <div className="border-l border-line py-4 pl-5"><dt className="text-[13px] text-fg-3">Collateral balance</dt><dd className="num mt-1 text-xl font-semibold">{fmtUsd(account.balanceUsd ?? 0)}</dd></div>
+        <div className="border-l border-line py-4 pl-5"><dt className="text-[13px] text-fg-3">Collateral Balance</dt><dd className="num mt-1 text-xl font-semibold">{fmtUsd(account.balanceUsd ?? 0)}</dd></div>
       </dl>
       <Button size="lg" className="mt-8" onClick={next}>Continue</Button>
     </div>
@@ -83,7 +83,7 @@ export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: 
 
   return (
     <div>
-      <Heading title="Give Monday a trade-only key">
+      <Heading title="Give Monday a Trade-Only Key">
         A Perpl API key lets Monday place and cancel orders in your account. No API key can withdraw or transfer funds, whatever its scope, and you can revoke it on Perpl at any moment.
       </Heading>
       <ol className="mt-8 grid gap-3 border-y border-line-2 py-5 text-sm">
@@ -100,20 +100,20 @@ export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: 
       {hasKey && <div className="mt-6"><Notice>A key is already stored for this account. Submitting a new one replaces it.</Notice></div>}
       {sim && (
         <div className="mt-6">
-          <Notice action={<Button size="sm" variant="ghost" onClick={() => { setToken('pk_demo_monday'); setSecret('sk_demo_monday'); }}>Fill a demo key</Button>}>
+          <Notice action={<Button size="sm" variant="ghost" onClick={() => { setToken('pk_demo_monday'); setSecret('sk_demo_monday'); }}>Fill a Demo Key</Button>}>
             {paper ? 'Paper trading: prices are Perpl\'s real ones, orders are simulated.' : 'Simulated market:'} Any token and secret are accepted. A token starting with <code className="num">read</code> or a secret starting with <code className="num">bad</code> shows the error states.
           </Notice>
         </div>
       )}
       <form onSubmit={submit} className="mt-6 grid gap-5" noValidate>
-        <Field label="API key token" htmlFor="token" error={err?.field === 'token' ? err.message : null} hint="Identifies the key. Safe to share with Monday.">
+        <Field label="API Key Token" htmlFor="token" error={err?.field === 'token' ? err.message : null} hint="Identifies the key. Safe to share with Monday.">
           <input id="token" className={cx(INPUT, 'num')} value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" spellCheck={false} required />
         </Field>
-        <Field label="API key secret" htmlFor="secret" error={err?.field === 'secret' ? err.message : null} hint="Encrypted with AES-256-GCM on the server. Never sent back to the browser.">
+        <Field label="API Key Secret" htmlFor="secret" error={err?.field === 'secret' ? err.message : null} hint="Encrypted with AES-256-GCM on the server. Never sent back to the browser.">
           <input id="secret" type="password" className={cx(INPUT, 'num')} value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" spellCheck={false} required />
         </Field>
         {err?.field === 'form' && <p role="alert" className="text-[14px] text-ask-fg">{err.message}</p>}
-        <div><Button type="submit" size="lg" disabled={busy || !token || !secret}>{busy ? 'Signing in to Perpl' : 'Validate key'}</Button></div>
+        <div><Button type="submit" size="lg" disabled={busy || !token || !secret}>{busy ? 'Signing in to Perpl' : 'Validate Key'}</Button></div>
       </form>
     </div>
   );

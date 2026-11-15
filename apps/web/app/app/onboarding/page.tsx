@@ -14,7 +14,7 @@ import { useAgentAuthorized, useAppConfig, useMe, useRegistry, type PolicyView }
 import { AccountStep, KeyStep, type PerplAccount as Account } from '@/components/perpl-connect';
 
 
-const STEPS = ['Wallet', 'Perpl account', 'Trade key', 'Limits', 'Review and start'];
+const STEPS = ['Wallet', 'Perpl Account', 'Trade Key', 'Limits', 'Review and Start'];
 
 export default function Onboarding() {
   const me = useMe().data!;
@@ -115,11 +115,11 @@ function LimitsStep({ initial, balance, linked, available, caps, specs, next }: 
   return (
     <div>
       {linked && <div className="mb-8"><Notice>Key accepted. Monday can place, change and cancel orders in your account. It cannot withdraw or transfer funds.</Notice></div>}
-      <Heading title="Set your limits">Pick a margin and a leverage, and Monday sizes the rest. The agent and the LLM are both held to these limits. Your Perpl balance is <span className="num">{fmtUsd(balance)}</span>.</Heading>
+      <Heading title="Set Your Limits">Pick a margin and a leverage, and Monday sizes the rest. The agent and the LLM are both held to these limits. Your Perpl balance is <span className="num">{fmtUsd(balance)}</span>.</Heading>
       <div className="mt-8">
         <PolicyForm value={draft} onChange={setDraft} available={available} caps={caps} balance={balance} specs={specs}>
           {err && <p role="alert" className="text-[13px] text-ask-fg">{err}</p>}
-          <Button size="lg" className="w-full" onClick={save} disabled={busy || !draftOk(draft, balance, caps, specs ?? {})}>{busy ? 'Checking limits' : 'Continue'}</Button>
+          <Button size="lg" className="w-full" onClick={save} disabled={busy || !draftOk(draft, balance, caps, specs ?? {})}>{busy ? 'Checking Limits' : 'Continue'}</Button>
         </PolicyForm>
       </div>
     </div>
@@ -176,11 +176,11 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
 
   return (
     <div>
-      <Heading title="Review and start">{policySummary(p)}</Heading>
+      <Heading title="Review and Start">{policySummary(p)}</Heading>
       <dl className="mt-8 grid grid-cols-2 border-t border-line-2 text-sm sm:grid-cols-3">
         {[
-          ['Markets', p.markets.join(', ')], ['Quote per side', usd(p.quoteSizeUsd)], ['Position limit per market', usd(p.maxInventoryUsd)],
-          ['Base spread', `${p.minHalfSpreadBps} bps`], ['Stop loss', usd(p.maxDailyLossUsd)], ['Leverage', `${p.maxLeverage}x`],
+          ['Markets', p.markets.join(', ')], ['Quote per Side', usd(p.quoteSizeUsd)], ['Position Limit per Market', usd(p.maxInventoryUsd)],
+          ['Base Spread', `${p.minHalfSpreadBps} bps`], ['Stop Loss', usd(p.maxDailyLossUsd)], ['Leverage', `${p.maxLeverage}x`],
         ].map(([k, v]) => (
           <div key={k} className="border-b border-line py-3"><dt className="text-[13px] text-fg-3">{k}</dt><dd className="num mt-0.5 font-semibold">{v}</dd></div>
         ))}
@@ -189,7 +189,7 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
       <div className="mt-8 grid gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Publish the policy on Monad</p>
+            <p className="text-sm font-semibold">Publish the Policy on Monad</p>
             <p className="mt-0.5 text-[14px] text-fg-3">
               {mustSign ? 'Two steps in your wallet: publish these limits to MondayRegistry, then, the first time only, authorise Monday\'s agent to log its decisions. The contract holds no funds.'
                 : view.onchainTx ? <>Published. <a className="font-mono underline underline-offset-2" href={`${explorerUrl}/tx/${view.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.onchainTx)}</a></>
@@ -197,7 +197,7 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
                 : 'MondayRegistry is not configured on this server yet, so the policy is enforced off-chain only.'}
             </p>
           </div>
-          {mustSign && !registry.canSign ? <Button variant="ghost" onClick={registry.reconnect}>Reconnect wallet</Button>
+          {mustSign && !registry.canSign ? <Button variant="ghost" onClick={registry.reconnect}>Reconnect Wallet</Button>
             : mustSign ? <Button variant="ghost" onClick={sign} disabled={busy !== null}>Sign on Monad</Button>
             : <Tag tone={view.onchainTx ? 'accent' : 'neutral'}>{view.onchainTx ? 'On-chain' : 'Off-chain'}</Tag>}
         </div>
@@ -205,10 +205,10 @@ function ReviewStep({ view, demo, explorerUrl, registryAt, agent, refresh }: { v
         {!mustSign && authorized === false && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold">Authorise the agent</p>
+              <p className="text-sm font-semibold">Authorise the Agent</p>
               <p className="mt-0.5 text-[14px] text-fg-3">The policy is published. One more signature lets Monday&apos;s agent log its decisions in MondayRegistry; until then they are kept off-chain.</p>
             </div>
-            {registry.canSign ? <Button variant="ghost" onClick={authorize} disabled={busy !== null}>Authorise agent</Button> : <Button variant="ghost" onClick={registry.reconnect}>Reconnect wallet</Button>}
+            {registry.canSign ? <Button variant="ghost" onClick={authorize} disabled={busy !== null}>Authorise Agent</Button> : <Button variant="ghost" onClick={registry.reconnect}>Reconnect Wallet</Button>}
           </div>
         )}
       </div>

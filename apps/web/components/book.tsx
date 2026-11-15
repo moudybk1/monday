@@ -1,6 +1,8 @@
 'use client';
 
-import { usdCompact, type BookLevel, type MarketState, type QuoteTarget, type Side } from '@monday/core';
+import { useQuery } from '@tanstack/react-query';
+import { bucket, groupLevels, usdCompact, type BookLevel, type MarketState, type QuoteTarget, type Side } from '@monday/core';
+import { api } from '@/lib/api';
 import { fmtPrice, fmtSize } from '@/lib/format';
 import { cx } from './ui';
 
@@ -29,7 +31,7 @@ function ladder(levels: BookLevel[], mine: QuoteTarget | null, side: Side, n: nu
 // Three columns, nothing else: price, size, cumulative depth. The same rhythm on every row.
 const COLS = 'grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-center gap-2 px-2.5';
 
-function Level({ r, side, max, m, ahead }: { r: Row; side: Side; max: number; m: MarketState; ahead: number | null }) {
+function Level({ r, side, max, m, ahead, tick }: { r: Row; side: Side; max: number; m: MarketState; ahead: number | null; tick: number }) {
   return (
     <li className={cx(COLS, 'num relative h-[21px] text-[13px]', r.mine && 'flash bg-accent/14')}>
       {/* Depth: a tint anchored to the right edge, behind the figures. */}
@@ -37,7 +39,7 @@ function Level({ r, side, max, m, ahead }: { r: Row; side: Side; max: number; m:
       {/* Amber on the leading edge: this level is Monday's order. */}
       {r.mine && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
       <span className={cx('relative flex items-center gap-1.5', side === 'bid' ? 'text-bid-fg' : 'text-ask-fg')}>
-        {fmtPrice(r.price, m.spec)}
+        {fmtPrice(r.price, { priceTick: tick })}
         {r.mine && <span className="rounded-[2px] bg-accent px-1 text-[12px] font-semibold leading-[14px] tracking-wide text-accent-fg">MONDAY</span>}
       </span>
       <span className={cx('relative text-right', r.mine ? 'text-accent' : 'text-fg')}>{fmtSize(r.size, m.spec)}</span>
@@ -61,10 +63,27 @@ function Pulled({ side, m, now }: { side: Side; m: MarketState; now: number }) {
   );
 }
 
-/** `ownOnBook`: a live Perpl feed already shows Monday's order inside its level; a paper or simulated book does not. */
-export function OrderBook({ m, rows = 10, now = Date.now(), ownOnBook = false }: { m: MarketState; rows?: number; now?: number; ownOnBook?: boolean }) {
-  const asks = ladder(m.asks, m.quotes.ask, 'ask', rows, ownOnBook);
-  const bids = ladder(m.bids, m.quotes.bid, 'bid', rows, ownOnBook);
+/**
+ * `ownOnBook`: a live Perpl feed already shows Monday's order inside its level; a paper or simulated book does not.
+ * `step`: group prices into buckets this wide (the market's tick by default). Monday's quote joins its bucket.
+ * The live state carries only the top 12 levels, so a wider step reads the server's grouping of the whole book, every
+ * second; until it arrives the top 12 are grouped here.
+ */
+export function OrderBook({ m, rows = 10, now = Date.now(), ownOnBook = false, step = m.spec.priceTick }: { m: MarketState; rows?: number; now?: number; ownOnBook?: boolean; step?: number }) {
+  const wide = step > m.spec.priceTick;
+  const deep = useQuery({
+    queryKey: ['book', m.sym, step, rows],
+    queryFn: () => api<{ bids: BookLevel[]; asks: BookLevel[] }>(`/book?${new URLSearchParams({ market: m.sym, step: String(step), rows: String(rows) })}`),
+    enabled: wide,
+    refetchInterval: 1_000,
+  });
+  const book = wide && deep.data ? deep.data : m;
+  const side = (s: Side) => {
+    const q = m.quotes[s];
+    return ladder(groupLevels(s === 'bid' ? book.bids : book.asks, step, s), q && { ...q, price: bucket(q.price, step, s) }, s, rows, ownOnBook);
+  };
+  const asks = side('ask');
+  const bids = side('bid');
   const max = Math.max(asks.at(-1)?.cumUsd ?? 1, bids.at(-1)?.cumUsd ?? 1);
   const pulled = m.reflex?.action === 'pull' ? m.reflex.side : null;
   const spreadBps = m.bestBid && m.bestAsk ? ((m.bestAsk - m.bestBid) / m.mark) * 1e4 : null;
@@ -79,7 +98,7 @@ export function OrderBook({ m, rows = 10, now = Date.now(), ownOnBook = false }:
       </div>
       <ol aria-label="Asks">
         {/* Monday's row is keyed by price, so a requote remounts it and the flash plays. */}
-        {[...asks].reverse().map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="ask" max={max} m={m} ahead={m.aheadUsd.ask} />)}
+        {[...asks].reverse().map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="ask" max={max} m={m} ahead={m.aheadUsd.ask} tick={step} />)}
         {pulled === 'ask' && <Pulled side="ask" m={m} now={now} />}
       </ol>
       {/* The spread row every terminal has: the gap in ticks and bps, and the mark beside it. */}
@@ -93,7 +112,7 @@ export function OrderBook({ m, rows = 10, now = Date.now(), ownOnBook = false }:
       </div>
       <ol aria-label="Bids">
         {pulled === 'bid' && <Pulled side="bid" m={m} now={now} />}
-        {bids.map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="bid" max={max} m={m} ahead={m.aheadUsd.bid} />)}
+        {bids.map((r) => <Level key={r.mine ? `mine-${r.price}` : r.price} r={r} side="bid" max={max} m={m} ahead={m.aheadUsd.bid} tick={step} />)}
       </ol>
     </div>
   );

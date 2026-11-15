@@ -59,7 +59,7 @@ function toInput(kind: Kind, d: Draft): PlanInput | null {
   return { kind, ...common, durationMin: d.durationMin, slices: opt(d.slices) ?? twapSlicesFor(d.durationMin), style: d.style, limitPrice: opt(d.limit), stopLossPct: parse(d.sl), takeProfitPct: opt(d.tp) };
 }
 
-const STEPS: Record<Kind, string[]> = { trade: ['Market', 'Direction', 'Size and risk', 'Review'], twap: ['Market', 'Direction', 'Order', 'Review'] };
+const STEPS: Record<Kind, string[]> = { trade: ['Market', 'Direction', 'Size and Risk', 'Review'], twap: ['Market', 'Direction', 'Order', 'Review'] };
 const TITLE: Record<Kind, string> = { trade: 'Agentic Trade', twap: 'TWAP' };
 const [MARKET, DIRECTION, SETTINGS, REVIEW] = [0, 1, 2, 3];
 
@@ -200,7 +200,7 @@ function MarketStep({ kind, sym, symbols, blocked, prices, specs, insight, onPic
 }) {
   return (
     <div>
-      <Heading title="Market read">Pick a market. Monday reads its D1, H4 and H1 trends first, then you set up the {kind === 'trade' ? 'trade' : 'TWAP'}.</Heading>
+      <Heading title="Market Read">Pick a market. Monday reads its D1, H4 and H1 trends first, then you set up the {kind === 'trade' ? 'trade' : 'TWAP'}.</Heading>
       <div className="mt-8 grid gap-6">
         <Choices legend="Market" note="One market per plan. Markets the market maker quotes, or another plan trades, are taken." grid wide>
           {symbols.map((s) => {
@@ -218,7 +218,7 @@ function MarketStep({ kind, sym, symbols, blocked, prices, specs, insight, onPic
 function DirectionStep({ kind, value, onPick }: { kind: Kind; value: Bias | null; onPick: (b: Bias) => void }) {
   return (
     <div>
-      <Heading title={kind === 'trade' ? 'Long or short?' : 'Buy or sell?'}>
+      <Heading title={kind === 'trade' ? 'Long or Short?' : 'Buy or Sell?'}>
         {kind === 'trade'
           ? 'Your bias for the session. Monday reads D1 and H4 to see whether it follows the market or goes against it, then scalps that side on a short timeframe, again and again, until your stop loss or take profit.'
           : 'A TWAP opens a position in slices over time, so one large order does not move a thin book. Pick the side to build.'}
@@ -233,7 +233,7 @@ function DirectionStep({ kind, value, onPick }: { kind: Kind; value: Bias | null
               className={cx('flex flex-col items-start gap-3 rounded-sm border p-5 text-left transition-colors', on ? (long ? 'border-bid bg-bid/10' : 'border-ask bg-ask/12') : 'border-line-2 hover:bg-raised')}
             >
               <span className={cx('grid size-9 place-items-center rounded-sm', long ? 'bg-bid/15 text-bid-fg' : 'bg-ask/15 text-ask-fg')}>{long ? <TrendUpIcon size={18} /> : <TrendDownIcon size={18} />}</span>
-              <span className="text-[17px] font-semibold">{kind === 'twap' ? (long ? 'Buy (long)' : 'Sell (short)') : BIAS_LABEL[b]}</span>
+              <span className="text-[17px] font-semibold">{kind === 'twap' ? (long ? 'Buy (Long)' : 'Sell (Short)') : BIAS_LABEL[b]}</span>
               <span className="text-[14px] text-fg-2">{long ? 'Profits when the price rises.' : 'Profits when the price falls.'} {long ? 'Buys to open, sells to close.' : 'Sells to open, buys back to close.'}</span>
             </button>
           );
@@ -264,7 +264,7 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
   return (
     <div className="@container">
       <div className="mb-6">
-        <h1 className="display text-3xl md:text-4xl">{kind === 'trade' ? 'Size and risk' : 'The order'}</h1>
+        <h1 className="display text-3xl md:text-4xl">{kind === 'trade' ? 'Size and Risk' : 'The Order'}</h1>
         <p className="mt-3 max-w-[62ch] text-fg-2">
           {kind === 'trade'
             ? 'Each scalp trades the margin at your leverage. The stop loss and take profit end the whole session, as shares of that margin.'
@@ -308,13 +308,13 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
 
             {kind === 'trade' ? (
               <>
-                <Choices legend="Trigger timeframe" note="The bars each scalp is triggered and sized on. On 1m the moves are often too small to clear fees, and Monday skips those setups." error={problems.frame}>
+                <Choices legend="Trigger Timeframe" note="The bars each scalp is triggered and sized on. On 1m the moves are often too small to clear fees, and Monday skips those setups." error={problems.frame}>
                   {(['1m', '5m', '15m'] as const).map((f) => <Chip key={f} type="radio" name="frame" checked={draft.frame === f} onChange={() => set({ frame: f })}>{f}</Chip>)}
                 </Choices>
-                <Choices legend="Session length" note="When it runs out, Monday closes any open scalp and stops." error={problems.expiryHours}>
+                <Choices legend="Session Length" note="When it runs out, Monday closes any open scalp and stops." error={problems.expiryHours}>
                   {SESSIONS.map((h) => <Chip key={h} type="radio" name="session" checked={draft.expiryHours === h} onChange={() => set({ expiryHours: h })}>{hours(h)}</Chip>)}
                 </Choices>
-                <Row id="loss-limit" label="Stop loss" value={ofMargin(draft.lossLimit) ? `-${ofMargin(draft.lossLimit)}` : undefined} note="Of the margin. Once the session is down this much, Monday closes and stops." error={problems.lossLimitPct}>
+                <Row id="loss-limit" label="Stop Loss"value={ofMargin(draft.lossLimit) ? `-${ofMargin(draft.lossLimit)}` : undefined} note="Of the margin. Once the session is down this much, Monday closes and stops." error={problems.lossLimitPct}>
                   <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2">
                     <div role="group" aria-label="Stop loss presets" className={SEG}>
                       {[10, 20, 30, 50].map((pct) => <Chip key={pct} type="radio" name="loss-limit" checked={parse(draft.lossLimit) === pct} onChange={() => set({ lossLimit: String(pct) })}>{pct}%</Chip>)}
@@ -322,7 +322,7 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
                     <Pct id="loss-limit" value={draft.lossLimit} invalid={!!problems.lossLimitPct} onChange={(lossLimit) => set({ lossLimit })} />
                   </div>
                 </Row>
-                <Row id="profit-target" label="Take profit" value={ofMargin(draft.profitTarget) ? `+${ofMargin(draft.profitTarget)}` : undefined} note={opt(draft.profitTarget) == null ? 'Off: the session runs until the stop loss, its time, or you stop it.' : 'Of the margin. Once the session is up this much, Monday closes and stops.'} error={problems.profitTargetPct}>
+                <Row id="profit-target" label="Take Profit"value={ofMargin(draft.profitTarget) ? `+${ofMargin(draft.profitTarget)}` : undefined} note={opt(draft.profitTarget) == null ? 'Off: the session runs until the stop loss, its time, or you stop it.' : 'Of the margin. Once the session is up this much, Monday closes and stops.'} error={problems.profitTargetPct}>
                   <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2">
                     <div role="group" aria-label="Take profit presets" className={SEG}>
                       {[null, 20, 50, 100].map((pct) => <Chip key={pct ?? 'off'} type="radio" name="profit-target" checked={opt(draft.profitTarget) === pct} onChange={() => set({ profitTarget: pct == null ? '' : String(pct) })}>{pct == null ? 'Off' : `${pct}%`}</Chip>)}
@@ -342,10 +342,10 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
                 <Choices legend="Execution" note={STYLE_NOTE[draft.style]} wide>
                   {(['passive', 'balanced', 'aggressive'] as const).map((s) => <Chip key={s} type="radio" name="style" checked={draft.style === s} onChange={() => set({ style: s })}>{STYLE_LABEL[s]}</Chip>)}
                 </Choices>
-                <Row id="limit" label={long ? 'Highest price' : 'Lowest price'} note={`No slice ${long ? 'buys above' : 'sells below'} this; slices wait or are skipped instead. Empty: no limit.`} error={problems.limitPrice}>
+                <Row id="limit" label={long ? 'Highest Price' : 'Lowest Price'} note={`No slice ${long ? 'buys above' : 'sells below'} this; slices wait or are skipped instead. Empty: no limit.`} error={problems.limitPrice}>
                   <Num id="limit" value={draft.limit} placeholder="No limit" invalid={!!problems.limitPrice} onChange={(limit) => set({ limit })} />
                 </Row>
-                <Row id="sl" label="Stop loss" value={n ? px(n.slPrice) : undefined} note={n ? `Loses about ${money(n.lossUsd, 2)}, ${n.lossOfMarginPct.toFixed(0)}% of the margin. Liquidation is about ${n.liqPct.toFixed(2)}% away.` : 'Required: how far the price may move against you.'} error={problems.stopLossPct}>
+                <Row id="sl" label="Stop Loss"value={n ? px(n.slPrice) : undefined} note={n ? `Loses about ${money(n.lossUsd, 2)}, ${n.lossOfMarginPct.toFixed(0)}% of the margin. Liquidation is about ${n.liqPct.toFixed(2)}% away.` : 'Required: how far the price may move against you.'} error={problems.stopLossPct}>
                   <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2">
                     <div role="group" aria-label="Stop loss presets" className={SEG}>
                       {[1, 2, 3, 5].map((pct) => <Chip key={pct} type="radio" name="sl" checked={parse(draft.sl) === pct} onChange={() => set({ sl: String(pct) })}>{pct}%</Chip>)}
@@ -353,7 +353,7 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
                     <Pct id="sl" value={draft.sl} invalid={!!problems.stopLossPct} onChange={(sl) => set({ sl })} />
                   </div>
                 </Row>
-                <Row id="tp" label="Take profit" value={n?.tpPrice ? px(n.tpPrice) : undefined} note={n?.profitUsd != null ? `Makes about ${money(n.profitUsd, 2)} after fees.` : 'Off: the position stays open until the stop loss, or until you close it.'} error={problems.takeProfitPct}>
+                <Row id="tp" label="Take Profit"value={n?.tpPrice ? px(n.tpPrice) : undefined} note={n?.profitUsd != null ? `Makes about ${money(n.profitUsd, 2)} after fees.` : 'Off: the position stays open until the stop loss, or until you close it.'} error={problems.takeProfitPct}>
                   <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2">
                     <div role="group" aria-label="Take profit presets" className={SEG}>
                       {[null, 2, 4, 8].map((pct) => <Chip key={pct ?? 'off'} type="radio" name="tp" checked={opt(draft.tp) === pct} onChange={() => set({ tp: pct == null ? '' : String(pct) })}>{pct == null ? 'Off' : `${pct}%`}</Chip>)}
@@ -366,7 +366,7 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
           </div>
         </Panel>
 
-        <Panel title="Pre-trade summary" aside={sym ?? ''}>
+        <Panel title="Pre-Trade Summary" aside={sym ?? ''}>
           <Summary kind={kind} input={input} n={n} spec={spec} mark={mark} balance={balance} read={read} sim={sim} />
           <div className="grid gap-2 border-t border-line p-3">
             <Button size="lg" className="w-full" onClick={next} disabled={!ok}>Review</Button>
@@ -383,7 +383,7 @@ function MarketReadPanel({ read, bias, frame }: { read: Read | undefined; bias: 
   return (
     <div className="grid gap-2 rounded-sm border border-line-2 bg-raised px-3 py-2.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">Market read</span>
+        <span className="font-medium">Market Read</span>
         {read ? (
           <>
             <Tag tone={trendTone(read.d1)}>D1 {TREND_LABEL[read.d1]}</Tag>
@@ -408,13 +408,13 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[13px]">
           <Line k="Free on Perpl" v={balance == null ? '-' : money(balance, 2)} />
           <Line k="Margin" v={t ? money(t.marginUsd, 2) : '-'} />
-          <Line k="Each scalp" v={n && t ? `${n.size} ${t.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
+          <Line k="Each Scalp"v={n && t ? `${n.size} ${t.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
           <Line k="Trigger" v={t ? `${t.frame}, ${mode ? MODE_LABEL[mode].toLowerCase() : 'waiting'}` : '-'} />
           <Line k="Liquidation" v={n ? `about ${n.liqPct.toFixed(1)}% away` : '-'} />
-          <Line k="Session stop loss" v={n ? `-${money(n.lossUsd, 2)}` : '-'} tone="text-ask-fg" />
-          <Line k="Session take profit" v={!n ? '-' : n.profitUsd != null ? `+${money(n.profitUsd, 2)}` : 'Off'} tone={n?.profitUsd != null ? 'text-bid-fg' : undefined} />
-          <Line k="Session length" v={t ? hours(t.expiryHours) : '-'} />
-          <Line k="Fees per scalp, at most" v={n ? money(n.feesUsd, 2) : '-'} />
+          <Line k="Session Stop Loss"v={n ? `-${money(n.lossUsd, 2)}` : '-'} tone="text-ask-fg" />
+          <Line k="Session Take Profit"v={!n ? '-' : n.profitUsd != null ? `+${money(n.profitUsd, 2)}` : 'Off'} tone={n?.profitUsd != null ? 'text-bid-fg' : undefined} />
+          <Line k="Session Length"v={t ? hours(t.expiryHours) : '-'} />
+          <Line k="Fees per Scalp, at Most"v={n ? money(n.feesUsd, 2) : '-'} />
         </dl>
         <p className="flex gap-2 border-t border-line px-3 py-2.5 text-[13px] text-fg-3">
           <ShieldCheckIcon size={15} className="mt-px flex-none text-accent" />
@@ -432,10 +432,10 @@ function Summary({ kind, input, n, spec, mark, balance, read, sim }: { kind: Kin
         <Line k="Position" v={n && w ? `${n.size} ${w.sym}, ${money(n.notionalUsd, 2)}` : '-'} />
         <Line k="Execution" v={w ? `${w.slices} slices, ${STYLE_LABEL[w.style].toLowerCase()}` : '-'} />
         <Line k="Liquidation" v={n ? `about ${px(n.liqPrice)}` : '-'} />
-        <Line k="Stop loss" v={n ? `${px(n.slPrice)}, -${money(n.lossUsd, 2)}` : '-'} tone="text-ask-fg" />
-        <Line k="Take profit" v={!n ? '-' : n.tpPrice ? `${px(n.tpPrice)}, +${money(n.profitUsd ?? 0, 2)}` : 'Off'} tone={n?.tpPrice ? 'text-bid-fg' : undefined} />
-        <Line k="Reward to risk" v={n?.rr != null ? n.rr.toFixed(2) : '-'} />
-        <Line k="Fees in and out" v={n ? money(n.feesUsd, 2) : '-'} />
+        <Line k="Stop Loss" v={n ? `${px(n.slPrice)}, -${money(n.lossUsd, 2)}` : '-'} tone="text-ask-fg" />
+        <Line k="Take Profit" v={!n ? '-' : n.tpPrice ? `${px(n.tpPrice)}, +${money(n.profitUsd ?? 0, 2)}` : 'Off'} tone={n?.tpPrice ? 'text-bid-fg' : undefined} />
+        <Line k="Reward to Risk"v={n?.rr != null ? n.rr.toFixed(2) : '-'} />
+        <Line k="Fees in and Out"v={n ? money(n.feesUsd, 2) : '-'} />
       </dl>
       <p className="flex gap-2 border-t border-line px-3 py-2.5 text-[13px] text-fg-3">
         <ShieldCheckIcon size={15} className="mt-px flex-none text-accent" />
@@ -456,26 +456,26 @@ function ReviewStep({ input, spec, mark, balance, read, sim, busy, error, onPlac
   const rows: [string, ReactNode][] = input.kind === 'trade'
     ? [
       ['Market', `${input.sym}, ${input.bias}`],
-      ['Margin and leverage', `${money(input.marginUsd, 2)} at ${input.leverage}x`],
-      ['Each scalp', `${n.size} ${input.sym} (${money(n.notionalUsd, 2)})`],
+      ['Margin and Leverage',`${money(input.marginUsd, 2)} at ${input.leverage}x`],
+      ['Each Scalp',`${n.size} ${input.sym} (${money(n.notionalUsd, 2)})`],
       ['Trigger', `${input.frame} bars, ${read ? (scalpMode(input.bias, read.market) ? MODE_LABEL[scalpMode(input.bias, read.market)!].toLowerCase() : 'waiting for D1 and H4 to line up') : 'reading D1 and H4'}`],
-      ['Session stop loss', `${input.lossLimitPct}% of the margin, -${money(n.lossUsd, 2)}`],
-      ['Session take profit', n.profitUsd != null ? `${input.profitTargetPct}% of the margin, +${money(n.profitUsd, 2)}` : 'Off'],
-      ['Session length', hours(input.expiryHours)],
+      ['Session Stop Loss',`${input.lossLimitPct}% of the margin, -${money(n.lossUsd, 2)}`],
+      ['Session Take Profit',n.profitUsd != null ? `${input.profitTargetPct}% of the margin, +${money(n.profitUsd, 2)}` : 'Off'],
+      ['Session Length',hours(input.expiryHours)],
       ['Liquidation', `about ${n.liqPct.toFixed(1)}% from each entry`],
     ]
     : [
       ['Market', `${input.sym}, ${long ? 'buy' : 'sell'}`],
-      ['Margin and leverage', `${money(input.marginUsd, 2)} at ${input.leverage}x`],
+      ['Margin and Leverage',`${money(input.marginUsd, 2)} at ${input.leverage}x`],
       ['Position', `${n.size} ${input.sym} (${money(n.notionalUsd, 2)})`],
       ['Execution', `${input.slices} slices over ${input.durationMin < 60 ? `${input.durationMin} min` : `${input.durationMin / 60} h`}, ${STYLE_LABEL[input.style].toLowerCase()}${input.limitPrice ? `, ${long ? 'at most' : 'at least'} ${px(input.limitPrice)}` : ''}`],
-      ['Stop loss', `${px(n.slPrice)} (${input.stopLossPct}%), about -${money(n.lossUsd, 2)}`],
-      ['Take profit', n.tpPrice ? `${px(n.tpPrice)} (${input.takeProfitPct}%), about +${money(n.profitUsd ?? 0, 2)}` : 'Off'],
+      ['Stop Loss', `${px(n.slPrice)} (${input.stopLossPct}%), about -${money(n.lossUsd, 2)}`],
+      ['Take Profit', n.tpPrice ? `${px(n.tpPrice)} (${input.takeProfitPct}%), about +${money(n.profitUsd ?? 0, 2)}` : 'Off'],
       ['Liquidation', `about ${px(n.liqPrice)}`],
     ];
   return (
     <div>
-      <Heading title="Review and start">
+      <Heading title="Review and Start">
         {input.kind === 'trade'
           ? `Monday reads D1 and H4, then scalps your ${input.bias} on the ${input.frame} chart, one position at a time, until the session is down ${money(n.lossUsd, 2)}${n.profitUsd != null ? ` or up ${money(n.profitUsd, 2)}` : ''}, or after ${hoursLong(input.expiryHours)}. Each scalp's stop and target rest on ${sim ? 'the exchange' : 'Perpl'}. You can stop it from the terminal at any time.`
           : `Monday ${long ? 'buys' : 'sells'} in ${input.slices} slices over ${input.durationMin} minutes and protects the position from the first fill. You can stop it from the terminal at any time.`}
@@ -491,7 +491,7 @@ function ReviewStep({ input, spec, mark, balance, read, sim, busy, error, onPlac
       {balance != null && input.marginUsd > balance * 0.9 && <div className="mt-6"><Notice tone="warn">This uses most of what is free. It leaves little room for the market maker or another plan.</Notice></div>}
       {error && <p role="alert" className="mt-6 text-[14px] text-ask-fg">{error}</p>}
       <div className="mt-8 flex flex-wrap gap-2.5">
-        <Button size="lg" onClick={onPlace} disabled={busy}>{busy ? 'Starting' : input.kind === 'trade' ? 'Start scalping' : 'Start TWAP'}</Button>
+        <Button size="lg" onClick={onPlace} disabled={busy}>{busy ? 'Starting' : input.kind === 'trade' ? 'Start Scalping' : 'Start TWAP'}</Button>
         <Button size="lg" variant="ghost" onClick={onEdit} disabled={busy}>Edit</Button>
       </div>
     </div>

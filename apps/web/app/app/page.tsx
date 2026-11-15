@@ -1,14 +1,14 @@
 'use client';
 
-import { CaretDownIcon, QuestionIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, QuestionIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_CONFIG, MARKETS, quotingFor, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
-import { AgentConsole, terminalStatus } from '@/components/agent';
+import { MARKETS, groupSteps, usdCompact, type DashboardState, type KillReason, type MarketState, type MarketSym } from '@monday/core';
+import { AgentConsole, HideAgentButton, terminalStatus } from '@/components/agent';
 import { Fills, Model, OpenOrders, Positions } from '@/components/blotter';
 import { OrderBook } from '@/components/book';
-import { Diverging, LineChart } from '@/components/charts';
+import { LineChart } from '@/components/charts';
 import { Guide } from '@/components/guide';
 import { draftFrom, toBody } from '@/components/policy-form';
 import { MakerRow, PlanList, planLevels } from '@/components/plans';
@@ -16,9 +16,9 @@ import { PriceChart } from '@/components/price-chart';
 import { FlowBars, SmartTape } from '@/components/smart-money';
 import { Tape } from '@/components/tape';
 import { DecisionLog } from '@/components/timeline';
-import { Button, ButtonLink, Mark, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
+import { Button, ButtonLink, CoinIcon, Notice, Panel, Skeleton, Tag, cx } from '@/components/ui';
 import { api } from '@/lib/api';
-import { fmtPrice, fmtTime, fmtUsd, towardHl } from '@/lib/format';
+import { fmtPrice, fmtTime, fmtUsd } from '@/lib/format';
 import { useLive } from '@/lib/live';
 import { useAppConfig, useMe, useRegistry, type PolicyView } from '@/lib/wallet';
 
@@ -50,6 +50,7 @@ export default function Terminal() {
   // History holds what is over: fills, and the Agentic Trade and TWAP plans that ended.
   const [past, setPast] = useState<'fills' | 'plans'>('fills');
   const [side, setSide] = useState<'book' | 'trades'>('book');
+  const [group, setGroup] = useState(0); // index into groupSteps: 0 is the tick
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const killDialog = useRef<HTMLDialogElement>(null);
@@ -75,6 +76,19 @@ export default function Terminal() {
     }
     guide.current?.showModal();
   }, [ready]);
+  // Desktop only: the agent column can fold away so the chart and blotter take its width. Remembered per browser.
+  const [agentHidden, setAgentHidden] = useState(false);
+  useEffect(() => {
+    try {
+      setAgentHidden(localStorage.getItem('monday.agent.hidden') === '1');
+    } catch {}
+  }, []);
+  const toggleAgent = () => {
+    setAgentHidden(!agentHidden);
+    try {
+      localStorage.setItem('monday.agent.hidden', agentHidden ? '' : '1');
+    } catch {}
+  };
 
   if (!state) return <Loading />;
   // Every market Perpl lists; the policy's are the ones Monday trades.
@@ -134,18 +148,18 @@ export default function Terminal() {
   const stale = m && m.dataAgeMs > 5_000;
   const warning = state.alerts.find((a) => a.severity !== 'info' && now - a.at < 5 * 60_000);
   const TABS: [Tab, string, number | null][] = [
-    ['orders', 'Open orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length + (quoting ? 1 : 0)], ['fills', 'History', state.fills.length + ended.length],
-    ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote model', null],
+    ['orders', 'Open Orders', openOrders], ['positions', 'Positions', openPositions], ['plans', 'Plans', running.length + (quoting ? 1 : 0)], ['fills', 'History', state.fills.length + ended.length],
+    ['decisions', 'Decisions', state.decisions.length], ['equity', 'Equity', null], ['model', 'Quote Model', null],
   ];
 
   return (
-    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-3rem)]">
+    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-3.5rem)]">
       {/* Market strip */}
       {/* Visible overflow so the market picker can drop below the strip. */}
       <div className="panel flex-none flex-row flex-wrap items-stretch overflow-visible">
         <MarketPicker state={state} sym={sym} onPick={pick} />
         {m && <Ticker m={m} />}
-        {m && <Stats m={m} quoting={quoting} blend={quotingFor(state.policy).cfg.blend} />}
+        {m && <Stats m={m} />}
         <div className="order-3 ml-auto flex items-center gap-2 px-2.5 py-2 xl:order-4">
           {/* The last market cannot be dropped: a policy always trades one. Stop ends trading altogether. */}
           {state.policy.markets.length > 0 && !(trading && state.policy.markets.length === 1) && (
@@ -181,7 +195,7 @@ export default function Terminal() {
         {state.status === 'paused' && state.closing === 'flatten' && <Notice tone="warn">Take profit reached, but Perpl has not confirmed the position is closed. Monday retries every 10 seconds; you can close it on Perpl too.</Notice>}
         {/* Stop means stop: nothing watches a position left open, so say so while one is. */}
         {state.status === 'paused' && !state.closing && Object.values(state.markets).some((x) => x && x.position.size !== 0 && !planMarkets.includes(x.sym)) && (
-          <Notice tone="warn" action={<Button size="xs" variant="danger" onClick={() => killDialog.current?.showModal()}>Kill and flatten</Button>}>Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl or with Kill and flatten.</Notice>
+          <Notice tone="warn" action={<Button size="xs" variant="danger" onClick={() => killDialog.current?.showModal()}>Kill and Flatten</Button>}>Stopped with an open position. Monday is not watching it: no stop loss, per position or for the day. Close it on Perpl or with Kill and Flatten.</Notice>
         )}
         {quoting && stale && <Notice tone="warn">Perpl data delayed, quotes pulled. Monday resumes on its own when data returns.</Notice>}
         {/* The newest warning from the agent itself: loss-limit approach, rate limits, blocked orders, disconnects. */}
@@ -190,11 +204,12 @@ export default function Terminal() {
       </div>
 
       {m ? (
-        // Phone: agent, chart and blotter, book, smart money. Tablet: agent across the top, then book and smart money side
-        // by side. Desktop: three columns, the agent and smart money stacked in the third.
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_300px_360px] xl:grid-rows-[auto_minmax(0,1fr)]">
-          <div ref={chartArea} className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1 xl:row-span-2">
-            <PriceChart sym={sym} m={m} fills={state.fills} now={now} levels={planLevels(running.find((p) => p.input.sym === sym))} className="h-[360px] flex-none xl:h-auto xl:flex-[3]" />
+        // Phone: agent, chart and blotter, book, Smart Traders (while on). Tablet: agent across the top, then book and Smart
+        // Traders side by side. Desktop: three columns, the agent (and Smart Traders under it) in the third.
+        // Folding the agent column animates its width and the chart's height together.
+        <div className={cx('grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-1 md:grid-cols-2 xl:grid-rows-[minmax(0,1fr)] xl:transition-[grid-template-columns] xl:duration-300 xl:ease-out-expo', agentHidden ? 'xl:grid-cols-[minmax(0,1fr)_300px_40px]' : 'xl:grid-cols-[minmax(0,1fr)_300px_360px]')}>
+          <div ref={chartArea} className="flex min-h-0 flex-col gap-1 md:col-span-2 xl:col-span-1 xl:col-start-1">
+            <PriceChart sym={sym} m={m} fills={state.fills} now={now} levels={planLevels(running.find((p) => p.input.sym === sym))} className={cx('h-[360px] flex-none xl:h-auto xl:transition-[flex-grow] xl:duration-300 xl:ease-out-expo', agentHidden ? 'xl:flex-[4]' : 'xl:flex-[3]')} />
 
             <section ref={blotter} className="panel h-[360px] flex-none xl:h-auto xl:flex-[2]">
               <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
@@ -208,7 +223,7 @@ export default function Terminal() {
                 {/* One line, cut short when the tabs need the room: it never wraps into the tab row. */}
                 <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[13px] text-fg-3 lg:block">
                   {tab === 'orders' ? "the market maker's quotes; a plan's orders show under Plans"
-                    : tab === 'positions' ? 'opened by fills; Kill and flatten closes all'
+                    : tab === 'positions' ? 'opened by fills; Kill and Flatten closes all'
                     : tab === 'plans' ? `everything that trades; plan stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
                     : tab === 'fills' ? (past === 'fills' ? "the market maker's fills; markout is the move after, positive is good" : 'Agentic Trade and TWAP that have ended')
@@ -232,7 +247,7 @@ export default function Terminal() {
                           key={v} type="button" aria-pressed={past === v} onClick={() => setPast(v)}
                           className={cx('flex h-6 items-center gap-1.5 rounded-sm px-2 text-[13px]', past === v ? 'bg-raised-2 font-semibold text-fg' : 'text-fg-3 hover:text-fg')}
                         >
-                          {v === 'fills' ? 'Maker fills' : 'Plans'}<span className="num text-[12px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
+                          {v === 'fills' ? 'Maker Fills' : 'Plans'}<span className="num text-[12px] font-normal text-fg-3">{v === 'fills' ? state.fills.length : ended.length}</span>
                         </button>
                       ))}
                     </div>
@@ -247,7 +262,7 @@ export default function Terminal() {
                   <LineChart
                     drawKey="equity" // a new point lands every 10 s: without a fixed key the line would redraw itself each time
                     label="Account equity over time" format={(v) => fmtUsd(v)} empty="Equity appears after the first few seconds of running"
-                    baseline={{ v: state.account.equityUsd - state.pnl.todayUsd, label: 'start of day' }}
+                    baseline={{ v: state.account.equityUsd - state.pnl.todayUsd, label: 'Start of Day' }}
                     series={[{ name: 'Equity', tone: 'fg', points: state.equity.map((p) => ({ t: p.t, v: p.v })) }]}
                   />
                 )}
@@ -256,47 +271,74 @@ export default function Terminal() {
           </div>
 
           {/* Book and tape share one panel, as on every exchange. */}
-          <section className="panel h-[420px] flex-none md:h-[520px] xl:col-start-2 xl:row-span-2 xl:h-auto xl:min-h-0">
+          <section className="panel h-[420px] flex-none md:h-[520px] xl:col-start-2 xl:h-auto xl:min-h-0">
             <header className="flex h-8 flex-none items-center justify-between border-b border-line pr-2.5">
               <div role="tablist" aria-label="Book or trades" className="flex h-full">
                 {(['book', 'trades'] as const).map((id) => (
                   <button key={id} role="tab" aria-selected={side === id} onClick={() => setSide(id)} className={cx('px-3 text-[13px] capitalize', side === id ? 'font-semibold text-fg shadow-[inset_0_-2px_0_var(--accent)]' : 'text-fg-3 hover:text-fg')}>
-                    {id === 'book' ? 'Order book' : 'Trades'}
+                    {id === 'book' ? 'Order Book' : 'Trades'}
                   </button>
                 ))}
               </div>
-              <span className="text-[13px] text-fg-3">Perpl</span>
+              <div className="flex items-center gap-2">
+                {/* Price grouping: the market's tick and 10x, 100x, 1000x it. The step's position carries over between markets. */}
+                {side === 'book' && (
+                  <select
+                    value={group} onChange={(e) => setGroup(Number(e.target.value))} aria-label="Group prices by" title="Group the book's prices into wider steps"
+                    className="num h-6 cursor-pointer rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg hover:border-fg-3"
+                  >
+                    {groupSteps(m.spec.priceTick).map((s, i) => <option key={s} value={i}>{s.toLocaleString('en-US', { maximumFractionDigits: 10 })}</option>)}
+                  </select>
+                )}
+                <span className="text-[13px] text-fg-3">Perpl</span>
+              </div>
             </header>
             <div className="scroll min-h-0 flex-1">
-              {side === 'book' ? <OrderBook m={m} rows={12} now={now} ownOnBook={!state.sim && !state.paper} /> : <Tape m={m} limit={40} />}
+              {side === 'book' ? <OrderBook m={m} rows={12} now={now} ownOnBook={!state.sim && !state.paper} step={groupSteps(m.spec.priceTick)[group]} /> : <Tape m={m} limit={40} />}
             </div>
           </section>
 
-          <div className="order-first md:col-span-2 xl:order-none xl:col-span-1 xl:col-start-3 xl:row-start-1">
+          {/* Below xl this wrapper steps aside (display: contents) and its panels sit in the grid as before. At xl it is the
+              third column, its panels a fixed 360px wide, so folding clips them while they fade instead of squeezing them. */}
+          <div className={cx('contents xl:col-start-3 xl:row-start-1 xl:flex xl:min-h-0 xl:flex-col xl:gap-1 xl:overflow-hidden xl:transition-[opacity,visibility] xl:duration-300 xl:ease-out-expo', agentHidden && 'xl:invisible xl:opacity-0')}>
+          <div className={cx('order-first md:col-span-2 xl:order-none xl:w-[360px]', m.signal ? 'xl:flex-none' : 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col [&>*]:xl:flex-1')}>
             {state.policy.markets.length ? (
               <AgentConsole
-                state={state} sym={sym} onPick={pick} onShowPlans={showPlans}
+                state={state} sym={sym} onPick={pick} onShowPlans={showPlans} onHide={toggleAgent}
               />
             ) : (
-              <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} />
+              <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} onHide={toggleAgent} />
             )}
           </div>
-          <div className="flex min-h-0 flex-col xl:col-start-3 xl:row-start-2">
+          {/* Only while a Smart Trader source is on (SMART_TRADERS=on, or the simulator): off since 2026-11-16. */}
+          {m.signal && <div className="flex min-h-0 flex-col xl:w-[360px] xl:flex-1">
             <Panel
               title="Smart Traders"
               className="h-[360px] flex-none md:h-[520px] xl:h-auto xl:min-h-0 xl:flex-1"
               bodyClassName="flex flex-col !overflow-hidden"
               aside={cfg?.sim ? (
                 <>
-                  <Button size="xs" variant="ghost" title="Simulate a Smart Trader buying burst" onClick={() => act('/sim/burst', { market: sym, direction: 'buy' })}>Buy burst</Button>
-                  <Button size="xs" variant="ghost" title="Simulate a Smart Trader selling burst" onClick={() => act('/sim/burst', { market: sym, direction: 'sell' })}>Sell burst</Button>
+                  <Button size="xs" variant="ghost" title="Simulate a Smart Trader buying burst" onClick={() => act('/sim/burst', { market: sym, direction: 'buy' })}>Buy Burst</Button>
+                  <Button size="xs" variant="ghost" title="Simulate a Smart Trader selling burst" onClick={() => act('/sim/burst', { market: sym, direction: 'sell' })}>Sell Burst</Button>
                 </>
-              ) : (m.signal ? undefined : <span>no feed</span>)}
+              ) : undefined}
             >
               <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
               <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={now} /></div>
             </Panel>
+          </div>}
           </div>
+          {/* The folded agent column: a rail on the right edge that names it, keeps its status in view and opens it again.
+              It shares the column with the panels above and cross-fades with them. */}
+          <button
+            type="button" onClick={toggleAgent} title="Show the Agent column"
+            className={cx('panel hidden cursor-pointer items-center gap-3 py-2.5 text-fg-2 hover:border-accent/60 hover:bg-raised hover:text-fg xl:col-start-3 xl:row-start-1 xl:flex xl:transition-[opacity,visibility,color,background-color,border-color] xl:duration-300 xl:ease-out-expo', !agentHidden && 'xl:invisible xl:opacity-0')}
+          >
+            <SidebarSimpleIcon size={16} weight="bold" mirrored className="flex-none text-accent" />
+            <span className="text-[13px] font-semibold text-fg [writing-mode:vertical-rl]">Show Agent</span>
+            <span aria-hidden className={cx('size-1.5 flex-none rounded-full', status.live ? 'live-dot bg-bid' : state.status === 'killed' ? 'bg-ask' : 'bg-fg-3')} />
+            <span className="text-[13px] [writing-mode:vertical-rl]">{status.text}</span>
+          </button>
         </div>
       ) : (
         <p className="panel flex-1 items-center justify-center py-16 text-fg-3">Waiting for market data.</p>
@@ -307,13 +349,13 @@ export default function Terminal() {
       <Guide dialog={guide} sim={Boolean(cfg?.sim)} paper={Boolean(cfg?.paper)} />
 
       <dialog ref={killDialog} className="m-auto w-[min(92vw,26rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg">
-        <h2 className="text-[17px] font-semibold tracking-tight">Kill and flatten?</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">Kill and Flatten?</h2>
         <p className="mt-2 text-[14px] text-fg-2">
           Monday cancels every open order on this Perpl account, in every market, then closes every open position on it with reduce-only market orders, including Agentic Trade and TWAP plans and anything you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
         </p>
         <form method="dialog" className="mt-5 flex justify-end gap-2">
-          <Button type="submit" variant="ghost">Keep running</Button>
-          <Button type="submit" variant="danger" onClick={() => void act('/agent/kill')}>Kill and flatten</Button>
+          <Button type="submit" variant="ghost">Keep Running</Button>
+          <Button type="submit" variant="danger" onClick={() => void act('/agent/kill')}>Kill and Flatten</Button>
         </form>
       </dialog>
     </div>
@@ -339,24 +381,24 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
   }, []);
   const x = state.markets[sym];
   const tag = x && agentTag(x, state);
+  // What Monday is doing in this market, only when it is out of the ordinary: a pulled side, a plan, a position left to
+  // exit. Plain trading and watching carry no tag.
+  const note = state.status === 'quoting' && x?.reflex
+    ? <Tag tone="ask">{x.reflex.side} {x.reflex.action === 'pull' ? 'pulled' : 'widened'}</Tag>
+    : tag === 'exit' || tag === 'plan' ? <Tag tone={tag === 'exit' ? 'warn' : 'neutral'}>{tag}</Tag> : null;
   return (
     <details ref={menu} className="relative order-1 flex-none border-r border-line" onKeyDown={(e) => e.key === 'Escape' && menu.current && (menu.current.open = false)}>
       <summary aria-label={`Market: ${sym}. Change market`} className="flex h-14 min-w-[8.25rem] cursor-pointer list-none flex-col justify-center gap-1.5 px-3 hover:bg-raised [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-1.5 text-[16px] font-semibold leading-none tracking-tight">
-          {sym}<span className="text-[14px] font-normal text-fg-3">perp</span>
+          <CoinIcon sym={sym} className="size-5" />{sym}<span className="text-[14px] font-normal text-fg-3">PERP</span>
           <CaretDownIcon size={12} weight="bold" className="ml-auto text-fg-3" />
         </span>
-        {/* What Monday is doing in this market: a pulled side outranks the policy state. */}
-        <span className="flex">
-          {state.status === 'quoting' && x?.reflex
-            ? <Tag tone="ask">{x.reflex.side} {x.reflex.action === 'pull' ? 'pulled' : 'widened'}</Tag>
-            : tag && <Tag tone={tag === 'trading' ? 'bid' : tag === 'exit' ? 'warn' : 'neutral'}>{tag === 'off' ? 'watching' : tag}</Tag>}
-        </span>
+        {note && <span className="flex">{note}</span>}
       </summary>
       <div className="absolute left-0 top-full z-20 mt-1 w-[calc(100vw-1rem)] max-w-[40rem] rounded-sm border border-line-2 bg-raised py-1 shadow-lg">
         <div className={cx(PICK_COLS, 'label h-7 whitespace-nowrap px-3 [&>span:not(:first-child)]:text-right')}>
-          <span>Market</span><span>Last price</span><span>24h change</span>
-          <span className="hidden sm:block">Funding</span><span className="hidden sm:block">24h volume</span><span className="hidden sm:block">Open interest</span>
+          <span>Market</span><span>Last Price</span><span>24h Change</span>
+          <span className="hidden sm:block">Funding</span><span className="hidden sm:block">24h Volume</span><span className="hidden sm:block">Open Interest</span>
         </div>
         {(Object.keys(state.markets) as MarketSym[]).map((s) => {
           const r = state.markets[s];
@@ -370,12 +412,12 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
               className={cx(PICK_COLS, 'num h-8 w-full px-3 text-left text-[13px] hover:bg-raised-2 [&>span:not(:first-child)]:text-right', s === sym && 'bg-raised-2')}
             >
               <span className="flex items-center gap-1.5 font-sans">
-                <span className="font-semibold">{s}</span><span className="text-fg-3">perp</span>
-                <Tag tone={t === 'trading' ? 'bid' : t === 'exit' ? 'warn' : 'neutral'}>{t === 'off' ? 'watching' : t}</Tag>
+                <CoinIcon sym={s} /><span className="font-semibold">{s}</span><span className="text-fg-3">PERP</span>
+                {(t === 'exit' || t === 'plan') && <Tag tone={t === 'exit' ? 'warn' : 'neutral'}>{t}</Tag>}
               </span>
               <span>{fmtPrice(r.mark, r.spec)}</span>
               <span className={c == null ? 'text-fg-3' : c >= 0 ? 'text-bid-fg' : 'text-ask-fg'}>{pct(c)}</span>
-              <span className="hidden sm:block">{(r.fundingRate * 100).toFixed(4)}%</span>
+              <span className={cx('hidden sm:block', signTone(fundingPct(r.fundingRate)))}>{fundingPct(r.fundingRate)}</span>
               <span className="hidden sm:block">{r.day.volumeUsd == null ? '-' : usdCompact(r.day.volumeUsd)}</span>
               <span className="hidden sm:block">{r.openInterestUsd > 0 ? usdCompact(r.openInterestUsd) : '-'}</span>
             </button>
@@ -387,7 +429,9 @@ function MarketPicker({ state, sym, onPick }: { state: DashboardState; sym: Mark
   );
 }
 
-const REGIME_TONE = { calm: 'bid', active: 'warn', storm: 'ask', stale: 'warn' } as const;
+/** Green when a figure as shown is above zero, red below; one that shows as zero (0.0000%, -0.0) stays plain. */
+const signTone = (shown: string) => (!/[1-9]/.test(shown) ? 'text-fg' : shown.startsWith('-') ? 'text-ask-fg' : 'text-bid-fg');
+const fundingPct = (rate: number) => `${(rate * 100).toFixed(4)}%`;
 
 /** The mark, coloured by its last move like every exchange ticker, with the 24-hour change under it. */
 function Ticker({ m }: { m: MarketState }) {
@@ -397,7 +441,7 @@ function Ticker({ m }: { m: MarketState }) {
   const chg = m.day.changePct;
   const abs = chg == null ? null : (m.mark * chg) / (100 + chg);
   return (
-    <div title={`Mark price: what Perpl values positions at, coloured by its last move. Oracle ${fmtPrice(m.oracle, m.spec)}.`} className="order-2 flex flex-none cursor-help flex-col justify-center gap-1.5 px-3">
+    <div title={`Mark price: what Perpl values positions at, coloured by its last move. Oracle ${fmtPrice(m.oracle, m.spec)}.`} className="order-2 flex flex-none cursor-help flex-col justify-center gap-1.5 px-4">
       <span className={cx('num text-[19px] font-medium leading-none tracking-tight transition-colors duration-300', last.dir > 0 ? 'text-bid-fg' : last.dir < 0 ? 'text-ask-fg' : 'text-fg')}>
         {fmtPrice(m.mark, m.spec)}
       </span>
@@ -408,69 +452,44 @@ function Ticker({ m }: { m: MarketState }) {
   );
 }
 
-/** One figure on the strip: a quiet label with its explanation on hover, the value in mono under it. */
+/** One figure on the strip: a quiet label with its explanation on hover, the value under it, all on one baseline. */
 function Cell({ k, hint, children, className }: { k: string; hint: string; children: React.ReactNode; className?: string }) {
   return (
     <div title={hint} className={cx('flex flex-none cursor-help flex-col justify-center gap-1.5', className)}>
-      <dt className="whitespace-nowrap text-[12px] leading-none text-fg-3 underline decoration-line-2 decoration-dotted underline-offset-[3px]">{k}</dt>
-      <dd className="num flex items-center gap-2 whitespace-nowrap text-[13px] leading-none text-fg">{children}</dd>
+      <dt className="whitespace-nowrap text-[12px] leading-none text-fg-3">{k}</dt>
+      <dd className="num relative flex items-center gap-1.5 whitespace-nowrap text-[13px] leading-none text-fg">{children}</dd>
     </div>
   );
 }
 
 /**
- * The figures a trader reads off the strip, for the selected market. Two groups: the market itself, then what Monday
- * reads from it (behind the mark, in Monday's amber). The spread is in the order book's middle row, so it is not here.
- * Below 1280px the groups take a second row of their own, which scrolls sideways if it must.
+ * The figures a trader reads off the strip, for the selected market. The spread is in the order book's middle row, so
+ * it is not here. Below 1280px they take a second row of their own, which scrolls sideways if it must.
  */
-function Stats({ m, quoting, blend }: { m: MarketState; quoting: boolean; blend: number }) {
+function Stats({ m }: { m: MarketState }) {
   const { high, low } = m.day;
   const at = high != null && low != null && high > low ? Math.min(1, Math.max(0, (m.mark - low) / (high - low))) : null;
-  const gapBps = m.hlMid ? ((m.mark - m.hlMid) / m.hlMid) * 1e4 : null;
-  const S = m.signal?.S ?? null;
-  const burst = S != null && Math.abs(S) >= DEFAULT_CONFIG.z2;
-  const regime = quoting && m.inPolicy ? m.params.regime : null;
   return (
     <div className="scroll order-4 flex w-full min-w-0 items-stretch overflow-x-auto border-t border-line xl:order-3 xl:w-auto xl:flex-1 xl:border-t-0">
-      <dl className="flex flex-none items-center gap-x-5 px-3 py-2 xl:py-0">
-        {/* From 1280 to 1399px the oracle moves into the price's tooltip, so the strip still fits on one line. */}
-        <Cell k="Oracle" hint="The price from an outside source. Perpl rejects orders more than 1% from it." className="xl:max-[1399px]:hidden">{fmtPrice(m.oracle, m.spec)}</Cell>
-        <Cell k="24h range" hint="The lowest and highest price in the last 24 hours, and where the mark sits between them.">
+      <dl className="flex flex-none items-center gap-x-6 px-4 py-2 xl:py-0">
+        <Cell k="Oracle" hint="The price from an outside source. Perpl rejects orders more than 1% from it.">{fmtPrice(m.oracle, m.spec)}</Cell>
+        {/* Low to high as one figure, the mark's place between them on a hairline under it. */}
+        <Cell k="24h Range" hint="The lowest (red) and highest (green) price in the last 24 hours, and where the mark sits between them.">
           {at == null ? '-' : (
             <>
-              <span className="text-[13px] text-fg-2">{fmtPrice(low!, m.spec)}</span>
-              <span className="relative h-2.5 w-14" aria-hidden>
-                <span className="absolute inset-x-0 top-1/2 h-px bg-line-2" />
-                <span className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-fg transition-[left] duration-500" style={{ left: `${at * 100}%` }} />
+              <span className="text-ask-fg">{fmtPrice(low!, m.spec)}</span><span className="text-fg-3">–</span><span className="text-bid-fg">{fmtPrice(high!, m.spec)}</span>
+              <span aria-hidden className="absolute inset-x-0 -bottom-[7px] h-px bg-line-2">
+                <span className="absolute -top-0.5 h-[5px] w-0.5 -translate-x-1/2 rounded-full bg-fg transition-[left] duration-500" style={{ left: `${at * 100}%` }} />
               </span>
-              <span className="text-[13px] text-fg-2">{fmtPrice(high!, m.spec)}</span>
             </>
           )}
         </Cell>
-        <Cell k="24h volume" hint="Notional traded on Perpl in the last 24 hours. The simulator reports none.">{m.day.volumeUsd == null ? '-' : usdCompact(m.day.volumeUsd)}</Cell>
-        <Cell k="Open interest" hint="Notional of all open positions in this market.">{m.openInterestUsd > 0 ? usdCompact(m.openInterestUsd) : '-'}</Cell>
-        <Cell k="Funding" hint="A periodic payment between longs and shorts, per funding interval as Perpl shows it (the analytics pages show it per 8 hours). Positive means longs pay shorts.">{(m.fundingRate * 100).toFixed(4)}%</Cell>
+        <Cell k="24h Volume" hint="Notional traded on Perpl in the last 24 hours. The simulator reports none.">{m.day.volumeUsd == null ? '-' : usdCompact(m.day.volumeUsd)}</Cell>
+        <Cell k="Open Interest" hint="Notional of all open positions in this market.">{m.openInterestUsd > 0 ? usdCompact(m.openInterestUsd) : '-'}</Cell>
+        <Cell k="Funding" hint="A periodic payment between longs and shorts, per funding interval as Perpl shows it (the analytics pages show it per 8 hours). Positive means longs pay shorts.">
+          <span className={signTone(fundingPct(m.fundingRate))}>{fundingPct(m.fundingRate)}</span>
+        </Cell>
       </dl>
-      <div className="flex flex-none items-center gap-x-4 border-l border-line px-3 py-2 xl:py-0">
-        <span title="Monday's readings for this market" className="flex-none"><Mark size={15} /></span>
-        <dl aria-label="What Monday reads" className="flex items-center gap-x-4">
-          <Cell k="Regime" hint="Monday's mode. Calm: at the best price. Active: cautious. Storm: very defensive. Stale: Smart Trader data is late. Off until Monday quotes this market.">
-            {regime ? <Tag tone={REGIME_TONE[regime as keyof typeof REGIME_TONE] ?? 'neutral'}>{regime}</Tag> : <span className="text-fg-3">off</span>}
-          </Cell>
-          <Cell k="Signal" hint={`How unusual Smart Trader flow is right now. Beyond ${DEFAULT_CONFIG.z2} either way, Monday treats it as a burst and steps aside on the threatened side.`}>
-            {S == null ? <span className="text-fg-3">none</span> : (
-              <>
-                <Diverging value={S / 4} ticks={[DEFAULT_CONFIG.z2 / 4]} className="w-12" />
-                <span className={cx('w-9 text-right', burst ? 'font-semibold text-accent' : 'text-fg')}>{S >= 0 ? '+' : ''}{S.toFixed(2)}</span>
-              </>
-            )}
-          </Cell>
-          <Cell k="Vol 1m" hint="How much the price typically moves in a minute. 1 bp is 0.01%.">{m.sigma1mBps ? `${m.sigma1mBps.toFixed(1)} bps` : '-'}</Cell>
-          <Cell k="vs reference" hint={m.hlMid ? `Reference market mid ${fmtPrice(m.hlMid, m.spec)}, where these perps are priced first. How far Perpl's mark sits from it; ${blend > 0 ? `Monday centres its quotes ${towardHl(blend)} from Perpl to it` : 'in Mid mode Monday quotes off Perpl alone'}.` : 'The reference market is off, stale or too far from Perpl to trust, so Monday uses Perpl alone.'}>
-            {gapBps == null ? <span className="text-fg-3">off</span> : `${gapBps >= 0 ? '+' : ''}${gapBps.toFixed(1)} bps`}
-          </Cell>
-          </dl>
-      </div>
     </div>
   );
 }
@@ -479,18 +498,18 @@ function Stats({ m, quoting, blend }: { m: MarketState; quoting: boolean; blend:
 function StatusBar({ state, sim, paper, connected }: { state: DashboardState; sim: boolean; paper: boolean; connected: boolean }) {
   const h = state.health;
   const c = state.costs;
-  const items: [string, string, boolean?][] = [
+  const items = ([
     ['Venue', sim ? 'simulated' : paper ? 'Perpl data, paper orders' : h.venueConnected ? 'Perpl' : 'Perpl down', !sim && !paper && !h.venueConnected],
     ['Data', `${(h.marketDataAgeMs / 1000).toFixed(1)}s`, h.marketDataAgeMs > 5_000],
-    // Two separate sources with separate health: the Smart Trader poll, and Hyperliquid's live tape and mids.
-    ['Smart Traders', h.signalAgeMs < 0 ? 'none' : `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs > 15 * 60_000],
-    ['Reference market', h.hlAgeMs < 0 ? 'off' : `${(h.hlAgeMs / 1000).toFixed(1)}s`, h.hlAgeMs > 5_000],
-    ['Order latency', h.latencyMs.venue == null ? 'n/a' : `${Math.round(h.latencyMs.venue)}ms`, (h.latencyMs.venue ?? 0) > 3_000],
+    // Two separate sources with separate health: the Smart Trader poll (shown only while it is on), and Hyperliquid's live tape and mids.
+    h.signalAgeMs >= 0 && ['Smart Traders', `${Math.round(h.signalAgeMs / 1000)}s`, h.signalAgeMs > 15 * 60_000],
+    ['Reference Market', h.hlAgeMs < 0 ? 'off' : `${(h.hlAgeMs / 1000).toFixed(1)}s`, h.hlAgeMs > 5_000],
+    ['Order Latency', h.latencyMs.venue == null ? 'n/a' : `${Math.round(h.latencyMs.venue)}ms`, (h.latencyMs.venue ?? 0) > 3_000],
     ['Budget', `${h.budgetRemaining}/${h.budgetPerMin}`, h.budgetRemaining < 8],
     ['Governor', h.llm ? (h.llmFailing ? 'rules, LLM failing' : 'LLM + rules') : 'rules', h.llmFailing],
     ['LLM 24h', !h.llm ? 'off' : !c.llmCalls24h ? 'no calls yet' : c.llmUsd24h == null ? `${c.llmCalls24h} calls, cost not recorded` : `${c.llmCalls24h} calls, $${c.llmUsd24h.toFixed(2)}`],
-    ['Chain log', h.chain ? 'on' : 'off'],
-  ];
+    ['Chain Log', h.chain ? 'on' : 'off'],
+  ] as ([string, string, boolean?] | false)[]).filter((x) => x !== false);
   return (
     <footer className="panel num h-[28px] flex-none flex-row items-center gap-x-4 overflow-x-auto px-2.5 text-[12px] text-fg-3">
       <span className={cx('flex flex-none items-center gap-1.5', connected ? 'text-bid-fg' : 'text-warn')}>
@@ -507,7 +526,7 @@ function StatusBar({ state, sim, paper, connected }: { state: DashboardState; si
 
 function Loading() {
   return (
-    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-3rem)]">
+    <div className="flex flex-col gap-1 p-1 xl:h-[calc(100dvh-3.5rem)]">
       <Skeleton className="h-[52px] flex-none" />
       <div className="grid min-h-[60vh] flex-1 gap-1 xl:grid-cols-[minmax(0,1fr)_300px_360px]">
         <Skeleton />
@@ -519,14 +538,14 @@ function Loading() {
 }
 
 /** The agent column for an account with no market maker set up: one way to Setup, and Kill still covers any running plan. */
-function NoMaker({ running, onKill }: { running: number; onKill: () => void }) {
+function NoMaker({ running, onKill, onHide }: { running: number; onKill: () => void; onHide: () => void }) {
   return (
-    <Panel title="Agent" aside={running ? <span>{running} plan{running > 1 ? 's' : ''} running</span> : undefined}>
+    <Panel title="Agent" aside={<>{running > 0 && <span>{running} plan{running > 1 ? 's' : ''} running</span>}<HideAgentButton onHide={onHide} /></>}>
       <div className="grid gap-3 p-3 text-[13px] text-fg-2">
         <p>{running ? 'Your plans are trading; follow them under Plans. Start the market maker or another plan in Setup.' : 'Nothing is trading yet. Pick a mode in Setup: the market maker, Agentic Trade or TWAP.'}</p>
         <div className="flex flex-wrap gap-2">
           <ButtonLink href="/app/setup" size="sm">Setup</ButtonLink>
-          {running > 0 && <Button size="sm" variant="danger" onClick={onKill}>Kill and flatten</Button>}
+          {running > 0 && <Button size="sm" variant="danger" onClick={onKill}>Kill and Flatten</Button>}
         </div>
       </div>
     </Panel>

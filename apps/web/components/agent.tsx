@@ -1,6 +1,7 @@
 'use client';
 
 import { KIND_LABEL, planPnl, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Side } from '@monday/core';
+import { SidebarSimpleIcon } from '@phosphor-icons/react';
 import { fmtBps, fmtPrice, fmtSigned, fmtTime, fmtUsd } from '@/lib/format';
 import { Diverging } from './charts';
 import { Button, ButtonLink, Tag, cx } from './ui';
@@ -32,11 +33,21 @@ export function quoteStanding(m: MarketState, side: Side): { label: string; good
  * The column where a manual terminal keeps its order ticket. Monday trades for you, so this is the agent: the money,
  * the controls, and one row per market showing where its quotes stand in line and what they have earned.
  */
-export function AgentConsole({ state, sym, onPick, onShowPlans }: {
+/** Desktop only: folds the agent column away so the chart and blotter take its width. */
+export function HideAgentButton({ onHide }: { onHide: () => void }) {
+  return (
+    <Button size="xs" variant="ghost" className="gap-1.5 max-xl:hidden" onClick={onHide} title="Hide the Agent column; the chart and blotter take its width">
+      <SidebarSimpleIcon size={13} weight="bold" mirrored />Hide
+    </Button>
+  );
+}
+
+export function AgentConsole({ state, sym, onPick, onShowPlans, onHide }: {
   state: DashboardState;
   sym: MarketSym;
   onPick: (s: MarketSym) => void;
   onShowPlans: () => void;
+  onHide: () => void;
 }) {
   const { pnl, policy } = state;
   const quoting = state.status === 'quoting';
@@ -52,7 +63,10 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
     <section className="panel flex-none" aria-label="Agent">
       <header className="flex h-8 flex-none items-center justify-between border-b border-line px-2.5">
         <h2 className="text-[13px] font-semibold">Agent</h2>
-        <Tag tone={state.closing ? 'warn' : status.live ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{status.text}</Tag>
+        <div className="flex items-center gap-2">
+          <Tag tone={state.closing ? 'warn' : status.live ? 'bid' : state.status === 'killed' ? 'ask' : 'neutral'}>{status.text}</Tag>
+          <HideAgentButton onHide={onHide} />
+        </div>
       </header>
 
       <dl className="grid grid-cols-2 gap-px bg-line">
@@ -85,7 +99,7 @@ export function AgentConsole({ state, sym, onPick, onShowPlans }: {
           )}
         </div>
         <div className={cell}>
-          <dt className="label">Stop loss (day)</dt>
+          <dt className="label">Stop Loss (Day)</dt>
           <dd className="num mt-1.5 flex items-center gap-2 text-[13px]">
             <span className={used >= 70 ? 'text-ask-fg' : 'text-fg'}>{Math.round(used)}%</span>
             <span className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-[1px] bg-raised-2" aria-hidden>

@@ -85,7 +85,7 @@ for (const sym of MARKETS) {
     assert.ok(s.bids.every((l, i) => i === 0 || l.price < s.bids[i - 1].price), 'bids not sorted best-first');
     assert.ok(s.asks.every((l, i) => i === 0 || l.price > s.asks[i - 1].price), 'asks not sorted best-first');
     assert.ok([...s.bids, ...s.asks].every((l) => l.size > 0), 'zero-size level left in the book');
-    assert.ok(s.bids.length <= 15 && s.asks.length <= 15, 'more than 15 levels');
+    assert.ok(s.bids.length <= 15 && s.asks.length <= 15, 'more than 15 levels by default');
     assert.ok(Math.abs(s.mark / s.mid - 1) < 0.02 && Math.abs(s.oracle / s.mid - 1) < 0.02, 'mark/oracle far from mid');
     assert.ok(age < 5_000, `stale: ${age} ms`);
   });

@@ -61,8 +61,8 @@ function Shell({ children }: { children: React.ReactNode }) {
         ) : cfg.data &&<span><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
         {me.data && (
           <span className="flex h-7 items-center rounded-sm border border-line-2">
-            <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[13px] text-fg-2 sm:inline', !me.data.demo && 'font-mono')}>{me.data.demo ? 'Demo account' : shortAddr(me.data.wallet)}</span>
-            <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" title="Sign out" className="grid h-full w-7 place-items-center text-fg-2 hover:bg-raised hover:text-fg">
+            <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[13px] text-fg-2 sm:inline', !me.data.demo && 'font-mono')}>{me.data.demo ? 'Demo Account' : shortAddr(me.data.wallet)}</span>
+            <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" title="Sign Out" className="grid h-full w-7 place-items-center text-fg-2 hover:bg-raised hover:text-fg">
               <SignOutIcon size={14} />
             </button>
           </span>
@@ -142,17 +142,17 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
   };
 
   return (
-    // Centred both ways in the space under the 45px header: one compact block, not two columns pushed to the edges.
-    <div className="page-in mx-auto grid min-h-[calc(100dvh-3rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
+    // Centred both ways in the space under the 56px header: one compact block, not two columns pushed to the edges.
+    <div className="page-in mx-auto grid min-h-[calc(100dvh-3.5rem-1px)] max-w-[60rem] content-center items-center gap-10 py-12 md:grid-cols-2 md:gap-14">
       <div>
-        <h1 className="display text-4xl font-medium md:text-5xl">Connect your wallet</h1>
+        <h1 className="display text-4xl font-semibold tracking-[-0.045em] md:text-5xl">Connect Your Wallet</h1>
         <p className="mt-4 max-w-[52ch] text-[16px] text-fg-2">
           Monday signs you in with a message from your wallet on {chain.name}. It costs no gas and moves no funds. Your wallet key never leaves your browser.
           {realFunds && ' This server trades real funds.'}
         </p>
         <div className="mt-8 flex flex-wrap gap-2.5">
-          <Button size="lg" onClick={session.signIn} disabled={busy || noWallet !== null}>Connect wallet</Button>
-          {sim && <Button size="lg" variant="ghost" onClick={demo} disabled={busy}>{busy ? 'Opening' : 'Use a demo account'}</Button>}
+          <Button size="lg" onClick={session.signIn} disabled={busy || noWallet !== null}>Connect Wallet</Button>
+          {sim && <Button size="lg" variant="ghost" onClick={demo} disabled={busy}>{busy ? 'Opening' : 'Use a Demo Account'}</Button>}
         </div>
         {error && <p role="alert" className="mt-3 text-[13px] text-ask-fg">{error}</p>}
         {wrongChain && (
@@ -166,18 +166,18 @@ function Connect({ sim, realFunds }: { sim: boolean; realFunds: boolean }) {
         )}
         {noWallet && <NoWallet here={noWallet} />}
       </div>
-      <dl className="panel divide-y divide-line text-[14px]">
+      <dl className="frost text-[14px]"><div className="frost-in divide-y divide-line">
         {[
-          ['Funds stay put', 'Your collateral stays in your own Perpl account. Monday never holds it.'],
-          ['Trade-only key', 'The key you give Monday can place and cancel orders. Perpl never lets an API key withdraw.'],
-          ['One click to stop', 'Stop cancels Monday\'s orders. Kill cancels every order and closes positions. Revoking the key on Perpl cuts access at once.'],
+          ['Funds Stay Put','Your collateral stays in your own Perpl account. Monday never holds it.'],
+          ['Trade-Only Key','The key you give Monday can place and cancel orders. Perpl never lets an API key withdraw.'],
+          ['One Click to Stop','Stop cancels Monday\'s orders. Kill cancels every order and closes positions. Revoking the key on Perpl cuts access at once.'],
         ].map(([t, d]) => (
-          <div key={t} className="px-4 py-3.5">
+          <div key={t} className="px-5 py-4">
             <dt className="font-semibold">{t}</dt>
             <dd className="mt-1 text-fg-2">{d}</dd>
           </div>
         ))}
-      </dl>
+      </div></dl>
     </div>
   );
 }

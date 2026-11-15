@@ -17,14 +17,14 @@ const LOOP = { mm: 28, trade: 16, twap: 22 };
 /** The frame held under reduced motion: the ask pulled, inside the second scalp, slice 9 of 15. */
 const STILL = { mm: 13, trade: 9, twap: 9 };
 
-// ---- Market maker: calm, Smart Traders start buying, the ask is pulled, Kimi widens both, calm again. ----
-type MmPhase = 'calm' | 'burst' | 'pulled' | 'storm';
-const mmPhase = (m: number): MmPhase => (m >= 10 && m < 12 ? 'burst' : m >= 12 && m < 18 ? 'pulled' : m >= 18 && m < 24 ? 'storm' : 'calm');
+// ---- Market maker: calm, the reference market jumps, the ask is pulled, Kimi widens both, calm again. ----
+type MmPhase = 'calm' | 'jump' | 'pulled' | 'storm';
+const mmPhase = (m: number): MmPhase => (m >= 10 && m < 12 ? 'jump' : m >= 12 && m < 18 ? 'pulled' : m >= 18 && m < 24 ? 'storm' : 'calm');
 const MM_STATUS: Record<MmPhase, string> = {
   calm: 'Both sides quoted, 2.5 bps from mid',
-  burst: 'Smart Traders are buying',
-  pulled: 'Ask pulled before it is run over',
-  storm: 'Wider and smaller until the flow cools',
+  jump: 'The reference market jumps up',
+  pulled: 'Ask pulled before Perpl catches up',
+  storm: 'Wider and smaller until it settles',
 };
 
 // ---- Agentic Trade: a long bias on an uptrend, two scalps bought on pullbacks, each with its stop and target. ----
@@ -77,8 +77,8 @@ export function ModesDiagram({ className }: { className?: string }) {
         className={cx('mx-auto grid max-w-[44rem] xl:max-w-none xl:grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)_minmax(0,19rem)] xl:grid-rows-[auto_repeat(3,auto)] xl:gap-x-[var(--wire)]', !live && 'paused')}
         style={{ '--wire': 'clamp(4rem, calc((100vw - 1100px) / 3), 7rem)' } as CSSProperties}
       >
-        <Inputs burst={mm === 'burst' || mm === 'pulled'} />
-        <Drop><Packet c="fg-3" dur={1400} /><Packet c={mm === 'burst' || mm === 'pulled' ? 'bid' : 'fg-3'} dur={900} delay={500} /></Drop>
+        <Inputs moving={mm === 'jump' || mm === 'pulled'} />
+        <Drop><Packet c="fg-3" dur={1400} /><Packet c={mm === 'jump' || mm === 'pulled' ? 'bid' : 'fg-3'} dur={900} delay={500} /></Drop>
 
         <div className="relative xl:row-span-4 xl:grid xl:grid-rows-subgrid">
           {/* The page's one light: an amber horizon on Monday's top edge, glowing up into the headline. */}
@@ -89,7 +89,7 @@ export function ModesDiagram({ className }: { className?: string }) {
               <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight"><Mark size={18} /> Monday</span>
               <Tag>three modes, one account</Tag>
             </header>
-            <Lane name="Market maker" note="both sides, post-only" status={MM_STATUS[mm]} flash={mm === 'calm' ? null : `mm-${mm}`} tone={mm === 'pulled' ? 'ask' : 'accent'}>
+            <Lane name="Market Maker" note="both sides, post-only" status={MM_STATUS[mm]} flash={mm === 'calm' ? null : `mm-${mm}`} tone={mm === 'pulled' ? 'ask' : 'accent'}>
                 <BookStrip phase={mm} />
               </Lane>
               <Lane
@@ -117,6 +117,44 @@ export function ModesDiagram({ className }: { className?: string }) {
         )}
       </figcaption>
     </figure>
+  );
+}
+
+/** One mode's drawing on a clock of its own, for the landing's mode tabs. Held on its busy frame under reduced motion. */
+export function ModePreview({ mode }: { mode: keyof typeof LOOP }) {
+  const reduce = useReducedMotion();
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (reduce) return;
+    const t = setInterval(() => setN((x) => x + 1), TICK_MS);
+    return () => clearInterval(t);
+  }, [reduce]);
+  const k = reduce ? STILL[mode] : n % LOOP[mode];
+  if (mode === 'mm') {
+    const p = mmPhase(k);
+    return <Preview status={MM_STATUS[p]}><BookStrip phase={p} /></Preview>;
+  }
+  if (mode === 'trade') {
+    const r = Math.min(LAST, 2 + k * 2);
+    const scalp = SCALPS.findIndex((s) => r >= s.entry && r < s.exit);
+    const won = SCALPS.filter((s) => r >= s.exit).length;
+    return (
+      <Preview status={scalp >= 0 ? 'Long on the pullback. Stop and target on Perpl' : won ? `${won} scalp${won > 1 ? 's' : ''}, ${won} won. Waiting for the next pullback` : 'Long bias, following the trend. Waiting for a pullback'}>
+        <ScalpChart key={reduce ? 's' : Math.floor(n / LOOP.trade)} r={r} scalp={scalp} />
+      </Preview>
+    );
+  }
+  const filled = Math.min(SLICES, k);
+  return <Preview status={filled < SLICES ? `Buying 1.00 ETH in slices, ${filled} of ${SLICES} filled` : 'Built 1.00 ETH. Its stop rests on Perpl'}><Slices filled={filled} /></Preview>;
+}
+
+function Preview({ status, children }: { status: string; children: ReactNode }) {
+  return (
+    <div>
+      {/* The lane drawings are sized for a 56px row; here they are the picture, so they are drawn twice as tall. */}
+      <div className="[zoom:2] [&_.label]:hidden">{children}</div>
+      <p key={status} className="rise mt-6 text-[15px] text-fg-2">{status}</p>
+    </div>
   );
 }
 
@@ -157,7 +195,7 @@ function BookStrip({ phase }: { phase: MmPhase }) {
         <span key={`a${i}`} className="absolute bottom-0 w-[3.5%] rounded-t-[1px] bg-ask/25" style={{ left: `calc(50% + ${10 + i * 5.6}%)`, height: `${DEPTH[(i + 3) % DEPTH.length] * 70}%` }} />
       ))}
       <span className="absolute inset-y-0 left-1/2 border-l border-dashed border-line-2" />
-      <span className="label absolute -top-0.5 left-1/2 ml-1.5">mid</span>
+      <span className="label absolute -top-0.5 left-1/2 ml-1.5">Mid</span>
       {(['bid', 'ask'] as const).map((side) => {
         const gone = side === 'ask' && pulled;
         return (
@@ -234,14 +272,14 @@ function Slices({ filled }: { filled: number }) {
 function Account({ mm, scalp, filled, sends, n }: { mm: MmPhase; scalp: number; filled: number; sends: { mm: boolean; trade: boolean; twap: boolean } | null; n: number }) {
   const sent = [sends?.mm, sends?.trade, sends?.twap];
   const rows: [string, ReactNode, boolean][] = [
-    ['Market maker', mm === 'pulled' ? <><span className="text-accent">Bid</span> resting, <span className="text-ask-fg">ask pulled</span></> : <><span className="text-accent">Bid</span> and <span className="text-accent">ask</span> resting{mm === 'storm' ? ', wider' : ''}</>, false],
+    ['Market Maker', mm === 'pulled' ? <><span className="text-accent">Bid</span> resting, <span className="text-ask-fg">ask pulled</span></> : <><span className="text-accent">Bid</span> and <span className="text-accent">ask</span> resting{mm === 'storm' ? ', wider' : ''}</>, false],
     ['Agentic Trade', scalp >= 0 ? <>Long <span className="num">0.010 BTC</span></> : <span className="text-fg-3">Flat between scalps</span>, scalp >= 0],
     ['TWAP', filled ? <>Long <span className="num">{(filled / SLICES).toFixed(2)}</span> of <span className="num">1.00 ETH</span></> : <span className="text-fg-3">Flat, first slice next</span>, filled > 0],
   ];
   return (
     <div className="panel !overflow-visible xl:row-span-4 xl:grid xl:grid-rows-subgrid">
       <header className="flex h-11 flex-none items-center justify-between gap-3 px-3">
-        <h3 className="text-[14px] font-semibold">Your Perpl account</h3>
+        <h3 className="text-[14px] font-semibold">Your Perpl Account</h3>
         <Tag tone="accent">funds stay here</Tag>
       </header>
       {rows.map(([k, v, safe], i) => (
@@ -268,25 +306,24 @@ function Account({ mm, scalp, filled, sends, n }: { mm: MmPhase; scalp: number; 
 
 const INPUTS = [
   { name: 'Perpl', sub: 'Order book, trades, funding', packets: [[1600, 0], [1600, 800]] },
-  { name: 'Reference market', sub: 'Prices and the trade tape', packets: [[2100, 300], [2100, 1350]] },
-  { name: 'Smart Traders', sub: 'Wallets with a record of profit', packets: [[3200, 400]] },
+  { name: 'Reference Market', sub: 'Prices and the trade tape', packets: [[2100, 300], [2100, 1350]] },
 ] as const;
-// The Smart Trader flow, bar by bar: quiet, then the burst.
+// The reference market's moves, bar by bar: quiet, then the jump.
 const QUIET = [3, 5, 2, 6, 4, 3, 7, 4, 2, 5, 3, 4];
 const LOUD = [5, 8, 11, 9, 14, 12, 17, 15, 13, 18, 16, 20];
 
-/** What Monday watches, each wired into it. The Smart Traders' wire carries the burst. */
-function Inputs({ burst }: { burst: boolean }) {
+/** What Monday watches, each wired into it. The reference market's wire carries the jump. */
+function Inputs({ moving }: { moving: boolean }) {
   return (
-    // On a phone the three sit in one row, names only; the lines under them return from sm up.
-    <div className="grid grid-cols-3 gap-x-4 gap-y-5 sm:gap-x-6 xl:row-span-4 xl:grid-cols-1 xl:grid-rows-subgrid xl:gap-y-0 xl:text-right">
+    // On a phone the two sit in one row, names only; the lines under them return from sm up.
+    <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:gap-x-6 xl:row-span-4 xl:grid-cols-1 xl:grid-rows-subgrid xl:gap-y-0 xl:text-right">
       <span aria-hidden className="hidden xl:block" />
       {INPUTS.map((x) => {
-        const st = x.name === 'Smart Traders';
+        const st = x.name === 'Reference Market';
         return (
           <div key={x.name} className="relative xl:self-center xl:pr-3">
             <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight sm:text-[16px] xl:justify-end">
-              {st && burst && <span className="hidden sm:inline-flex"><Tag tone="bid">buying</Tag></span>}
+              {st && moving && <span className="hidden sm:inline-flex"><Tag tone="bid">jumping</Tag></span>}
               {x.name}
             </p>
             <p className="mt-1 hidden text-[14px] text-fg-3 sm:block">{x.sub}</p>
@@ -295,15 +332,15 @@ function Inputs({ burst }: { burst: boolean }) {
                 {QUIET.map((q, i) => (
                   <span
                     key={i}
-                    className={cx('w-[3px] rounded-[1px] motion-safe:transition-[height,background-color] motion-safe:duration-500', burst ? 'bg-bid' : 'bg-line-2')}
-                    style={{ height: burst ? LOUD[i] : q, transitionDelay: `${i * 25}ms` }}
+                    className={cx('w-[3px] rounded-[1px] motion-safe:transition-[height,background-color] motion-safe:duration-500', moving ? 'bg-bid' : 'bg-line-2')}
+                    style={{ height: moving ? LOUD[i] : q, transitionDelay: `${i * 25}ms` }}
                   />
                 ))}
               </div>
             )}
             <Wire dir="x" className="left-full top-[11px] hidden w-[var(--wire)] xl:block">
               {x.packets.map(([dur, delay]) => <Packet key={delay} c={st ? 'bid' : 'fg-3'} dur={dur} delay={delay} />)}
-              {st && burst && [0, 180, 360, 540].map((d) => <Packet key={`b${d}`} c="bid" dur={800} delay={d} />)}
+              {st && moving && [0, 180, 360, 540].map((d) => <Packet key={`b${d}`} c="bid" dur={800} delay={d} />)}
             </Wire>
           </div>
         );

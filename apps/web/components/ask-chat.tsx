@@ -100,7 +100,7 @@ export function AskChat() {
           <motion.button
             key="fab" type="button" onClick={() => setOpen(true)} aria-label="Ask Monday"
             initial={reduce ? false : { opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.18 }}
-            className="fixed right-4 bottom-4 z-40 flex h-11 items-center gap-2 rounded-full bg-accent pr-4 pl-3.5 text-[14px] font-semibold text-accent-fg shadow-[0_8px_28px_rgb(0_0_0/0.35)] hover:brightness-110"
+            className="fixed right-4 bottom-4 z-40 flex h-11 items-center gap-2 rounded-lg bg-accent pr-4 pl-3.5 text-[14px] font-semibold text-accent-fg shadow-[0_8px_28px_rgb(0_0_0/0.35)] hover:brightness-110"
           >
             <ChatCircleDotsIcon size={18} weight="fill" /> Ask Monday
             <kbd className="num hidden rounded-[3px] bg-black/15 px-1 text-[12px] font-medium sm:inline">⌘K</kbd>
@@ -145,7 +145,7 @@ export function AskChat() {
               {!busy && (
                 <div className="mb-2 flex flex-wrap gap-1">
                   {suggestions(path).map((s) => (
-                    <button key={s} type="button" onClick={() => void send(s)} className="flex-none rounded-full border border-line-2 px-2.5 py-1 text-[13px] whitespace-nowrap text-fg-2 hover:border-accent/45 hover:text-fg">{s}</button>
+                    <button key={s} type="button" onClick={() => void send(s)} className="flex-none rounded-md border border-line-2 px-2.5 py-1 text-[13px] whitespace-nowrap text-fg-2 hover:border-accent/45 hover:text-fg">{s}</button>
                   ))}
                 </div>
               )}
@@ -202,7 +202,7 @@ function Answer({ m, onExplain }: { m: Msg; onExplain: (id: number, w: string) =
           <Link key={x.href} href={at(x.href)} className="rounded-sm border border-accent/45 bg-accent/12 px-2 py-1 text-[13px] text-accent hover:bg-accent/20">{x.label}</Link>
         ))}
         {a.wallet && !m.explain && (
-          <button type="button" onClick={() => onExplain(m.id, a.wallet!)} className="inline-flex items-center gap-1 rounded-sm border border-line-2 px-2 py-1 text-[13px] text-fg-2 hover:text-fg"><SparkleIcon size={11} weight="fill" className="text-accent" /> Explain in plain words</button>
+          <button type="button" onClick={() => onExplain(m.id, a.wallet!)} className="inline-flex items-center gap-1 rounded-sm border border-line-2 px-2 py-1 text-[13px] text-fg-2 hover:text-fg"><SparkleIcon size={11} weight="fill" className="text-accent" /> Explain in Plain Words</button>
         )}
       </div>
       <p className="flex items-center gap-1.5 text-[12px] text-fg-3">

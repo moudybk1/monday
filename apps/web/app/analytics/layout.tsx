@@ -67,11 +67,12 @@ function SubNav() {
   const reduce = useReducedMotion();
   return (
     <div className="panel mt-1 flex-row flex-wrap items-stretch justify-between overflow-visible">
-      <div role="tablist" aria-label="Analytics" className="no-bar flex h-10 overflow-x-auto">
+      <div role="tablist" aria-label="Analytics" className="no-bar flex h-10 items-center gap-0.5 overflow-x-auto px-1">
         {TABS.map((t) => (
-          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative flex flex-none items-center px-3.5 text-[14px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
+          <Link key={t.href} href={at(t.href)} role="tab" aria-selected={t.on(pathname)} className={cx('relative isolate flex h-8 flex-none items-center rounded-md px-3.5 text-[14px] transition-colors duration-150', t.on(pathname) ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg')}>
             {t.label}
-            {t.on(pathname) && <motion.span layoutId="analytics-tab" aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
+            {/* The current tab sits on a raised tile that slides to the next one. */}
+            {t.on(pathname) && <motion.span layoutId="analytics-tab" aria-hidden className="absolute inset-0 -z-10 rounded-md bg-raised-2 shadow-[inset_0_0_0_1px_var(--line-2)]" transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }} />}
           </Link>
         ))}
       </div>

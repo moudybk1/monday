@@ -56,20 +56,20 @@ function Compare() {
   const rows: [string, (w: PxWallet) => React.ReactNode, ((w: PxWallet) => number | null)?][] = [
     ['Equity', (w) => money(w.equityUsd)],
     ['Open PnL', (w) => signedMoney(w.positions.reduce((s, p) => s + p.upnl, 0)), (w) => w.positions.reduce((s, p) => s + p.upnl, 0)],
-    ['Open positions', (w) => w.positions.length ? w.positions.map((p) => `${p.sym} ${p.long ? 'L' : 'S'}`).join(', ') : 'none'],
+    ['Open Positions', (w) => w.positions.length ? w.positions.map((p) => `${p.sym} ${p.long ? 'L' : 'S'}`).join(', ') : 'none'],
     // Busy wallets are measured over their newest fills only: each column says which period the rows below cover.
-    ['Stats cover', (w) => (w.fills.total > w.fills.used ? `newest ${w.fills.used.toLocaleString('en-US')} of ${w.fills.total.toLocaleString('en-US')}` : 'all indexed fills') + (w.fills.since ? `, since ${new Date(w.fills.since).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}` : '')],
+    ['Stats Cover', (w) => (w.fills.total > w.fills.used ? `newest ${w.fills.used.toLocaleString('en-US')} of ${w.fills.total.toLocaleString('en-US')}` : 'all indexed fills') + (w.fills.since ? `, since ${new Date(w.fills.since).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}` : '')],
     ['Realised PnL', (w) => signedMoney(w.performance.netUsd), (w) => w.performance.netUsd],
-    ['Fees paid', (w) => money(w.performance.feesUsd, true)],
+    ['Fees Paid', (w) => money(w.performance.feesUsd, true)],
     ['Volume', (w) => money(w.performance.volumeUsd)],
     ['Fills', (w) => w.performance.trades.toLocaleString('en-US')],
-    ['Win rate', (w) => (w.performance.winRate == null ? 'n/a' : `${(w.performance.winRate * 100).toFixed(1)}%`)],
-    ['Profit factor', (w) => profitText(w.performance)],
-    ['Max drawdown', (w) => money(w.performance.maxDrawdownUsd, true)],
-    ['Longest streaks', (w) => `${w.performance.longestWin} W / ${w.performance.longestLoss} L`],
-    ['Avg hold', (w) => hold(w.performance.avgHoldMin)],
-    ['Best market', (w) => (w.performance.byMarket[0] ? `${w.performance.byMarket[0].sym} ${signedMoney(w.performance.byMarket[0].netUsd)}` : 'n/a')],
-    ['Worst market', (w) => { const m = w.performance.byMarket.at(-1); return m ? `${m.sym} ${signedMoney(m.netUsd)}` : 'n/a'; }],
+    ['Win Rate', (w) => (w.performance.winRate == null ? 'n/a' : `${(w.performance.winRate * 100).toFixed(1)}%`)],
+    ['Profit Factor', (w) => profitText(w.performance)],
+    ['Max Drawdown', (w) => money(w.performance.maxDrawdownUsd, true)],
+    ['Longest Streaks', (w) => `${w.performance.longestWin} W / ${w.performance.longestLoss} L`],
+    ['Avg Hold', (w) => hold(w.performance.avgHoldMin)],
+    ['Best Market', (w) => (w.performance.byMarket[0] ? `${w.performance.byMarket[0].sym} ${signedMoney(w.performance.byMarket[0].netUsd)}` : 'n/a')],
+    ['Worst Market', (w) => { const m = w.performance.byMarket.at(-1); return m ? `${m.sym} ${signedMoney(m.netUsd)}` : 'n/a'; }],
   ];
 
   return (
@@ -113,10 +113,10 @@ function Compare() {
           )}
           {mixed && (
             <Notice>
-              Each wallet is measured over its own period (Stats cover), so realised PnL, volume, fills and drawdown do not span the same days.
+              Each wallet is measured over its own period (Stats Cover), so realised PnL, volume, fills and drawdown do not span the same days.
             </Notice>
           )}
-          <Panel title="Side by side" className="rise">
+          <Panel title="Side by Side" className="rise">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-[13px]">
                 <thead>
@@ -177,7 +177,7 @@ function Empty({ onAdd }: { onAdd: (qs: string[]) => void }) {
   const four = (top.data ?? []).slice(0, MAX);
   return (
     <section className="panel rise items-center px-6 py-16 text-center">
-      <h2 className="display text-[1.75rem] font-medium">Compare up to four wallets</h2>
+      <h2 className="display text-[1.75rem] font-medium">Compare Up to Four Wallets</h2>
       <p className="mt-3 max-w-[60ch] text-[14px] leading-relaxed text-fg-2">
         Type an address or account number in the box above, press Watch on any wallet, or start with this week&apos;s most profitable accounts on Perpl (ranked by 7-day PnL; the table then shows each wallet over its own history).
       </p>
@@ -189,7 +189,7 @@ function Empty({ onAdd }: { onAdd: (qs: string[]) => void }) {
             </button>
           ))}
       </div>
-      {four.length > 1 && <Button className="mt-5" onClick={() => onAdd(four.map((t) => String(t.account)))}>Compare these {four.length}</Button>}
+      {four.length > 1 && <Button className="mt-5" onClick={() => onAdd(four.map((t) => String(t.account)))}>Compare These {four.length}</Button>}
       {top.isError && <p className="mt-4 text-[13px] text-fg-3">The leaderboard is not reachable right now. Adding a wallet by address still works.</p>}
     </section>
   );

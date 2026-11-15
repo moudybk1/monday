@@ -1,16 +1,20 @@
 'use client';
 
-import { ArrowCounterClockwiseIcon, PauseIcon, PlayIcon } from '@phosphor-icons/react';
+import { ArrowCounterClockwiseIcon, ArrowRightIcon, ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon, PauseIcon, PlayIcon } from '@phosphor-icons/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Link from 'next/link';
 import { AnimatePresence, animate, motion, useInView, useReducedMotion } from 'motion/react';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { type DashboardState, type Decision, type MarketState, type MarketSym, type PxOverview } from '@monday/core';
 import { fmtPrice, fmtTime } from '@/lib/format';
 import { fieldTargets, type Mine } from '@/lib/field';
+import { at } from '@/lib/hosts';
 import { useLive } from '@/lib/live';
+import { ModePreview } from './agent-diagram';
 import { OrderBook } from './book';
 import { PriceChart } from './price-chart';
-import { FlowBars, SmartTape } from './smart-money';
 import { Num, money, pct, price, tone } from './stats-ui';
+import { Tape } from './tape';
 import { Panel, Skeleton, Tag, cx } from './ui';
 
 /** A block that rises into place as it scrolls into view. Still under reduced motion. */
@@ -42,10 +46,20 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     const t = setTimeout(() => setOverdue(true), 8_000);
     return () => clearTimeout(t);
   }, []);
-  return <LiveContext.Provider value={{ state, connected, overdue }}>{children}</LiveContext.Provider>;
+  // The terminal's own panels used on the landing (the order book in the walkthrough) read through react-query, so the
+  // landing carries a client of its own, as the app and analytics layouts do.
+  const [qc] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } }));
+  return (
+    <QueryClientProvider client={qc}>
+      <LiveContext.Provider value={{ state, connected, overdue }}>{children}</LiveContext.Provider>
+    </QueryClientProvider>
+  );
 }
 
-/** The terminal under the hero headline: a ticker rail of every market Perpl lists, then book, chart and Smart Trader flow. */
+/** The house account's live state, for any part of the page inside LiveProvider. */
+export const useLiveState = () => useContext(LiveContext).state;
+
+/** The terminal under the hero headline: a ticker rail of every market Perpl lists, then book, chart and the trades printing. */
 export function HeroTerminal({ className }: { className?: string }) {
   const { state, connected, overdue } = useContext(LiveContext);
   const [picked, setPicked] = useState<MarketSym>('BTC');
@@ -83,7 +97,7 @@ export function HeroTerminal({ className }: { className?: string }) {
               })}
             </div>
             <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1">
-              {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: Smart Traders {m.reflex.side === 'ask' ? 'buying' : 'selling'}</Tag>
+              {m.reflex ? <Tag tone="ask">{m.reflex.side} {m.reflex.action === 'pull' ? 'pulled' : 'widened'}: {m.reflex.fill ? 'a taker is sweeping' : m.reflex.ref ? 'the reference market moved' : m.reflex.book ? 'the book is lopsided' : `Smart Traders ${m.reflex.side === 'ask' ? 'buying' : 'selling'}`}</Tag>
                 : state.status === 'quoting' ? <Tag tone="accent">Monday is quoting</Tag> : <Tag>book only</Tag>}
               {state.status === 'quoting' && <Tag>{m.params.regime} regime</Tag>}
               {/* The one live indicator on the page: real state, not decoration. */}
@@ -93,13 +107,12 @@ export function HeroTerminal({ className }: { className?: string }) {
               </span>
             </div>
             <div className={cx('grid gap-1 lg:grid-cols-[292px_minmax(0,1fr)_340px]', grid)}>
-              <Panel title="Order book" aside={<span>Perpl</span>} bodyClassName="!overflow-hidden">
+              <Panel title="Order Book" aside={<span>Perpl</span>} bodyClassName="!overflow-hidden">
                 <OrderBook m={m} rows={10} now={state.at} />
               </Panel>
               <PriceChart sym={sym} m={m} fills={state.fills} now={state.at} wheel={false} className="h-[320px] lg:h-auto" />
-              <Panel title="Smart Traders" className="h-[320px] lg:h-auto" bodyClassName="flex flex-col !overflow-hidden">
-                <div className="flex-none border-b border-line"><FlowBars m={m} /></div>
-                <div className="scroll min-h-0 flex-1"><SmartTape m={m} now={state.at} limit={20} /></div>
+              <Panel title="Trades" aside={<span>Perpl</span>} className="h-[320px] lg:h-auto" bodyClassName="!overflow-hidden">
+                <Tape m={m} limit={20} />
               </Panel>
             </div>
           </>
@@ -111,7 +124,7 @@ export function HeroTerminal({ className }: { className?: string }) {
           {!connected ? `Disconnected. Showing the last data from ${fmtTime(state.at, false)}; prices on screen are not moving. `
             : state.sim ? "Monday's house account quoting on a simulated book, streaming from its server. Pick a market. "
             : state.paper ? "Monday's house account paper-trading on Perpl's real book. Prices are real, its orders are simulated. "
-            : `Perpl's live order book${m.signal ? ' and Smart Trader flow' : ''}, streaming from Monday's server. Not an illustration. `}
+            : "Perpl's live order book and trades, streaming from Monday's server. Not an illustration. "}
           {!state.sim && !state.paper && "Monday's own quotes appear in your terminal once you start it."}
         </figcaption>
       )}
@@ -335,7 +348,8 @@ function Big({ k, n, format, sub }: { k: string; n: number | null; format: (v: n
 }
 
 /** Headline figures and the busiest markets from Monday's own Perpl indexer, refreshed every half minute. */
-export function PerplStats() {
+/** `table`: false leaves out the markets table, for a narrow column. */
+export function PerplStats({ table = true }: { table?: boolean }) {
   const [o, setO] = useState<PxOverview | null | undefined>(undefined); // undefined: loading; null: not reachable
   useEffect(() => {
     let stopped = false;
@@ -350,16 +364,16 @@ export function PerplStats() {
   const rows = [...o.markets].sort((a, b) => b.volume24hUsd - a.volume24hUsd).slice(0, 6);
   const since = o.indexer.since ? new Date(o.indexer.since).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : null;
   return (
-    <div className="grid gap-1 rounded-md border border-line bg-void p-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-      <dl className="panel grid grid-cols-2 gap-px bg-line md:grid-cols-3 lg:grid-cols-2">
+    <div className={cx('grid gap-1 rounded-md border border-line bg-void p-1', table && 'lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]')}>
+      <dl className={cx('panel grid grid-cols-2 gap-px bg-line', table ? 'md:grid-cols-3 lg:grid-cols-2' : 'sm:grid-cols-3')}>
         <Big k="Volume 24h" n={h.volume24hUsd} format={money} sub={`${money(h.volume7dUsd)} in 7 days`} />
-        <Big k="Open interest" n={h.openInterestUsd} format={money} sub="one side, at mark" />
+        <Big k="Open Interest" n={h.openInterestUsd} format={money} sub="one side, at mark" />
         <Big k="TVL" n={h.tvlUsd} format={money} sub="held by the Exchange" />
         <Big k="Fees 24h" n={h.fees24hUsd} format={(v) => money(v, true)} sub={h.fees24hUsd != null && h.volume24hUsd ? `${((h.fees24hUsd / h.volume24hUsd) * 1e4).toFixed(2)} bps of volume` : undefined} />
         <Big k="Traders 24h" n={h.activeTraders24h} format={int} sub={`${int(h.accounts)} accounts all time`} />
-        <Big k="Volume all time" n={h.volumeAllUsd} format={money} sub={since ? `since ${since}` : undefined} />
+        <Big k="Volume All Time" n={h.volumeAllUsd} format={money} sub={since ? `since ${since}` : undefined} />
       </dl>
-      <Panel title="Markets" aside={<span>24h, busiest first</span>}>
+      {table && <Panel title="Markets" aside={<span>24h, busiest first</span>}>
         <table className="w-full table-fixed text-[13px]">
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
@@ -367,7 +381,7 @@ export function PerplStats() {
               <th className="text-right">Mark</th>
               <th className="w-[4.5rem] text-right">24h</th>
               <th className="text-right">Volume</th>
-              <th className="hidden text-right sm:table-cell">Open interest</th>
+              <th className="hidden text-right sm:table-cell">Open Interest</th>
               <th className="hidden w-[6.5rem] pr-3 text-right sm:table-cell">Funding 8h</th>
             </tr>
           </thead>
@@ -387,35 +401,33 @@ export function PerplStats() {
             })}
           </tbody>
         </table>
-      </Panel>
+      </Panel>}
     </div>
   );
 }
 
-// ---- The burst, step by step (PRD 6.3). Example numbers, real components. ----
+// ---- A jump in the reference market, step by step. Example numbers, real components. ----
 
 const T0 = 1_760_000_000_000;
+/** The reference market's BTC mid after its jump: 4.1 bps over Perpl's 85,200. */
+const REF_JUMPED = 85_234.9;
 const SPEC = { sym: 'BTC' as const, marketId: 16, priceTick: 0.1, sizeStep: 0.00001, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage: 15 };
 const lv = (px: number[], sz: number[]) => px.map((price, i) => ({ price, size: sz[i] }));
-const win = (netUsd: number, z: number, n: number) => ({ netUsd, grossUsd: Math.abs(netUsd) * 1.2, imbalance: Math.sign(netUsd) * 0.83, z, n });
 
 function scene(step: number): MarketState {
-  const burst = step >= 1;
+  const jumped = step >= 1;
   const pulled = step >= 2;
   return {
     sym: 'BTC', spec: SPEC, mark: 85_200, oracle: 85_200, mid: 85_200, bestBid: 85_180.4, bestAsk: 85_219.8,
     asks: lv([85_219.8, 85_231.1, 85_242.6, 85_254.0], [0.021, 0.034, 0.047, 0.058]),
     bids: lv([85_180.4, 85_168.9, 85_157.2, 85_146.1], [0.024, 0.031, 0.049, 0.061]),
-    fundingRate: 0, dataAgeMs: 200, sigma1mBps: 2.4, book: 0, hlMid: null,
+    fundingRate: 0, dataAgeMs: 200, sigma1mBps: 2.4, book: 0, hlMid: jumped ? REF_JUMPED : 85_200,
     quotes: { bid: { price: 85_162.1, size: 0.00117 }, ask: pulled ? null : { price: 85_237.9, size: 0.00117 } },
     model: null, position: { size: 0, entryPrice: 0, notionalUsd: 0, marginUsd: null, unrealizedUsd: 0 },
     params: { market: 'BTC', enabled: true, spread_mult: 1, skew_bias_bps: 0, size_mult: 1, max_inventory_usd: 500, ttl_min: 15, regime: 'calm', reason: '' },
     paramsSource: 'fallback',
-    reflex: pulled ? { side: 'ask', action: 'pull', until: T0 + 300_000, z: 2.9, triggerHashes: [] } : null,
-    signal: {
-      sym: 'BTC', at: T0, stale: false, S: burst ? 2.6 : 0.2,
-      w5: burst ? win(640_000, 2.9, 14) : win(38_000, 0.3, 4), w15: burst ? win(710_000, 2.2, 22) : win(-21_000, -0.1, 11), w60: burst ? win(820_000, 1.1, 51) : win(96_000, 0.2, 40),
-    },
+    reflex: pulled ? { side: 'ask', action: 'pull', until: T0 + 6_000, z: 4.1, triggerHashes: [], ref: true } : null,
+    signal: null,
     trades: [],
     inPolicy: true, stage: 'normal', why: '', quotedPct: null, quoteAgeMs: { bid: null, ask: null }, basisBps: null,
     aheadUsd: { bid: 2_045, ask: pulled ? null : 1_790 }, tape: [], day: { volumeUsd: null, changePct: null, high: null, low: null }, openInterestUsd: 0, fills1h: 0, markout1mBps: null, trend5mBps: 0,
@@ -424,15 +436,31 @@ function scene(step: number): MarketState {
 
 const STEPS = [
   { verb: 'Quote', ms: 3000, text: 'Monday rests one bid and one ask around fair price. It aims to earn the spread when both fill; fees and price moves can still make a round trip lose.' },
-  { verb: 'Detect', ms: 4000, text: 'Smart Traders buy $640k of BTC in five minutes. The flow score passes 2.5.' },
-  { verb: 'Step aside', ms: 4000, text: 'On the next one-second tick the reflex pulls the ask, so a better-informed buyer cannot lift it. The bid stays.' },
+  { verb: 'Detect', ms: 4000, text: 'The reference market, where these perps price first, jumps 4.1 bps in three seconds. Perpl\'s book has not moved yet.' },
+  { verb: 'Step Aside', ms: 4000, text: 'On the next one-second tick the reflex pulls the ask, so a trader arriving from the reference market cannot lift it at the old price. The bid stays.' },
   { verb: 'Explain', ms: 4000, text: 'The governor sets a storm regime and writes its reason in plain words, with a hash of the data behind it.' },
 ];
 
 const CARDS: Pick<Decision, 'id' | 'source' | 'reason'>[] = [
-  { id: 1, source: 'reflex', reason: 'Smart Traders bought $640k BTC in 5 min (z = 2.9). Ask pulled for 5 minutes.' },
-  { id: 2, source: 'governor', reason: 'Storm regime. Widening quotes 2.5x and cutting size to 40% until flow cools.' },
+  { id: 1, source: 'reflex', reason: 'The reference market\'s BTC mid moved up 4.1 bps in 3 seconds and Perpl\'s book has not caught up. Ask pulled for 6 seconds.' },
+  { id: 2, source: 'governor', reason: 'Storm regime. One-minute volatility is three times its normal: widening quotes 2.5x and cutting size to 40% until it settles.' },
 ];
+
+/** The walkthrough's reference panel: the reference market's mid against Perpl's, and how far it moved in three seconds. */
+function RefGap({ jumped }: { jumped: boolean }) {
+  const rows: [string, string, string][] = [
+    ['Reference Mid', fmtPrice(jumped ? REF_JUMPED : 85_200, SPEC), jumped ? 'text-bid-fg' : 'text-fg'],
+    ['Perpl Mid', fmtPrice(85_200, SPEC), 'text-fg'],
+    ['Move in 3 s', jumped ? '+4.1 bps' : '+0.1 bps', jumped ? 'font-semibold text-accent' : 'text-fg-3'],
+  ];
+  return (
+    <dl className="grid gap-1.5 px-2.5 py-2.5 text-[13px]">
+      {rows.map(([k, v, c]) => (
+        <div key={k} className="flex justify-between gap-3"><dt className="text-fg-2">{k}</dt><dd className={cx('num transition-colors duration-300', c)}>{v}</dd></div>
+      ))}
+    </dl>
+  );
+}
 
 type Play = 'ready' | 'playing' | 'paused' | 'done';
 
@@ -474,7 +502,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
   return (
     <div ref={ref} className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
       <div>
-        <ol aria-label="What happens during a Smart Trader burst" className="border-t border-line-2">
+        <ol aria-label="What happens when the reference market jumps" className="border-t border-line-2">
           {STEPS.map((s, i) => {
             const on = i === step;
             return (
@@ -502,12 +530,12 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
         </div>
       </div>
       <div className="grid gap-1 self-start rounded-md border border-line bg-void p-1 sm:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
-        <Panel title="Order book" aside={<span>BTC perp</span>} bodyClassName="!overflow-hidden">
+        <Panel title="Order Book" aside={<span>BTC Perp</span>} bodyClassName="!overflow-hidden">
           <OrderBook m={m} rows={6} now={T0} />
         </Panel>
         <div className="flex min-h-0 flex-col gap-1">
-          <Panel title="Smart Traders" className="flex-none" bodyClassName="!overflow-visible">
-            <FlowBars m={m} />
+          <Panel title="Reference Market" className="flex-none" bodyClassName="!overflow-visible">
+            <RefGap jumped={step >= 1} />
           </Panel>
           <Panel title="Decisions" className="min-h-[10rem] flex-1">
             <AnimatePresence initial={false} mode="popLayout">
@@ -528,6 +556,236 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
               ))}
             </AnimatePresence>
           </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- The landing's modes: a prompt line, chips to pick a mode, and the mode's facts and drawing in a window. ----
+
+// Same facts as Setup and the plan forms; keep them in step.
+const MODE_ROWS = ['What It Does', 'Use It For', 'Runs', 'Kimi\'s Part', 'Protection'] as const;
+const MODES = [
+  {
+    key: 'mm', tab: 'Market Maker', name: 'Agentic Market Maker', icon: ArrowsLeftRightIcon, href: '/app/onboarding', cta: 'Set Up the Market Maker',
+    rows: ['Quotes both sides of the book in the markets you choose and earns the spread.', 'Earning the spread without a view on direction.', 'Until you stop it.', 'Reviews spread and size every 15 minutes, inside hard bounds. Never places an order.', 'A daily stop loss on the margin. At it, Monday cancels its orders and closes the positions.'],
+  },
+  {
+    key: 'trade', tab: 'Agentic Trade', name: 'Agentic Trade', icon: CrosshairIcon, href: '/app/setup/trade', cta: 'Start a Trade',
+    rows: ['Scalps your long or short bias on one market, again and again, on a short timeframe.', 'A view on direction you want worked, entry by entry.', 'Up to a week, or until the stop loss or take profit on its margin.', 'Sums up D1, H4 and H1 before you start. Code reads the trend and picks every entry.', 'Every scalp\'s stop and target rest on Perpl from its fill.'],
+  },
+  {
+    key: 'twap', tab: 'TWAP', name: 'TWAP', icon: HourglassIcon, href: '/app/setup/twap', cta: 'Start a TWAP',
+    rows: ['Builds a position in slices, as maker orders where it can, so one large order does not move a thin book.', 'A large entry, spread over minutes or hours.', 'Up to 24 hours to build, then held until its stop, its target or you close it.', 'Sums up D1, H4 and H1 before you start. Code places every slice.', 'A price it must not pass while building, and a stop loss on Perpl from the first fill.'],
+  },
+] as const;
+
+/** The window's title bar: three dots on the left, what it shows in the middle. */
+export function WindowBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex h-11 items-center justify-center border-b border-line px-4 text-[13px] font-medium text-fg-3">
+      <span aria-hidden className="absolute left-4 flex gap-1.5">{[0, 1, 2].map((i) => <span key={i} className="size-2.5 rounded-full bg-fg/15" />)}</span>
+      {children}
+    </div>
+  );
+}
+
+/** What each mode sounds like when you ask for it; typed into the prompt line when its chip is picked. */
+const ASK = { mm: 'Make markets on BTC and ETH, and earn the spread', trade: 'Scalp my long bias on SOL, entry by entry', twap: 'Buy 1 ETH in slices over the next two hours' } as const;
+
+/**
+ * The modes as a prompt, after Imagica's "What industry do you want to transform?": the request types itself into the
+ * line, the chips under it pick the mode, and the window below shows that mode's facts and the mode at work. The chips
+ * take turns by themselves while on screen, until one is picked by hand.
+ */
+export function ModePrompt() {
+  const ref = useRef<HTMLDivElement>(null);
+  const seen = useInView(ref, { amount: 0.35 });
+  const reduce = useReducedMotion();
+  const [i, setI] = useState(0);
+  const [held, setHeld] = useState(false);
+  const [n, setN] = useState(0);
+  const m = MODES[i];
+  const say: string = ASK[m.key];
+  useEffect(() => {
+    if (reduce) return setN(say.length);
+    setN(0);
+    const t = setInterval(() => setN((x) => (x >= say.length ? x : x + 1)), 32);
+    return () => clearInterval(t);
+  }, [say, reduce]);
+  useEffect(() => {
+    if (!seen || held || reduce) return;
+    const t = setTimeout(() => setI((x) => (x + 1) % MODES.length), 9_000);
+    return () => clearTimeout(t);
+  }, [seen, held, reduce, i]);
+  const pick = (j: number) => { setHeld(true); setI((j + MODES.length) % MODES.length); };
+  return (
+    <div ref={ref}>
+      <div className="flex items-end justify-between gap-4 border-b border-line-2 pb-4">
+        <p className="min-h-[2.3em] text-[clamp(1.5rem,3.4vw,2.5rem)] font-medium leading-[1.15] tracking-[-0.03em] text-fg sm:min-h-0">
+          <span className="sr-only">{say}</span>
+          <span aria-hidden>{say.slice(0, n)}<span className="ml-0.5 inline-block h-[0.9em] w-[2px] translate-y-[0.1em] bg-accent motion-safe:animate-pulse" /></span>
+        </p>
+        <span aria-hidden className="bead mb-1 grid size-10 flex-none place-items-center rounded-lg text-fg"><ArrowRightIcon size={16} weight="bold" /></span>
+      </div>
+      <div role="tablist" aria-label="Trading modes" className="mt-6 flex flex-wrap gap-2">
+        {MODES.map((x, j) => (
+          <button
+            key={x.key} role="tab" id={`mode-${x.key}`} aria-selected={i === j} aria-controls="mode-panel" tabIndex={i === j ? 0 : -1}
+            onClick={() => pick(j)} onKeyDown={(e) => { if (e.key === 'ArrowRight') pick(i + 1); if (e.key === 'ArrowLeft') pick(i - 1); }}
+            className={cx('inline-flex h-10 items-center gap-2 rounded-lg px-4 text-[15px] font-medium transition-[background-color,color,box-shadow,transform] duration-300 active:scale-[0.98]', i === j ? 'bg-fg text-canvas' : 'bead text-fg-2 hover:text-fg')}
+          >
+            <x.icon size={16} />{x.tab}
+          </button>
+        ))}
+      </div>
+      <div className="frost mt-12">
+        <div className="frost-in">
+          <WindowBar><m.icon size={14} className="mr-2 text-accent" />{m.name}</WindowBar>
+          <div id="mode-panel" role="tabpanel" aria-labelledby={`mode-${m.key}`} className="grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+            <dl key={m.key} className="grid content-start gap-5 p-6 md:p-8">
+              {m.rows.map((r, j) => (
+                <div key={MODE_ROWS[j]} className="rise" style={{ animationDelay: `${j * 50}ms` }}>
+                  <dt className="text-[13px] font-medium text-fg-3">{MODE_ROWS[j]}</dt>
+                  <dd className="mt-1 max-w-[52ch] text-[16px] leading-relaxed text-fg">{r}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="flex flex-col justify-between gap-10 border-t border-line bg-raised-2 p-6 md:p-10 lg:border-l lg:border-t-0">
+              <ModePreview key={m.key} mode={m.key} />
+              <Link href={at(m.href)} className="group inline-flex h-11 w-fit items-center gap-2 rounded-lg bg-fg px-5 text-[15px] font-medium text-canvas transition-[opacity,transform] hover:opacity-90 active:translate-y-px">
+                {m.cta}
+                <ArrowRightIcon size={15} weight="bold" className="nudge" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- The market maker part by part: the list on the left, the part at work in a window on the right. ----
+
+export interface PartView { title: string; when: string; text: string; icon: ReactNode; glyph: ReactNode }
+
+/** After Imagica's "The simplest way to build an AI app". Takes turns by itself while on screen until one is picked. */
+export function PartsTabs({ parts }: { parts: PartView[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const seen = useInView(ref, { amount: 0.35 });
+  const reduce = useReducedMotion();
+  const [i, setI] = useState(0);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!seen || held || reduce) return;
+    const t = setTimeout(() => setI((x) => (x + 1) % parts.length), 5_000);
+    return () => clearTimeout(t);
+  }, [seen, held, reduce, i, parts.length]);
+  const p = parts[i];
+  const pick = (j: number) => { setHeld(true); setI((j + parts.length) % parts.length); };
+  return (
+    <div ref={ref} className="grid gap-8 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)] lg:items-center lg:gap-14">
+      <div role="tablist" aria-orientation="vertical" aria-label="Parts of the market maker" className="grid gap-1">
+        {parts.map((x, j) => {
+          const on = i === j;
+          return (
+            <button
+              key={x.title} role="tab" id={`part-${j}`} aria-selected={on} aria-controls="part-panel" tabIndex={on ? 0 : -1}
+              onClick={() => pick(j)} onKeyDown={(e) => { if (e.key === 'ArrowDown') pick(i + 1); if (e.key === 'ArrowUp') pick(i - 1); }}
+              className={cx('flex gap-3.5 rounded-2xl px-4 py-3.5 text-left transition-[background-color,box-shadow] duration-300', on ? 'bg-raised shadow-[0_0_0_1px_rgb(255_255_255/0.06),0_12px_30px_-14px_rgb(0_0_0/0.7)]' : 'hover:bg-raised/50')}
+            >
+              <span className={cx('mt-0.5 grid size-8 flex-none place-items-center rounded-lg transition-colors', on ? 'bg-fg text-canvas' : 'bg-raised/70 text-fg-2')}>{x.icon}</span>
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-[16px] font-semibold tracking-tight text-fg">{x.title}</span>
+                  <span className="text-[13px] text-fg-3">{x.when}</span>
+                </span>
+                {on && <span className="rise mt-1 block max-w-[44ch] text-[15px] leading-relaxed text-fg-2">{x.text}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="frost">
+        <div id="part-panel" role="tabpanel" aria-labelledby={`part-${i}`} className="frost-in">
+          <WindowBar>{p.title} · {p.when}</WindowBar>
+          <div key={i} className="rise grid min-h-[20rem] place-items-center p-8 md:min-h-[24rem]">
+            <div aria-hidden className="[zoom:1.35] md:[zoom:1.6]">{p.glyph}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Limits: pick a control, and the rows it governs light up in the house account's readout. ----
+
+const CONTROL_LIST = [
+  { k: 'Position Limit', v: 'The most Monday may hold in each market. Margin and leverage set it, or you type it.', rows: ['Quote Size', 'Position Limit', 'Leverage'] },
+  { k: 'Stop Loss', v: 'Every mode has one, a share of its margin. At it Monday stops and closes the position. Fast markets can overshoot it.', rows: ['Stop Loss'] },
+  { k: 'Stop and Kill', v: 'Stop pulls Monday\'s orders and leaves positions to you. Kill also closes them. One click each, under Plans in the terminal.', rows: [] },
+] as const;
+
+export interface LimitsView { title: string; note: string; markets: string[]; rows: [string, string][]; collateral: string }
+
+const LIT = 'bg-[color-mix(in_oklab,var(--accent)_9%,var(--raised))]';
+
+/** `children`: the heading and lead, set above the controls in the left column. */
+export function LimitsExplorer({ view, children }: { view: LimitsView; children?: ReactNode }) {
+  const [c, setC] = useState(0);
+  const lit = CONTROL_LIST[c].rows as readonly string[];
+  const kill = c === 2;
+  return (
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-14">
+      <div>
+        {children}
+        <div className="mt-8 grid gap-1">
+          {CONTROL_LIST.map((x, j) => (
+            <button
+              key={x.k} type="button" aria-pressed={c === j} onClick={() => setC(j)}
+              className={cx('rounded-2xl px-5 py-4 text-left transition-[background-color,box-shadow] duration-300', c === j ? 'bg-raised shadow-[0_0_0_1px_rgb(255_255_255/0.06),0_12px_30px_-14px_rgb(0_0_0/0.7)]' : 'hover:bg-raised/50')}
+            >
+              <span className="block text-[16px] font-semibold tracking-tight text-fg">{x.k}</span>
+              <span className={cx('mt-1 block max-w-[46ch] text-[15px] leading-relaxed transition-colors', c === j ? 'text-fg-2' : 'text-fg-3')}>{x.v}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="frost">
+        <div className="frost-in">
+          <WindowBar>{view.title}</WindowBar>
+          <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-3">
+            <div className="bg-raised px-5 py-5">
+              <dt className="text-[13px] text-fg-3">Markets</dt>
+              <dd className="mt-3 flex flex-wrap gap-1">{view.markets.map((s) => <span key={s} className="rounded-md bg-canvas px-1.5 py-0.5 text-[13px] font-semibold">{s}</span>)}</dd>
+            </div>
+            {view.rows.map(([k, v]) => {
+              const on = lit.includes(k);
+              return (
+                <div key={k} className={cx('px-5 py-5 transition-colors duration-300', on ? LIT : 'bg-raised')}>
+                  <dt className={cx('text-[13px] transition-colors', on ? 'text-accent' : 'text-fg-3')}>{k}</dt>
+                  <dd className="num mt-3 text-[20px] font-medium leading-none tracking-tight">{v}</dd>
+                </div>
+              );
+            })}
+          </dl>
+          <div className={cx('flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4 text-[13px] transition-colors duration-300', kill && LIT)}>
+            {kill ? (
+              <>
+                <span className="text-fg-2">Under Plans in the terminal, for every running mode</span>
+                <span className="flex gap-2">
+                  <span className="rounded-md bg-void px-3.5 py-1.5 font-semibold text-fg">Stop</span>
+                  <span className="rounded-md bg-ask-deep px-3.5 py-1.5 font-semibold text-white">Kill</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-fg-3">Collateral this needs: <span className="num text-fg">{view.collateral}</span>, so the stop loss fires while the margin is intact.</span>
+                <span className="text-fg-3">{view.note}</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

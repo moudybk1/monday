@@ -25,14 +25,14 @@ export default function Setup() {
       facts: ['Runs until you stop it', 'Daily loss limit you sign', 'Every decision hashed and logged'],
       // Like the other two: a tag only while it runs, and a button that starts one (a saved policy opens prefilled).
       status: me.status === 'quoting' ? <Tag tone="bid">Running</Tag> : null,
-      cta: me.status === 'quoting' ? 'Manage' : 'New market maker', href: maker ? '/app/policy' : '/app/onboarding',
+      cta: me.status === 'quoting' ? 'Manage' : 'New Market Maker', href: maker ? '/app/policy' : '/app/onboarding',
     },
     {
       id: 'trade', icon: CrosshairIcon, title: 'Agentic Trade',
       text: 'Your bias, scalped: long or short on one market. Monday reads D1 and H4, then scalps that side on a short timeframe, again and again, until your stop loss or take profit on the margin.',
       facts: ['Follow or counter, read from D1 and H4', 'Every scalp protected on Perpl itself', 'Stops at your stop loss or take profit'],
       status: trades ? <Tag tone="accent">{trades} running</Tag> : null,
-      cta: 'New trade', href: '/app/setup/trade',
+      cta: 'New Trade', href: '/app/setup/trade',
     },
     {
       id: 'twap', icon: HourglassIcon, title: 'TWAP',
@@ -44,20 +44,20 @@ export default function Setup() {
   ];
 
   return (
-    // Centred in the window below the 48px header; taller content (a phone's stacked cards) simply scrolls.
-    <div className="grid min-h-[calc(100dvh-3rem)] content-center gap-8 py-10 md:py-14">
+    // Centred in the window below the 56px header; taller content (a phone's stacked cards) simply scrolls.
+    <div className="grid min-h-[calc(100dvh-3.5rem)] content-center gap-8 py-10 md:py-14">
       <header className="text-center">
-        <h1 className="display text-3xl md:text-4xl">Setup</h1>
+        <h1 className="display text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Setup</h1>
         <p className="mx-auto mt-3 max-w-[62ch] text-fg-2">Choose how Monday trades for you. They can run side by side, each in markets of its own, all inside your own Perpl account.</p>
       </header>
       <div className="grid gap-3 lg:grid-cols-3">
         {cards.map((c) => (
           <section
             key={c.id} aria-labelledby={`${c.id}-title`}
-            className="panel group flex flex-col p-5 transition-[translate,border-color,box-shadow] duration-200 ease-out hover:-translate-y-1 hover:border-accent/50 hover:shadow-[0_16px_40px_-20px_rgb(0_0_0/0.7)] focus-within:border-accent/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            className="group flex flex-col rounded-2xl bg-raised p-6 shadow-[inset_0_0_0_1px_var(--line)] transition-[translate,box-shadow] duration-200 ease-out hover:-translate-y-1 hover:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_45%,transparent),0_16px_40px_-20px_rgb(0_0_0/0.7)] focus-within:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_45%,transparent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
           >
             <div className="flex items-start justify-between gap-3">
-              <span className="grid size-10 place-items-center rounded-sm border border-line-2 bg-raised text-accent transition-colors duration-200 group-hover:border-accent/50 group-hover:bg-accent/10"><c.icon size={20} /></span>
+              <span className="grid size-11 place-items-center rounded-full bg-raised-2 text-accent shadow-[inset_0_0_0_1px_var(--line-2)] transition-colors duration-200 group-hover:bg-accent/10"><c.icon size={20} /></span>
               {c.status}
             </div>
             <h2 id={`${c.id}-title`} className="mt-5 text-[18px] font-semibold tracking-tight">{c.title}</h2>
@@ -68,7 +68,7 @@ export default function Setup() {
               ))}
             </ul>
             {plansOff && c.id !== 'maker'
-              ? <Button size="lg" variant="ghost" disabled className="mt-auto w-full">Not live yet</Button>
+              ? <Button size="lg" variant="ghost" disabled className="mt-auto w-full">Not Live Yet</Button>
               : <ButtonLink href={c.href} size="lg" className="mt-auto w-full">{c.cta}</ButtonLink>}
           </section>
         ))}

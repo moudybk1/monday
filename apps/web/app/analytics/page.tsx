@@ -17,8 +17,8 @@ import { api } from '@/lib/api';
 type Risk = { at: number; positions: number; markets: (PxMarketRisk & { map: { pct: number; longUsd: number; shortUsd: number }[] })[]; nearest: PxPosition[]; largest: PxPosition[] };
 type Metric = 'volume' | 'fees' | 'traders' | 'fills' | 'accounts' | 'flows' | 'liqs' | 'oi' | 'tvl' | 'skew' | 'funding';
 const METRICS: readonly (readonly [Metric, string])[] = [
-  ['volume', 'Volume'], ['oi', 'Open interest'], ['tvl', 'TVL'], ['fees', 'Fees'], ['traders', 'Traders'], ['accounts', 'New accounts'],
-  ['flows', 'Net flows'], ['liqs', 'Liquidations'], ['funding', 'Funding'], ['skew', 'Long / short'], ['fills', 'Fills'],
+  ['volume', 'Volume'], ['oi', 'Open Interest'], ['tvl', 'TVL'], ['fees', 'Fees'], ['traders', 'Traders'], ['accounts', 'New Accounts'],
+  ['flows', 'Net Flows'], ['liqs', 'Liquidations'], ['funding', 'Funding'], ['skew', 'Long / Short'], ['fills', 'Fills'],
 ];
 const SAMPLED: Metric[] = ['oi', 'tvl', 'skew'];
 const DAY = 86_400_000;
@@ -36,15 +36,15 @@ const int = (n: number) => Math.round(n).toLocaleString('en-US');
 /** The terms on this page, in plain words. Each tile carries its own line as a hint; the row under the tiles shows them all. */
 const GLOSSARY: readonly (readonly [string, string])[] = [
   ['Volume', 'The dollar value of everything traded. A trade counts once, at its price.'],
-  ['Open interest', 'The size of all positions open right now, counted on one side: every long has a short against it.'],
+  ['Open Interest', 'The size of all positions open right now, counted on one side: every long has a short against it.'],
   ['TVL', 'Collateral the exchange holds for everyone: free balances plus what is locked in positions.'],
   ['Fees', 'What traders paid the exchange on their fills. Taking liquidity costs more than making it.'],
   ['Traders', 'Accounts that filled at least one order in the window.'],
-  ['Net flow', 'Deposits minus withdrawals: whether money came into the exchange or left it, on balance.'],
+  ['Net Flow', 'Deposits minus withdrawals: whether money came into the exchange or left it, on balance.'],
   ['Liquidated', 'Positions the exchange closed because their collateral ran too low, valued at the mark price.'],
   ['Funding', 'A payment between longs and shorts every funding interval, shown per 8 hours. Positive means longs pay shorts.'],
-  ['Long / short', 'Open accounts on each side. Notional is always equal on both sides of a perp, so the count is what skews.'],
-  ['Mark price', 'The price the exchange values positions at and liquidates against, taken from several spot venues.'],
+  ['Long / Short', 'Open accounts on each side. Notional is always equal on both sides of a perp, so the count is what skews.'],
+  ['Mark Price', 'The price the exchange values positions at and liquidates against, taken from several spot venues.'],
 ];
 const hintOf = (k: string) => GLOSSARY.find(([g]) => g === k)?.[1];
 
@@ -78,7 +78,7 @@ function Summary({ o, dayAgo }: { o: PxOverview; dayAgo: { oiUsd: number } | nul
   const flow = h.netFlow24hUsd;
   return (
     <div className="panel min-w-0 rise px-3 py-2.5" style={{ '--i': 0.5 } as React.CSSProperties}>
-      <p className="label">The last 24 hours, in plain words</p>
+      <p className="label">The Last 24 Hours, in Plain Words</p>
       <p className="mt-1.5 max-w-[96ch] text-[14px] leading-relaxed text-fg-2">
         Perpl traded <N>{money(h.volume24hUsd)}</N>{volVs ? `, ${volVs}` : ''}{h.activeTraders24h != null ? <>, across <N>{int(h.activeTraders24h)}</N> accounts</> : null}{top && topShare ? <>; <N>{top.sym}</N> was <N>{Math.round(topShare * 100)}%</N> of it</> : null}.{' '}
         {liq == null ? 'Liquidations for the day are still being indexed.' : liq > 0 ? <>The exchange liquidated <N>{money(liq)}</N> of positions{longShare != null ? `, ${longShare >= 0.5 ? 'mostly longs' : 'mostly shorts'}` : ''}.</> : 'No position was liquidated.'}{' '}
@@ -107,13 +107,13 @@ function Shares({ o, risk, riskError, win, winDays, today }: { o: PxOverview; ri
   const centre = (v: number) => <span className="num text-[16px] font-medium text-fg">{money(v)}</span>;
   return (
     <div className="grid gap-1 md:grid-cols-3">
-      <Panel title="Volume by market" aside={<span>{label}</span>} bodyClassName="p-3">
+      <Panel title="Volume by Market" aside={<span>{label}</span>} bodyClassName="p-3">
         <Donut parts={vol} format={money} label={`Volume by market, ${label}`} centre={centre(total(vol))} size={120} />
       </Panel>
-      <Panel title="Open interest by market" aside={<span>open now</span>} bodyClassName="p-3">
+      <Panel title="Open Interest by Market" aside={<span>open now</span>} bodyClassName="p-3">
         <Donut parts={oi} format={money} label="Open interest by market" centre={centre(total(oi))} size={120} />
       </Panel>
-      <Panel title="Liquidation risk" aside={<span title="Open notional within 5% of its liquidation price, longs and shorts together, by market">within 5% of liquidation</span>} bodyClassName="p-3">
+      <Panel title="Liquidation Risk" aside={<span title="Open notional within 5% of its liquidation price, longs and shorts together, by market">within 5% of liquidation</span>} bodyClassName="p-3">
         {atRisk ? <Donut parts={atRisk} format={money} label="Open notional within 5% of liquidation, by market" centre={centre(total(atRisk))} size={120} /> : <Pending error={riskError} className="h-[120px]" />}
       </Panel>
     </div>
@@ -191,19 +191,19 @@ function Stats() {
       <Summary o={o} dayAgo={dayAgo} />
 
       <dl className="panel min-w-0 rise grid grid-cols-2 gap-px bg-line md:grid-cols-4 2xl:grid-cols-8" style={{ '--i': 1 } as React.CSSProperties}>
-        <Kpi k={`Volume ${win === 'all' ? 'all time' : win}`} hint={hintOf('Volume')} n={vol} format={money} delta={<Delta now={win === '24h' ? h.volume24hUsd : cur((d) => d.volumeUsd)} prev={prev((d) => d.volumeUsd)} suffix={vsLabel} />} sub={win === '24h' ? `${money(h.volume7dUsd)} in 7 days` : `${money(vol / Math.min(winDays, o.daily.length))} a day`} spark={<Sparkline values={spark((d) => d.volumeUsd)} />} />
-        <Kpi k="Open interest" hint={hintOf('Open interest')} n={h.openInterestUsd} format={money} delta={<Delta now={h.openInterestUsd} prev={dayAgo?.oiUsd} up="none" suffix="24h" />} sub="all open positions, one side" spark={<Sparkline values={sampled((p) => p.oiUsd)} tone="accent" />} />
+        <Kpi k={`Volume ${win === 'all' ? 'All Time' : win}`} hint={hintOf('Volume')} n={vol} format={money} delta={<Delta now={win === '24h' ? h.volume24hUsd : cur((d) => d.volumeUsd)} prev={prev((d) => d.volumeUsd)} suffix={vsLabel} />} sub={win === '24h' ? `${money(h.volume7dUsd)} in 7 days` : `${money(vol / Math.min(winDays, o.daily.length))} a day`} spark={<Sparkline values={spark((d) => d.volumeUsd)} />} />
+        <Kpi k="Open Interest" hint={hintOf('Open Interest')} n={h.openInterestUsd} format={money} delta={<Delta now={h.openInterestUsd} prev={dayAgo?.oiUsd} up="none" suffix="24h" />} sub="all open positions, one side" spark={<Sparkline values={sampled((p) => p.oiUsd)} tone="accent" />} />
         <Kpi k="TVL" hint={hintOf('TVL')} n={h.tvlUsd} format={money} delta={<Delta now={h.tvlUsd} prev={dayAgo?.tvlUsd} suffix="24h" />} sub="collateral the exchange holds" spark={<Sparkline values={sampled((p) => p.tvlUsd)} tone="accent" />} />
         {/* A fee rate is only meaningful when fees and volume cover the same days. */}
-        <Kpi k={`Fees ${win === 'all' ? 'all time' : win}`} hint={hintOf('Fees')} v={fees == null ? 'n/a' : undefined} n={fees} format={(v) => money(v, true)} delta={<Delta now={win === '24h' ? h.fees24hUsd : cur((d) => d.feesUsd)} prev={win === '24h' ? o.daily.find((d) => d.t === today - DAY)?.feesUsd : prev((d) => d.feesUsd)} suffix={vsLabel} />} sub={!feesDone ? PARTIAL : vol ? `${((fees ?? 0) / vol * 100).toFixed(3)}% of volume` : undefined} spark={<Sparkline values={spark((d) => d.feesUsd)} />} />
+        <Kpi k={`Fees ${win === 'all' ? 'All Time' : win}`} hint={hintOf('Fees')} v={fees == null ? 'n/a' : undefined} n={fees} format={(v) => money(v, true)} delta={<Delta now={win === '24h' ? h.fees24hUsd : cur((d) => d.feesUsd)} prev={win === '24h' ? o.daily.find((d) => d.t === today - DAY)?.feesUsd : prev((d) => d.feesUsd)} suffix={vsLabel} />} sub={!feesDone ? PARTIAL : vol ? `${((fees ?? 0) / vol * 100).toFixed(3)}% of volume` : undefined} spark={<Sparkline values={spark((d) => d.feesUsd)} />} />
         <Kpi k={`Traders ${win === 'all' ? '30d' : win}`} hint={hintOf('Traders')} v={traders == null ? 'n/a' : undefined} n={traders} format={int} delta={win === '24h' ? <Delta now={h.activeTraders24h} prev={o.daily.find((d) => d.t === today - DAY)?.traders} suffix="vs yesterday" /> : undefined} sub={tradersDone ? 'accounts that traded' : PARTIAL} spark={<Sparkline values={spark((d) => d.traders)} />} />
-        <Kpi k={`Net flow ${winLabel}`} hint={hintOf('Net flow')} v={netFlow == null ? 'n/a' : undefined} n={netFlow} format={signedMoney} t={netFlow} sub={h.complete[win] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
-        <Kpi k={`Liquidated ${winLabel}`} hint={hintOf('Liquidated')} v={liquidated == null ? 'n/a' : undefined} n={liquidated} format={money} sub={h.complete[win] ? 'closed by the exchange' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
+        <Kpi k={`Net Flow ${win === 'all' ? 'All Time' : win}`} hint={hintOf('Net Flow')} v={netFlow == null ? 'n/a' : undefined} n={netFlow} format={signedMoney} t={netFlow} sub={h.complete[win] ? 'deposits minus withdrawals' : PARTIAL} spark={<Sparkline values={spark((d) => (d.depositsUsd == null ? null : d.depositsUsd - (d.withdrawalsUsd ?? 0)))} />} />
+        <Kpi k={`Liquidated ${win === 'all' ? 'All Time' : win}`} hint={hintOf('Liquidated')} v={liquidated == null ? 'n/a' : undefined} n={liquidated} format={money} sub={h.complete[win] ? 'closed by the exchange' : PARTIAL} spark={<Sparkline values={spark((d) => d.liquidationsUsd)} tone="ask" />} />
         <Kpi k="Accounts" n={h.accounts} format={int} delta={newAccounts != null ? <span className="num text-[12px] text-bid-fg">+{int(newAccounts)} <span className="font-sans text-fg-3">{winLabel}</span></span> : undefined} sub="ever opened" spark={<Sparkline values={spark((d) => d.newAccounts)} />} />
       </dl>
 
       <details className="panel min-w-0 rise px-3 py-2 text-[13px] text-fg-2" style={{ '--i': 1.5 } as React.CSSProperties}>
-        <summary className="cursor-pointer select-none text-fg-3 hover:text-fg">What these numbers mean</summary>
+        <summary className="cursor-pointer select-none text-fg-3 hover:text-fg">What These Numbers Mean</summary>
         <dl className="mt-2 grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
           {GLOSSARY.map(([k, v]) => <div key={k} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2"><dt className="font-semibold text-fg">{k}</dt><dd>{v}</dd></div>)}
         </dl>
@@ -226,13 +226,13 @@ function Stats() {
       <div className="min-w-0 rise" style={{ '--i': 3 } as React.CSSProperties}><Markets o={o} risk={risk.data} hist={hist7.data} pick={sym} onPick={(s) => setSym(s === sym ? ALL : s)} /></div>
 
       <div className="min-w-0 rise grid gap-1 lg:grid-cols-3" style={{ '--i': 4 } as React.CSSProperties}>
-        <Panel title="Closest to liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
+        <Panel title="Closest to Liquidation" aside={<span>{risk.data ? `${risk.data.positions} open positions` : ''}</span>} className="h-[420px]">
           {risk.data ? <PositionList rows={risk.data.nearest} /> : <Pending error={risk.isError} className="m-2 h-60" />}
         </Panel>
-        <Panel title="Latest liquidations" aside={<span>{o.indexer.source === 'off' ? 'indexer off' : o.indexer.live ? 'live' : 'catching up'}</span>} className="h-[420px]">
+        <Panel title="Latest Liquidations" aside={<span>{o.indexer.source === 'off' ? 'indexer off' : o.indexer.live ? 'live' : 'catching up'}</span>} className="h-[420px]">
           <LiquidationFeed rows={liqs.data} error={liqs.isError} since={since} />
         </Panel>
-        <Panel title="Largest positions" aside={<span>open now, at mark</span>} className="h-[420px]">
+        <Panel title="Largest Positions" aside={<span>open now, at mark</span>} className="h-[420px]">
           {risk.data ? <PositionList rows={risk.data.largest} /> : <Pending error={risk.isError} className="m-2 h-60" />}
         </Panel>
       </div>
@@ -316,7 +316,7 @@ function History({ o, sym, onSym, win }: { o: PxOverview; sym: string; onSym: (s
     const series: Series[] = metric === 'skew'
       ? sym === ALL
         ? marketsBySize.slice(0, 4).map((s, i) => ({ name: s, tone: CATS[i], points: (hd?.markets[s] ?? []).map((p) => ({ t: p.t, v: p.longs + p.shorts ? (p.longs / (p.longs + p.shorts)) * 100 : null })) }))
-        : [{ name: 'Long accounts', tone: 'bid', points: mk.map((p) => ({ t: p.t, v: p.longs })) }, { name: 'Short accounts', tone: 'ask', points: mk.map((p) => ({ t: p.t, v: p.shorts })) }]
+        : [{ name: 'Long Accounts', tone: 'bid', points: mk.map((p) => ({ t: p.t, v: p.longs })) }, { name: 'Short Accounts', tone: 'ask', points: mk.map((p) => ({ t: p.t, v: p.shorts })) }]
       : [{ name: title, tone: 'accent', points: pts }];
     const n = series[0]?.points.length ?? 0;
     body = !hd ? <Pending error={hist.isError} className="h-[360px]" /> : n < 3
@@ -348,10 +348,10 @@ function History({ o, sym, onSym, win }: { o: PxOverview; sym: string; onSym: (s
     >
       <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 text-[13px] text-fg-3">
         <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="h-6 rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg">
-          <option>{ALL}</option>
+          <option value={ALL}>All Markets</option>
           {o.markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
         </select>
-        {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[12px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By market</button>}
+        {metric === 'volume' && sym === ALL && <button type="button" onClick={() => setStack(!stack)} aria-pressed={stack} className={cx('num h-6 rounded-sm border px-2 text-[12px]', stack ? 'border-accent/45 bg-accent/12 text-accent' : 'border-line-2 text-fg-2 hover:bg-raised')}>By Market</button>}
         <span className="num">{SAMPLED.includes(metric) || metric === 'funding' ? `last ${sampledDays} days` : range === 0 ? 'every day since launch' : `last ${range} days${win === '24h' ? ', today at the right' : ''}`}</span>
       </div>
       <AnimatePresence mode="wait" initial={false}>
@@ -380,7 +380,7 @@ function TakerFlow({ sym, markets, onSym }: { sym: string; markets: PxOverview['
   const share = f?.buyShare24h;
   return (
     <Panel
-      title={`Taker flow: ${sym}`}
+      title={`Taker Flow: ${sym}`}
       aside={
         <select value={sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="num h-6 rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg">
           {markets.map((m) => <option key={m.id} value={m.sym}>{m.sym}</option>)}
@@ -392,9 +392,9 @@ function TakerFlow({ sym, markets, onSym }: { sym: string; markets: PxOverview['
       {!f ? <Pending error={q.isError} className="h-64" /> : (
         <>
           <div className="grid grid-cols-3 gap-px bg-line text-[12px]">
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Net taker buying 1h</span><p className={cx('num mt-1 text-[14px]', tone(f.net1hUsd))}>{signedMoney(f.net1hUsd)}</p></div>
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Net taker buying 24h</span><p className={cx('num mt-1 text-[14px]', tone(f.net24hUsd))}>{signedMoney(f.net24hUsd)}</p></div>
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Buys of taker volume</span><p className={cx('num mt-1 text-[14px]', share == null ? 'text-fg-3' : share > 0.5 ? 'text-bid-fg' : share < 0.5 ? 'text-ask-fg' : 'text-fg-2')}>{share == null ? 'n/a' : `${(share * 100).toFixed(0)}%`}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Net Taker Buying 1h</span><p className={cx('num mt-1 text-[14px]', tone(f.net1hUsd))}>{signedMoney(f.net1hUsd)}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Net Taker Buying 24h</span><p className={cx('num mt-1 text-[14px]', tone(f.net24hUsd))}>{signedMoney(f.net24hUsd)}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Buys of Taker Volume</span><p className={cx('num mt-1 text-[14px]', share == null ? 'text-fg-3' : share > 0.5 ? 'text-bid-fg' : share < 0.5 ? 'text-ask-fg' : 'text-fg-2')}>{share == null ? 'n/a' : `${(share * 100).toFixed(0)}%`}</p></div>
           </div>
           {marks.length >= 3 && <div className="mt-2"><LineChart height={100} label={`${sym} mark, last 24 hours`} format={price} timeFormat={shortTime} series={[{ name: 'Mark', tone: 'fg', points: marks }]} drawKey={`mark-${sym}`} /></div>}
           <SignedBars
@@ -425,12 +425,12 @@ function LiqHours({ win, sym }: { win: PxWindow; sym?: string }) {
   const longs = bars.reduce((s, b) => s + b.longUsd, 0), shorts = bars.reduce((s, b) => s + b.shortUsd, 0), total = longs + shorts;
   const when = (t: number) => (days === 1 ? shortTime(t) : `${shortTime(t)}${span > 1 ? ` +${span}h` : ''}`);
   return (
-    <Panel title={`Liquidations${sym ? `: ${sym}` : ''}, ${days === 1 ? 'last 24 hours' : `last ${days} days`}`} aside={<span className="hidden sm:inline">per {span === 1 ? 'hour' : `${span} hours`}, UTC</span>} bodyClassName="p-2.5" className="min-h-[330px]">
+    <Panel title={`Liquidations${sym ? `: ${sym}` : ''}, ${days === 1 ? 'Last 24 Hours' : `Last ${days} Days`}`} aside={<span className="hidden sm:inline">per {span === 1 ? 'hour' : `${span} hours`}, UTC</span>} bodyClassName="p-2.5" className="min-h-[330px]">
       {!d ? <Pending error={q.isError} className="h-64" /> : (
         <>
           <div className="grid grid-cols-3 gap-px bg-line text-[12px]">
             <div className="bg-canvas px-2 py-1.5"><span className="label">Liquidated</span><p className="num mt-1 text-[14px] text-fg">{money(total)}</p><p className="truncate text-fg-3">{int(bars.reduce((s, b) => s + b.n, 0))} positions</p></div>
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Longs against shorts</span><p className="num mt-1 text-[14px]"><span className="text-bid-fg">{money(longs)}</span> <span className="text-fg-3">/</span> <span className="text-ask-fg">{money(shorts)}</span></p><p className="truncate text-fg-3">{total ? `${Math.round((longs / total) * 100)}% longs` : 'none'}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Longs Against Shorts</span><p className="num mt-1 text-[14px]"><span className="text-bid-fg">{money(longs)}</span> <span className="text-fg-3">/</span> <span className="text-ask-fg">{money(shorts)}</span></p><p className="truncate text-fg-3">{total ? `${Math.round((longs / total) * 100)}% longs` : 'none'}</p></div>
             <div className="bg-canvas px-2 py-1.5"><span className="label">Largest</span><p className="num mt-1 text-[14px] text-fg">{d.largest ? money(d.largest.usd) : 'none'}</p><p className="truncate text-fg-3">{d.largest ? <>{d.largest.sym} <span className={d.largest.long ? 'text-bid-fg' : 'text-ask-fg'}>{d.largest.long ? 'long' : 'short'}</span>, {shortTime(d.largest.t)}</> : ''}</p></div>
           </div>
           {total > 0 ? (
@@ -451,7 +451,7 @@ function LiquidationMap({ risk, error, sym, onSym }: { risk?: Risk; error: boole
   const reduce = useReducedMotion();
   const [move, setMove] = useState(-3); // what if the price moves this many percent
   const m = risk?.markets.find((x) => x.sym === sym) ?? risk?.markets[0];
-  if (!risk || !m) return <Panel title="Liquidation map" className="min-h-[330px] xl:h-full"><Pending error={error} className="m-2 h-64" /></Panel>;
+  if (!risk || !m) return <Panel title="Liquidation Map" className="min-h-[330px] xl:h-full"><Pending error={error} className="m-2 h-64" /></Panel>;
   const map = m.map.slice(0, 12); // 12% either side keeps the ladder beside the chart; the rest is far from mark
   const max = Math.max(1, ...map.flatMap((b) => [b.longUsd, b.shortUsd]));
   type Row = { pct: number; side: 'long' | 'short'; usd: number; px: number };
@@ -461,7 +461,7 @@ function LiquidationMap({ risk, error, sym, onSym }: { risk?: Risk; error: boole
   ];
   return (
     <Panel
-      title={`Liquidation map: ${m.sym}`}
+      title={`Liquidation Map: ${m.sym}`}
       aside={
         <select value={m.sym} onChange={(e) => onSym(e.target.value)} aria-label="Market" className="num h-6 rounded-sm border border-line-2 bg-raised px-1 text-[12px] text-fg">
           {risk.markets.map((x) => <option key={x.sym} value={x.sym}>{x.sym}</option>)}
@@ -471,8 +471,8 @@ function LiquidationMap({ risk, error, sym, onSym }: { risk?: Risk; error: boole
       className="min-h-[330px] xl:h-full"
     >
       <div className="grid grid-cols-2 gap-px bg-line text-[12px]">
-        <div className="bg-canvas px-2 py-1.5"><span className="label">Longs at risk</span><p className="num mt-1 text-[14px] text-bid-fg">{money(m.atRiskLongUsd)}</p></div>
-        <div className="bg-canvas px-2 py-1.5"><span className="label">Shorts at risk</span><p className="num mt-1 text-[14px] text-ask-fg">{money(m.atRiskShortUsd)}</p></div>
+        <div className="bg-canvas px-2 py-1.5"><span className="label">Longs at Risk</span><p className="num mt-1 text-[14px] text-bid-fg">{money(m.atRiskLongUsd)}</p></div>
+        <div className="bg-canvas px-2 py-1.5"><span className="label">Shorts at Risk</span><p className="num mt-1 text-[14px] text-ask-fg">{money(m.atRiskShortUsd)}</p></div>
       </div>
       <p className="mt-1.5 text-[12px] text-fg-3">Open notional by liquidation price. Shorts liquidate above mark, longs below. At risk means within 5%.</p>
       <WhatIf m={m} move={move} onMove={setMove} />
@@ -542,8 +542,8 @@ function Markets({ o, risk, hist, pick, onPick }: { o: PxOverview; risk?: Risk; 
         <table className="w-full min-w-[1180px] text-[13px]">
           <thead>
             <tr className="label h-7 text-left [&>th]:font-normal">
-              <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 days</th>
-              <th className="text-right">Open interest</th><th className="pl-3">OI share</th><th className="text-right" title="Paid every 8 hours, at the mean of the last 8 hours' funding intervals">Funding 8h</th><th className="text-right">Long / short</th><th className="text-right" title="Perpl's 24h volume as a share of the reference market's">vs ref. market</th><th className="pr-2.5 pl-3">Setups</th>
+              <th className="pl-2.5">Market</th><th className="text-right">Price</th><th className="text-right">24h</th><th className="text-right">Volume 24h</th><th className="pl-3">14 Days</th>
+              <th className="text-right">Open Interest</th><th className="pl-3">OI Share</th><th className="text-right" title="Paid every 8 hours, at the mean of the last 8 hours' funding intervals">Funding 8h</th><th className="text-right">Long / Short</th><th className="text-right" title="Perpl's 24h volume as a share of the reference market's">vs Ref. Market</th><th className="pr-2.5 pl-3">Setups</th>
             </tr>
           </thead>
           <tbody className="num">
@@ -590,10 +590,10 @@ function Spotlight({ liqs, now }: { liqs?: PxLiquidation[]; now: number }) {
   const w = win.data?.[0], l = loss.data?.[0], v = vol.data?.[0];
   const liq = liqs?.filter((x) => now - x.ts < DAY).sort((a, b) => b.usd - a.usd)[0];
   const cards: { k: string; who?: { account: number; address: string | null }; n?: number; format: (v: number) => string; t?: number; sub: string }[] = [
-    { k: 'Biggest winner today', who: w, n: w && w.netUsd > 0 ? w.netUsd : undefined, format: signedMoney, t: 1, sub: w && w.netUsd > 0 ? `${money(w.volumeUsd)} traded, ${w.trades.toLocaleString('en-US')} fills` : 'nobody in the money yet' },
-    { k: 'Biggest loser today', who: l, n: l && l.netUsd < 0 ? l.netUsd : undefined, format: signedMoney, t: -1, sub: l && l.netUsd < 0 ? `${money(l.volumeUsd)} traded, ${l.trades.toLocaleString('en-US')} fills` : 'nobody in the red yet' },
-    { k: 'Most active today', who: v, n: v?.volumeUsd, format: money, sub: v ? `${v.trades.toLocaleString('en-US')} fills, ${signedMoney(v.netUsd)} net` : 'no fills yet' },
-    { k: 'Largest liquidation 24h', who: liq, n: liq?.usd, format: money, t: -1, sub: liq ? `${liq.sym} ${liq.long ? 'long' : 'short'}, ${signedMoney(liq.pnl)}` : 'none in 24 hours' },
+    { k: 'Biggest Winner Today', who: w, n: w && w.netUsd > 0 ? w.netUsd : undefined, format: signedMoney, t: 1, sub: w && w.netUsd > 0 ? `${money(w.volumeUsd)} traded, ${w.trades.toLocaleString('en-US')} fills` : 'nobody in the money yet' },
+    { k: 'Biggest Loser Today', who: l, n: l && l.netUsd < 0 ? l.netUsd : undefined, format: signedMoney, t: -1, sub: l && l.netUsd < 0 ? `${money(l.volumeUsd)} traded, ${l.trades.toLocaleString('en-US')} fills` : 'nobody in the red yet' },
+    { k: 'Most Active Today', who: v, n: v?.volumeUsd, format: money, sub: v ? `${v.trades.toLocaleString('en-US')} fills, ${signedMoney(v.netUsd)} net` : 'no fills yet' },
+    { k: 'Largest Liquidation 24h', who: liq, n: liq?.usd, format: money, t: -1, sub: liq ? `${liq.sym} ${liq.long ? 'long' : 'short'}, ${signedMoney(liq.pnl)}` : 'none in 24 hours' },
   ];
   return (
     <dl className="panel grid grid-cols-2 gap-px bg-line lg:grid-cols-4">
@@ -615,7 +615,7 @@ function Activity() {
   const a = q.data;
   const peak = a ? a.cells.reduce((b, c) => (c.usd > b.usd ? c : b), a.cells[0]) : null;
   return (
-    <Panel title="When Perpl trades" aside={<span className="hidden sm:inline">taker volume by hour, UTC, 7 days</span>} bodyClassName="p-2.5" className="min-h-[260px]">
+    <Panel title="When Perpl Trades" aside={<span className="hidden sm:inline">taker volume by hour, UTC, 7 days</span>} bodyClassName="p-2.5" className="min-h-[260px]">
       {!a ? <Pending error={q.isError} className="h-44" /> : (
         <>
           <HeatGrid label="Volume by weekday and hour" rows={DAYS} cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))} colLabelEvery={3} cell={18}
@@ -663,7 +663,7 @@ function Flows({ win }: { win: PxWindow }) {
   const rows = f?.[side] ?? [];
   const max = Math.max(1, ...rows.map((r) => r.usd));
   return (
-    <Panel title={`Collateral flows ${days === 1 ? '24h' : `${days}D`}`} aside={<Segments label="Side" value={side} onChange={setSide} options={[['deposits', 'In'], ['withdrawals', 'Out']] as const} />} className="min-h-[260px] max-h-[360px]">
+    <Panel title={`Collateral Flows ${days === 1 ? '24h' : `${days}D`}`} aside={<Segments label="Side" value={side} onChange={setSide} options={[['deposits', 'In'], ['withdrawals', 'Out']] as const} />} className="min-h-[260px] max-h-[360px]">
       {!f ? <Pending error={q.isError} className="m-2 h-44" /> : (
         <>
           <div className="grid grid-cols-2 gap-px border-b border-line bg-line text-[12px]">
@@ -699,12 +699,12 @@ function WhoWins({ win }: { win: PxWindow }) {
   const share = (n: number) => `${((n / Math.max(1, decided)) * 100).toFixed(0)}%`;
   const label = days === 1 ? 'today' : `last ${days} days`;
   return (
-    <Panel title="Who makes money" aside={<span className="hidden sm:inline">realised, after fees, {label}</span>} bodyClassName="p-2.5" className="min-h-[260px]">
+    <Panel title="Who Makes Money" aside={<span className="hidden sm:inline">realised, after fees, {label}</span>} bodyClassName="p-2.5" className="min-h-[260px]">
       {!s ? <Pending error={q.isError} className="h-48" /> : (
         <>
           <div className="grid grid-cols-2 gap-px bg-line text-[12px]">
             <div className="bg-canvas px-2 py-1.5"><span className="label">Profitable</span><p className="num mt-1 text-[14px] text-bid-fg">{share(s.profitable)}</p><p className="truncate text-fg-3">{int(s.profitable)} of {int(decided)} with a result</p></div>
-            <div className="bg-canvas px-2 py-1.5"><span className="label">Median result</span><p className={cx('num mt-1 text-[14px]', tone(s.medianNetUsd))}>{s.medianNetUsd == null ? 'n/a' : signedMoney(s.medianNetUsd)}</p><p className="truncate text-fg-3">mean {s.meanNetUsd == null ? 'n/a' : signedMoney(s.meanNetUsd)}</p></div>
+            <div className="bg-canvas px-2 py-1.5"><span className="label">Median Result</span><p className={cx('num mt-1 text-[14px]', tone(s.medianNetUsd))}>{s.medianNetUsd == null ? 'n/a' : signedMoney(s.medianNetUsd)}</p><p className="truncate text-fg-3">mean {s.meanNetUsd == null ? 'n/a' : signedMoney(s.meanNetUsd)}</p></div>
           </div>
           {decided ? (
             <SignedBars
@@ -714,7 +714,7 @@ function WhoWins({ win }: { win: PxWindow }) {
           ) : <p className="flex h-[150px] items-center justify-center text-[13px] text-fg-3">No realised results in this window yet.</p>}
           <p className="text-[12px] text-fg-3">Losses to the left, gains to the right, one bar per band. {s.flat ? `${int(s.flat)} more traded without closing anything.` : ''}</p>
           <div className="num mt-2 grid gap-1 text-[12px]">
-            {([['Top 10 accounts', s.top10Share], ['Top 50 accounts', s.top50Share]] as const).map(([k, v]) => (
+            {([['Top 10 Accounts', s.top10Share], ['Top 50 Accounts', s.top50Share]] as const).map(([k, v]) => (
               <div key={k} className="grid grid-cols-[7rem_1fr_3rem] items-center gap-2"><span className="font-sans text-fg-3">{k}</span><Share value={v} tone="muted" /><span className="text-right text-fg">{(v * 100).toFixed(0)}%</span></div>
             ))}
             <p className="font-sans text-fg-3">of {money(s.volumeUsd)} account volume, {int(s.accounts)} accounts. Every trade counts for its buyer and its seller, so this is about twice the market volume.</p>
@@ -804,7 +804,7 @@ function PositionList({ rows }: { rows: PxPosition[] }) {
     <table className="w-full text-[13px]">
       <thead>
         <tr className="label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal">
-          <th className="pl-2.5">Account</th><th>Market</th><th className="text-right">Size</th><th className="text-right">Lev</th><th className="pr-2.5 text-right">To liq</th>
+          <th className="pl-2.5">Account</th><th>Market</th><th className="text-right">Size</th><th className="text-right">Lev</th><th className="pr-2.5 text-right">To Liq</th>
         </tr>
       </thead>
       <tbody className="num">
@@ -866,7 +866,7 @@ function Traders({ complete }: { complete: (days: 1 | 7 | 30 | 90) => boolean })
   const barTone = (t: PxTrader): Tone => (sort === 'volume' ? 'muted' : t.netUsd >= 0 ? 'bid' : 'ask');
   return (
     <Panel
-      title={sort === 'loss' ? 'Biggest losers' : sort === 'volume' ? 'Most volume' : 'Top traders'}
+      title={sort === 'loss' ? 'Biggest Losers' : sort === 'volume' ? 'Most Volume' : 'Top Traders'}
       aside={
         <>
           <Segments label="Sort" value={sort} onChange={setSort} options={[['net', 'PnL'], ['loss', 'Losses'], ['volume', 'Volume']] as const} />

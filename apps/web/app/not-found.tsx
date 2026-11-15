@@ -12,7 +12,7 @@ export default function NotFound() {
         <p className="mt-6 max-w-[52ch] text-[17px] leading-relaxed text-fg-2">The page may have moved, or the link was typed by hand. Everything Monday has is a click from the home page.</p>
         <div className="mt-8 flex flex-wrap gap-2.5">
           <ButtonLink href="/" size="lg" className="px-6">Home</ButtonLink>
-          <ButtonLink href="/system" size="lg" variant="ghost">How Monday works</ButtonLink>
+          <ButtonLink href="/system" size="lg" variant="ghost">How Monday Works</ButtonLink>
         </div>
       </main>
       <SiteFooter />
