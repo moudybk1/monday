@@ -124,13 +124,14 @@ export class Collector {
   }
 
   async start() {
+    // Switched off: nothing stored is loaded either, or wallets labelled before would still count from the live tape.
+    if (!this.source) return;
     // Rebuild from disk first: the API only serves 7 days, so our table is the only long history.
     const since = Date.now() - WEEK_MIN * MIN;
     const rows = db.prepare('select * from nansen_trades where ts > ? order by ts').all(since) as Record<string, never>[];
     for (const r of rows) {
       this.absorb({ hash: r.hash, sym: r.sym, action: r.action, amount: r.amount, side: r.side, valueUsd: r.value_usd, priceUsd: r.price_usd, type: r.type, trader: r.trader, label: r.label, ts: r.ts, fetchedAt: r.fetched_at });
     }
-    if (!this.source) return;
     // Fetch only the hours missing since the newest stored trade (a cold start pulls all 7 days), and do not
     // hold up boot for it: until it lands the signal counts as stale and Monday quotes conservatively.
     const newest: number = rows.length ? rows[rows.length - 1].ts : 0;

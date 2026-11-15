@@ -32,7 +32,8 @@ export interface MarketFeed {
   start(): Promise<void>;
   stop(): void;
   specs(): Partial<Record<MarketSym, MarketSpec>>;
-  snapshot(sym: MarketSym): MarketSnapshot | null;
+  /** `depth`: levels per side, 15 by default; the grouped book asks for every level the feed holds. */
+  snapshot(sym: MarketSym, depth?: number): MarketSnapshot | null;
   /**
    * Candles, oldest first: 1-minute by default (volatility warm-up, the volume cap, the Smart Trader study). `resSec` asks
    * for wider ones (the chart's 5m to 1D); a feed that only has minutes may return those, and the API aggregates them.

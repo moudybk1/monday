@@ -66,9 +66,10 @@ export const config = {
     ? { quoteSizeUsd: num('CAP_QUOTE_USD', Infinity), maxInventoryUsd: num('CAP_INVENTORY_USD', Infinity), maxDailyLossUsd: num('CAP_DAILY_LOSS_USD', Infinity) }
     : null,
 
-  // Smart-money source: real Nansen when a key is set; the simulator only when the
-  // venue is simulated too. Live orders are never driven by simulated signals.
-  smartMoney: (nansenKey ? 'nansen' : venue === 'sim' ? 'sim' : 'none') as 'nansen' | 'sim' | 'none',
+  // Smart-money source: real Nansen only when SMART_TRADERS=on and a key is set (off since 2026-11-16, the owner's
+  // call: entries no longer read Smart Traders); the simulator only when the venue is simulated too. Live orders are
+  // never driven by simulated signals. Off, the signal is flat: no flow reflex, the regime rests on volatility alone.
+  smartMoney: (nansenKey && env('SMART_TRADERS') === 'on' ? 'nansen' : venue === 'sim' ? 'sim' : 'none') as 'nansen' | 'sim' | 'none',
   nansen: {
     apiUrl: env('NANSEN_API_URL', 'https://api.nansen.ai'),
     apiKey: nansenKey,

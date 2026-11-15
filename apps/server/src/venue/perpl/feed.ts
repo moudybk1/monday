@@ -97,14 +97,14 @@ export class PerplFeed implements MarketFeed {
     return out;
   }
 
-  snapshot(sym: MarketSym): MarketSnapshot | null {
+  snapshot(sym: MarketSym, depth = DEPTH): MarketSnapshot | null {
     const m = this.ctx?.markets[sym];
     const st = m && this.states.get(m.id);
     const book = m && this.books.get(m.id);
     if (!m || !st || !book) return null;
     // Sorts the whole side on every read (a few hundred levels); keep a sorted array if this shows up in a profile.
     const top = (side: Levels, dir: 1 | -1): BookLevel[] =>
-      [...side].sort((a, b) => dir * (a[0] - b[0])).slice(0, DEPTH).map(([p, s]) => ({ price: p / m.px, size: s / m.sz }));
+      [...side].sort((a, b) => dir * (a[0] - b[0])).slice(0, depth).map(([p, s]) => ({ price: p / m.px, size: s / m.sz }));
     const bids = top(book.bid, -1);
     const asks = top(book.ask, 1);
     const bestBid = bids[0]?.price ?? null;

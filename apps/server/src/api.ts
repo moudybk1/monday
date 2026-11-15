@@ -8,7 +8,7 @@ import { getAddress, keccak256, toHex, verifyMessage } from 'viem';
 import { parseSiweMessage, validateSiweMessage } from 'viem/siwe';
 import { z } from 'zod';
 import {
-  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, planNumbers, policyForHash, rollUp, usd,
+  MARKETS, MARKET_BIT, PRESETS, analyticsOf, balanceNeededUsd, canonicalJson, fitLimits, groupLevels, planNumbers, policyForHash, rollUp, usd,
   type Analytics, type AppConfig, type DashboardState, type DecisionRecord, type Me, type PlanInput, type Policy,
 } from '@monday/core';
 import { agentAddress, anchorOf, chainEnabled, onchainPolicyHash } from './chain';
@@ -244,6 +244,22 @@ export async function buildApi(deps: ApiDeps) {
       data.catch(() => candleCache.delete(key));
     }
     return hit.data.then((cs) => cs.slice(-q.bars));
+  });
+
+  // The order book grouped into wider price steps, from every level the feed holds. The live stream carries only the
+  // top 12, which a step of 10 or 100 ticks folds into a row or two. Public market data, like the candles.
+  // ponytail: sorts the whole book per request (a few hundred levels); cache per market and step if viewers pile up.
+  app.get('/api/book', async (req) => {
+    const q = z.object({
+      market: z.enum(MARKETS),
+      step: z.coerce.number().positive().finite(),
+      rows: z.coerce.number().int().min(1).max(50).default(12),
+    }).parse(req.query);
+    const tick = deps.driver.feed.specs()[q.market]?.priceTick;
+    const snap = tick ? deps.driver.feed.snapshot(q.market, Infinity) : null;
+    if (!tick || !snap) return { bids: [], asks: [] };
+    const step = Math.max(q.step, tick);
+    return { bids: groupLevels(snap.bids, step, 'bid').slice(0, q.rows), asks: groupLevels(snap.asks, step, 'ask').slice(0, q.rows) };
   });
   app.get('/api/decisions/:id', async (req): Promise<DecisionRecord> => {
     const id = Number((req.params as { id: string }).id);

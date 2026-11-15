@@ -8,3 +8,4 @@ export * from './perpl';
 export * from './indicators';
 export * from './plan';
 export * from './scalp';
+export * from './book';

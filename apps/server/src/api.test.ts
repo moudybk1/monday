@@ -104,3 +104,26 @@ it('refuses a leverage that is not a whole number, and says which field', async 
   expect(res.json()).toMatchObject({ error: 'invalid_request', field: 'limits.maxLeverage', message: 'Max leverage: must be a whole number, like 3x' });
   await app.close();
 });
+
+it('the grouped book reads every level the feed holds, buckets bids down and asks up, and caps the rows', async () => {
+  const depths: (number | undefined)[] = [];
+  // 300 bid and ask levels 0.1 apart: far more than the 15 a default snapshot keeps.
+  const lv = (from: number, dir: 1 | -1) => Array.from({ length: 300 }, (_, i) => ({ price: Math.round((from + dir * i * 0.1) * 10) / 10, size: 1 }));
+  const feed = {
+    specs: () => ({ BTC: { priceTick: 0.1 } }),
+    snapshot: (_: string, depth?: number) => (depths.push(depth), { bids: lv(65_000, -1), asks: lv(65_000.1, 1) }),
+    candles: async () => [],
+  };
+  const app = await buildApi({
+    driver: { kind: 'sim', feed, minDepositUsd: () => 10 } as never,
+    world: null, house: () => null, runnerFor: () => null as never, dropRunner: () => {}, health: () => ({ ok: true }),
+  });
+  const res = await app.inject({ method: 'GET', url: '/api/book?market=BTC&step=10&rows=3' });
+  expect(res.statusCode).toBe(200);
+  expect(depths).toEqual([Infinity]);
+  expect(res.json()).toEqual({
+    bids: [{ price: 65_000, size: 1 }, { price: 64_990, size: 100 }, { price: 64_980, size: 100 }],
+    asks: [{ price: 65_010, size: 100 }, { price: 65_020, size: 100 }, { price: 65_030, size: 100 }],
+  });
+  expect((await app.inject({ method: 'GET', url: '/api/book?market=BTC&step=0' })).statusCode).toBe(400);
+});

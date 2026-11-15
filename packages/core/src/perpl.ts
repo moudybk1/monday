@@ -162,8 +162,8 @@ export interface PxScreen { days: number; at: number; rows: PxScreenRow[] }
  * longs equal its shorts, so net positioning only means something for a group.
  */
 export const FLOW_GROUPS = [
-  { id: 'top', label: 'Top traders', hint: 'the 100 best accounts by realised PnL over 30 days' },
-  { id: 'winners', label: 'Consistent winners', hint: '30+ closes, profit factor 1.5+ and in profit over 30 days' },
+  { id: 'top', label: 'Top Traders', hint: 'the 100 best accounts by realised PnL over 30 days' },
+  { id: 'winners', label: 'Consistent Winners', hint: '30+ closes, profit factor 1.5+ and in profit over 30 days' },
   { id: 'whales', label: 'Whales', hint: '$100k+ traded per day over 30 days' },
 ] as const;
 export type FlowGroup = (typeof FLOW_GROUPS)[number]['id'];
@@ -499,13 +499,13 @@ export const WHALE_USD_PER_DAY = 100_000;
 /** The screener's kinds of trader, shared by the page and Ask Monday so both count the same wallets. `days` is the window. */
 export const SCREEN_PRESETS: { id: (typeof ASK_PRESETS)[number]; label: string; hint: string; keep: (r: ScreenStats, days: number) => boolean; sort: (typeof ASK_SORTS)[number]; dir: 'asc' | 'desc' }[] = [
   { id: 'all', label: 'Everyone', hint: 'every account with a fill in the window, by net PnL', keep: () => true, sort: 'netUsd', dir: 'desc' },
-  { id: 'winners', label: 'Consistent winners', hint: 'at least 30 closes, profit factor 1.5 or better, in the money', keep: (r) => r.closes >= 30 && (r.profitFactor ?? Infinity) >= 1.5 && r.netUsd > 0, sort: 'netUsd', dir: 'desc' },
-  { id: 'streaks', label: 'On a streak', hint: 'three or more profitable days in a row', keep: (r) => r.streak >= 3, sort: 'streak', dir: 'desc' },
+  { id: 'winners', label: 'Consistent Winners', hint: 'at least 30 closes, profit factor 1.5 or better, in the money', keep: (r) => r.closes >= 30 && (r.profitFactor ?? Infinity) >= 1.5 && r.netUsd > 0, sort: 'netUsd', dir: 'desc' },
+  { id: 'streaks', label: 'On a Streak', hint: 'three or more profitable days in a row', keep: (r) => r.streak >= 3, sort: 'streak', dir: 'desc' },
   { id: 'whales', label: 'Whales', hint: 'at least $100k traded per day of the window, the most first', keep: (r, days) => r.volumeUsd >= WHALE_USD_PER_DAY * days, sort: 'volumeUsd', dir: 'desc' },
-  { id: 'makers', label: 'Market makers', hint: 'at least 70% of volume made, not taken, and $100k traded', keep: (r) => r.makerShare >= 0.7 && r.volumeUsd >= 100_000, sort: 'volumeUsd', dir: 'desc' },
+  { id: 'makers', label: 'Market Makers', hint: 'at least 70% of volume made, not taken, and $100k traded', keep: (r) => r.makerShare >= 0.7 && r.volumeUsd >= 100_000, sort: 'volumeUsd', dir: 'desc' },
   { id: 'takers', label: 'Takers', hint: 'at most 20% made, at least 10 closes, by net PnL', keep: (r) => r.makerShare <= 0.2 && r.closes >= 10, sort: 'netUsd', dir: 'desc' },
   { id: 'liquidated', label: 'Liquidated', hint: 'closed by the Exchange at least once in the window', keep: (r) => r.liquidations > 0, sort: 'liquidatedUsd', dir: 'desc' },
-  { id: 'losers', label: 'Biggest losers', hint: 'in the red, worst first', keep: (r) => r.netUsd < 0, sort: 'netUsd', dir: 'asc' },
+  { id: 'losers', label: 'Biggest Losers', hint: 'in the red, worst first', keep: (r) => r.netUsd < 0, sort: 'netUsd', dir: 'asc' },
 ];
 
 export type AskMetric = (typeof ASK_METRICS)[number];
