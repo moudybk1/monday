@@ -60,7 +60,7 @@ export default function MyMondayPage() {
       {q.isLoading ? (
         <div className="grid gap-1"><Skeleton className="h-16" /><Skeleton className="h-64" /><Skeleton className="h-48" /></div>
       ) : signedOut ? (
-        <Notice action={<ButtonLink href={at('/app?next=/analytics/monday')} size="sm">Sign in</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
+        <Notice action={<ButtonLink href={at('/app?next=/analytics/monday')} size="sm">Sign In</ButtonLink>}>Sign in to Monday to see how your own agent has traded. Everything on the Perpl and Compare tabs is public.</Notice>
       ) : q.isError || !q.data ? (
         <Notice tone="warn">Could not load your analytics. {q.error instanceof Error ? q.error.message : ''}</Notice>
       ) : q.data.a.summary.fills === 0 ? (
@@ -80,7 +80,7 @@ function Body({ a }: { a: Analytics }) {
     ['Net PnL', fmtSigned(s.netUsd), `${fmtBps(s.netBps, 2)} bps per dollar traded`, s.netUsd],
     ['Realised', fmtSigned(s.realizedUsd), 'before fees', s.realizedUsd],
     ['Fees', fmtUsd(s.feesUsd), `${s.feeBps.toFixed(2)} bps of volume`, null],
-    ['Win rate', pct(s.winRate), `of ${s.closes} position-reducing fills`, null],
+    ['Win Rate', pct(s.winRate), `of ${s.closes} position-reducing fills`, null],
     ['Markout 1 min', m1?.bps == null ? 'n/a' : `${fmtBps(m1.bps)} bps`, `over ${m1?.n ?? 0} maker fills`, m1?.bps ?? null],
   ];
 
@@ -97,7 +97,7 @@ function Body({ a }: { a: Analytics }) {
       </dl>
 
       <div className="grid gap-1 lg:grid-cols-2">
-        <Panel title="Markout after a maker fill" aside={<span>average, bps</span>} bodyClassName="p-2.5">
+        <Panel title="Markout After a Maker Fill" aside={<span>average, bps</span>} bodyClassName="p-2.5">
           {a.markouts.every((m) => m.bps == null) ? (
             <p className="flex h-[200px] items-center justify-center text-[13px] text-fg-3">Markouts are saved five minutes after each maker fill.</p>
           ) : <SignedBars
@@ -106,7 +106,7 @@ function Body({ a }: { a: Analytics }) {
           />}
           <p className="mt-2 text-[13px] text-fg-3">Falling below zero means takers knew where price was going. Wider quotes or a faster reflex are the fix.</p>
         </Panel>
-        <Panel title="Net PnL per day" aside={<span>UTC</span>} bodyClassName="p-2.5">
+        <Panel title="Net PnL per Day" aside={<span>UTC</span>} bodyClassName="p-2.5">
           <SignedBars
             height={200} label="Net PnL per day" format={(v) => fmtUsd(v, a.daily.some((d) => Math.abs(d.netUsd) >= 10) ? 0 : 2)} lowLabel={a.daily[0]?.day.slice(5) ?? ''} highLabel={a.daily.at(-1)?.day.slice(5) ?? ''}
             data={a.daily.map((d) => ({ key: d.day, v: d.netUsd, tip: `${d.day}: ${fmtSigned(d.netUsd)} net on ${compact(d.volumeUsd)} traded` }))}
@@ -115,9 +115,9 @@ function Body({ a }: { a: Analytics }) {
       </div>
 
       <div className="grid gap-1 lg:grid-cols-3">
-        <Buckets title="By market" rows={a.byMarket} />
-        <Buckets title="By regime" rows={a.byRegime} />
-        <Buckets title="By distance from fair at fill" unit=" bps" rows={a.bySpread} />
+        <Buckets title="By Market" rows={a.byMarket} />
+        <Buckets title="By Regime" rows={a.byRegime} />
+        <Buckets title="By Distance From Fair at Fill" unit=" bps" rows={a.bySpread} />
       </div>
 
       <Heatmap cells={a.hourly} />
@@ -133,7 +133,7 @@ function Buckets({ title, rows, unit = '' }: { title: string; rows: Bucket[]; un
           <thead>
             <tr className="label h-6 text-left [&>th]:font-normal">
               <th className="pl-2.5" />
-              <th className="text-right">Volume</th><th className="text-right">Net bps</th><th className="text-right">1m mark</th><th className="pr-2.5 text-right">Win</th>
+              <th className="text-right">Volume</th><th className="text-right">Net bps</th><th className="text-right">1m Mark</th><th className="pr-2.5 text-right">Win</th>
             </tr>
           </thead>
           <tbody className="num">
@@ -157,7 +157,7 @@ function Buckets({ title, rows, unit = '' }: { title: string; rows: Bucket[]; un
 function Heatmap({ cells }: { cells: Analytics['hourly'] }) {
   const max = Math.max(1, ...cells.filter((c) => c.fills).map((c) => Math.abs(c.netBps)));
   return (
-    <Panel title="When Monday makes or loses money" aside={<span>net bps by hour, UTC</span>}>
+    <Panel title="When Monday Makes or Loses Money" aside={<span>net bps by hour, UTC</span>}>
       <div className="overflow-x-auto p-2.5">
         <div className="grid min-w-[640px] grid-cols-[2.5rem_repeat(24,minmax(0,1fr))] gap-px text-[12px]">
           <span />

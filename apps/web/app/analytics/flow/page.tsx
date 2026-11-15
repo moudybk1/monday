@@ -69,12 +69,12 @@ function Positioning({ group, sym, onGroup, onSym }: { group: FlowGroup; sym: st
   const rows = [...(q.data?.markets ?? [])].sort((a, b) => (sort.dir === 'desc' ? rank(b) - rank(a) : rank(a) - rank(b)));
   const scale = (k: SortKey) => Math.max(1, ...rows.map((m) => Math.abs(value(m, k))));
   const cols: [SortKey, string, string][] = [
-    ['change1hUsd', '1h net bought', 'Buys minus sells by the group over the last hour, at fill prices'],
-    ['change6hUsd', '6h net bought', 'Over the last 6 hours'],
-    ['change24hUsd', '24h net bought', 'Over the last 24 hours'],
-    ['longUsd', 'Long positions', 'Open longs held by the group now, at mark'],
-    ['shortUsd', 'Short positions', 'Open shorts held by the group now, at mark'],
-    ['net', 'Net position', 'Longs minus shorts held now'],
+    ['change1hUsd', '1h Net Bought', 'Buys minus sells by the group over the last hour, at fill prices'],
+    ['change6hUsd', '6h Net Bought', 'Over the last 6 hours'],
+    ['change24hUsd', '24h Net Bought', 'Over the last 24 hours'],
+    ['longUsd', 'Long Positions', 'Open longs held by the group now, at mark'],
+    ['shortUsd', 'Short Positions', 'Open shorts held by the group now, at mark'],
+    ['net', 'Net Position', 'Longs minus shorts held now'],
   ];
   const head = (k: SortKey) => setSort((s) => ({ key: k, dir: s.key === k && s.dir === 'desc' ? 'asc' : 'desc' }));
 
@@ -154,7 +154,7 @@ function LiveTape({ group, min, sym, onGroup, onMin, onClearSym }: { group: Tape
 
   return (
     <Panel
-      title="Live trades on Perpl"
+      title="Live Trades on Perpl"
       aside={<span>live, every 3 s</span>}
       className="min-w-0 rise"
     >

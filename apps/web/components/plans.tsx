@@ -53,7 +53,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty, maker
       <thead>
         <tr className={HEAD}>
           <th className="pl-2.5">Plan</th><th>Status</th><th>Progress</th><th className="text-right">Entry</th>
-          <th className="text-right" title={`Rest on ${venue} while a position is open`}>Stop loss</th><th className="text-right">Take profit</th>
+          <th className="text-right" title={`Rest on ${venue} while a position is open`}>Stop Loss</th><th className="text-right">Take Profit</th>
           <th className="text-right">PnL</th><th className="pl-4">Now</th><th className="pr-2.5" />
         </tr>
       </thead>
@@ -97,7 +97,7 @@ export function PlanList({ plans, specs, sim, now, onError, onPick, empty, maker
               <td className="max-w-[22rem] truncate pl-4 font-sans text-fg-2" title={p.note}>{p.note}</td>
               <td className="pr-2.5 text-right font-sans whitespace-nowrap">
                 {live && (p.filledSize > 0
-                  ? <Button size="xs" variant={confirm === p.id ? 'danger' : 'ghost'} disabled={busy === p.id} onClick={() => void act(p, true)} title="Stop and close the position at market">{confirm === p.id ? 'Confirm close' : 'Close'}</Button>
+                  ? <Button size="xs" variant={confirm === p.id ? 'danger' : 'ghost'} disabled={busy === p.id} onClick={() => void act(p, true)} title="Stop and close the position at market">{confirm === p.id ? 'Confirm Close' : 'Close'}</Button>
                   : <Button size="xs" variant="ghost" disabled={busy === p.id} onClick={() => void act(p, false)} title={sc ? 'End the session: no new scalps' : undefined}>{sc ? 'Stop' : 'Cancel'}</Button>)}
               </td>
             </tr>
@@ -116,7 +116,7 @@ export function MakerRow({ state, busy, onStop, onKill, onPick }: { state: Dashb
     <tr className="h-[26px] border-t border-line align-middle">
       <td className="pl-2.5 font-sans">
         {policy.markets.map((m, i) => <Fragment key={m}>{i > 0 && ', '}<SymButton sym={m} onPick={onPick} className="font-semibold text-fg" /></Fragment>)}{' '}
-        <span className="text-fg-3">Market maker, {policy.maxLeverage}x</span>
+        <span className="text-fg-3">Market Maker, {policy.maxLeverage}x</span>
       </td>
       <td className="font-sans"><Tag tone="bid">Quoting</Tag></td>
       <td className="font-sans">{quotes} order{quotes === 1 ? '' : 's'} resting</td>
@@ -127,7 +127,7 @@ export function MakerRow({ state, busy, onStop, onKill, onPick }: { state: Dashb
       <td className="pl-4 font-sans text-fg-2">{s ? `quoting since ${fmtTime(s.startedAt, false)}` : 'quoting'}</td>
       <td className="pr-2.5 text-right font-sans whitespace-nowrap">
         <Button size="xs" variant="ghost" disabled={busy} onClick={onStop} title="Cancel Monday's orders and stop the bot. Open positions and orders you placed yourself stay as they are, and Monday stops watching them.">Stop</Button>{' '}
-        <Button size="xs" variant="danger" disabled={busy} onClick={onKill} title="Cancel every order and close every position on the account, the plans' too">Kill and flatten</Button>
+        <Button size="xs" variant="danger" disabled={busy} onClick={onKill} title="Cancel every order and close every position on the account, the plans' too">Kill and Flatten</Button>
       </td>
     </tr>
   );
@@ -138,16 +138,16 @@ export function planLevels(p: PlanView | undefined): ChartLevel[] {
   if (!p || p.status === 'done') return [];
   const out: ChartLevel[] = [];
   if (p.input.kind === 'trade') {
-    if (p.status === 'entering' && p.avgEntry != null) out.push({ price: p.avgEntry, label: 'Scalp entry', tone: 'accent' });
-    if (p.slPrice != null) out.push({ price: p.slPrice, label: 'Stop loss', tone: 'ask' });
-    if (p.tpPrice != null) out.push({ price: p.tpPrice, label: 'Take profit', tone: 'bid' });
+    if (p.status === 'entering' && p.avgEntry != null) out.push({ price: p.avgEntry, label: 'Scalp Entry', tone: 'accent' });
+    if (p.slPrice != null) out.push({ price: p.slPrice, label: 'Stop Loss', tone: 'ask' });
+    if (p.tpPrice != null) out.push({ price: p.tpPrice, label: 'Take Profit', tone: 'bid' });
     return out;
   }
   // A TWAP's levels are priced from where it started, so they show before the first fill too.
   const ref = p.twap?.arrival || p.avgEntry;
   const sl = p.slPrice ?? (ref ? priceAway(p.input.bias, ref, p.input.stopLossPct, true) : null);
   const tp = p.tpPrice ?? (ref && p.input.takeProfitPct ? priceAway(p.input.bias, ref, p.input.takeProfitPct, false) : null);
-  if (sl) out.push({ price: sl, label: 'Stop loss', tone: 'ask' });
-  if (tp) out.push({ price: tp, label: 'Take profit', tone: 'bid' });
+  if (sl) out.push({ price: sl, label: 'Stop Loss', tone: 'ask' });
+  if (tp) out.push({ price: tp, label: 'Take Profit', tone: 'bid' });
   return out;
 }

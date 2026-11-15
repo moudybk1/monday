@@ -20,15 +20,15 @@ type SortKey = 'netUsd' | 'winRate' | 'profitFactor' | 'volumeUsd' | 'trades' | 
 type Preset = (typeof SCREEN_PRESETS)[number];
 
 const PRESETS = SCREEN_PRESETS;
-const VOLUMES = [[0, 'Any volume'], [10_000, '$10k+'], [100_000, '$100k+'], [1_000_000, '$1M+']] as const;
-const CLOSES = [[0, 'Any sample'], [10, '10+ closes'], [50, '50+ closes'], [200, '200+ closes']] as const;
+const VOLUMES = [[0, 'Any Volume'], [10_000, '$10k+'], [100_000, '$100k+'], [1_000_000, '$1M+']] as const;
+const CLOSES = [[0, 'Any Sample'], [10, '10+ Closes'], [50, '50+ Closes'], [200, '200+ Closes']] as const;
 const PAGE = 50;
 const COLS: { key: SortKey; label: string; title: string }[] = [
   { key: 'netUsd', label: 'Net PnL', title: 'Realised, after fees and funding' },
   { key: 'winRate', label: 'Win', title: 'Closes that made money' },
   { key: 'profitFactor', label: 'PF', title: 'Gross wins over gross losses' },
   { key: 'volumeUsd', label: 'Volume', title: 'Notional traded' },
-  { key: 'avgTradeUsd', label: 'Avg fill', title: 'Volume per fill' },
+  { key: 'avgTradeUsd', label: 'Avg Fill', title: 'Volume per fill' },
   { key: 'makerShare', label: 'Maker', title: 'Share of volume made, not taken' },
   { key: 'activeDays', label: 'Days', title: 'Days with a fill' },
   { key: 'streak', label: 'Streak', title: 'Profitable or losing days in a row, ending on the last active day' },
@@ -79,7 +79,7 @@ function Screener() {
   const toggle = (key: SortKey) => set({ sort: key, dir: sort.key === key ? (sort.dir === 'desc' ? 'asc' : 'desc') : key === 'netUsd' && presets[0].id === 'losers' ? 'asc' : 'desc' });
   // A threshold the presets do not list (from the ask bar or a link) still shows as itself, not rounded to one that does.
   const volumes = VOLUMES.some(([v]) => v === minVolume) ? VOLUMES : [...VOLUMES, [minVolume, `$${minVolume.toLocaleString('en-US')}+`] as const];
-  const closes = CLOSES.some(([v]) => v === minCloses) ? CLOSES : [...CLOSES, [minCloses, `${minCloses}+ closes`] as const];
+  const closes = CLOSES.some(([v]) => v === minCloses) ? CLOSES : [...CLOSES, [minCloses, `${minCloses}+ Closes`] as const];
   const title = presets.map((x) => x.label).join(' + ');
   const hint = presets.map((x) => x.hint).join('; ');
 
@@ -117,7 +117,7 @@ function Screener() {
             </div>
             {visible.length > shown && (
               <div className="border-t border-line p-2 text-center">
-                <button type="button" onClick={() => setShown(shown + PAGE)} className="h-7 rounded-sm border border-line-2 px-3 text-[13px] text-fg-2 hover:bg-raised hover:text-fg">Show {Math.min(PAGE, visible.length - shown)} more</button>
+                <button type="button" onClick={() => setShown(shown + PAGE)} className="h-7 rounded-sm border border-line-2 px-3 text-[13px] text-fg-2 hover:bg-raised hover:text-fg">Show {Math.min(PAGE, visible.length - shown)} More</button>
               </div>
             )}
           </>
@@ -147,7 +147,7 @@ function Table({ rows, sort, onSort, maxAbs, resetKey }: { rows: Row[]; sort: { 
               </button>
             </th>
           ))}
-          <th className="pr-2.5 pl-3 text-left">14 days</th>
+          <th className="pr-2.5 pl-3 text-left">14 Days</th>
         </tr>
       </thead>
       <tbody key={resetKey} className="num">

@@ -60,7 +60,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
                   : 'Recompute them here to check they match this record. With no on-chain copy (see On Monad below), a match shows the record is consistent, not that it was never changed.'}
               </p>
               <dl className="mt-5 grid gap-4 text-sm">
-                {([['Parameters hash', d.paramsHash, check?.params], ['Evidence hash', d.evidenceHash, check?.evidence]] as const).map(([k, v, ok]) => (
+                {([['Parameters Hash', d.paramsHash, check?.params], ['Evidence Hash', d.evidenceHash, check?.evidence]] as const).map(([k, v, ok]) => (
                   <div key={k}>
                     <dt className="flex items-center gap-2 text-[13px] text-fg-3">
                       {k}
@@ -89,7 +89,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
                   </dd>
                 </div>
               </dl>
-              <Button variant="ghost" className="mt-5" onClick={() => verify(d)}>Recompute hashes in this browser</Button>
+              <Button variant="ghost" className="mt-5" onClick={() => verify(d)}>Recompute Hashes in This Browser</Button>
             </section>
 
             <section className="mt-10 grid gap-8 border-t border-line-2 pt-6 md:grid-cols-2">
@@ -99,7 +99,7 @@ export default function DecisionPage({ params }: { params: Promise<{ id: string 
               </div>
               <div className="min-w-0">
                 <h2 className="font-semibold">Evidence</h2>
-                <p className="mt-1 text-[14px] text-fg-3">Signal values, the market snapshot, and the hashes of the Smart Trader trades in the window.</p>
+                <p className="mt-1 text-[14px] text-fg-3">The readings this decision was made on: signal values and the market snapshot.</p>
                 <pre className="num mt-3 max-h-[28rem] overflow-auto rounded-sm bg-raised p-4 text-[13px] leading-relaxed">{JSON.stringify(d.evidence, null, 2)}</pre>
               </div>
             </section>

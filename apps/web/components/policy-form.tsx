@@ -36,7 +36,7 @@ const TEMPLATES: { id: Exclude<PresetName, 'custom'>; label: string; note: strin
   { id: 'conservative', label: 'Conservative', note: 'Small and wide' },
   { id: 'balanced', label: 'Balanced', note: 'A sensible start' },
   { id: 'active', label: 'Active', note: 'Larger and tighter' },
-  { id: 'high', label: 'High leverage', note: 'Balanced at 10x' },
+  { id: 'high', label: 'High Leverage', note: 'Balanced at 10x' },
 ];
 const LOSS_PCT = [0.05, 0.1, 0.25, 0.5]; // stop loss choices; 100% would leave no margin for a position
 const TP_PCT = [0.1, 0.25, 0.5, 1, null];
@@ -191,7 +191,7 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
             <Row id="margin" label="Margin" note="Sizes the limits. It does not reserve or move funds." error={bad.margin}>
               <Money id="margin" value={shown} invalid={!!bad.margin} onChange={(s) => resize({}, value.markets, s)} />
             </Row>
-            <Row id="loss" label="Stop loss" note="Your most to lose in a day. At this loss Monday stops, cancels its orders and closes positions. Resets 00:00 UTC; a fast market can go past it." error={bad.maxDailyLossUsd}>
+            <Row id="loss" label="Stop Loss"note="Your most to lose in a day. At this loss Monday stops, cancels its orders and closes positions. Resets 00:00 UTC; a fast market can go past it." error={bad.maxDailyLossUsd}>
               <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
                 <div role="group" aria-label="Stop loss as a share of margin" className={SEG}>
                   {LOSS_PCT.map((pct) => {
@@ -203,13 +203,13 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
               </div>
             </Row>
 
-            <Choices legend="Reference price" note={`${REF_MODES.find((m) => m.id === value.refMode)?.note} ${EXIT_NOTE}`} wide>
+            <Choices legend="Reference Price"note={`${REF_MODES.find((m) => m.id === value.refMode)?.note} ${EXIT_NOTE}`} wide>
               {REF_MODES.map((m) => (
                 <Chip key={m.id} type="radio" name="ref" checked={value.refMode === m.id} onChange={() => onChange({ ...value, refMode: m.id })}>{m.label}</Chip>
               ))}
             </Choices>
             {value.refMode === 'blend' && (
-              <Choices legend="Reference weight" note="The reference market's share of the price Monday quotes around; the rest is Perpl's own mid." wide>
+              <Choices legend="Reference Weight"note="The reference market's share of the price Monday quotes around; the rest is Perpl's own mid." wide>
                 {[0.5, 1].map((w) => (
                   <Chip key={w} type="radio" name="blend" checked={value.blendWeight === w} onChange={() => onChange({ ...value, blendWeight: w })}>{w * 100}%</Chip>
                 ))}
@@ -221,12 +221,12 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
                 <Chip key={p.id} type="radio" name="participation" checked={value.participation === p.id} onChange={() => onChange({ ...value, participation: p.id })}>{p.label}</Chip>
               ))}
             </Choices>
-            <Row id="spread" label="Base spread" value={`${l.minHalfSpreadBps} bps`} note="How far from fair price Monday starts quoting; 1 bp is 0.01%. In a calm market it may quote at the best price instead." error={bad.minHalfSpreadBps}>
+            <Row id="spread" label="Base Spread"value={`${l.minHalfSpreadBps} bps`} note="How far from fair price Monday starts quoting; 1 bp is 0.01%. In a calm market it may quote at the best price instead." error={bad.minHalfSpreadBps}>
               <Slider id="spread" min={1} max={Math.max(20, l.minHalfSpreadBps || 0)} step={0.5} value={l.minHalfSpreadBps} unit=" bps" onChange={(v) => setLimit('minHalfSpreadBps', v)} />
             </Row>
 
             {takeProfit && (
-              <Choices legend="Take profit" note={value.takeProfitPct ? `Once this run makes ${money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2)}, Monday stops and closes the position.` : 'No target: Monday quotes until you stop it.'} wide>
+              <Choices legend="Take Profit"note={value.takeProfitPct ? `Once this run makes ${money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2)}, Monday stops and closes the position.` : 'No target: Monday quotes until you stop it.'} wide>
                 {TP_PCT.map((pct) => (
                   <Chip key={pct ?? 'none'} type="radio" name="tp" checked={(value.takeProfitPct ?? null) === pct} onChange={() => onChange({ ...value, takeProfitPct: pct })}>{pct ? `${pct * 100}%` : 'Uncapped'}</Chip>
                 ))}
@@ -235,14 +235,14 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
 
             <details className="group border-t border-line pt-4 @2xl:col-span-2" open={bad.maxInventoryUsd || bad.quoteSizeUsd ? true : undefined}>
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] [&::-webkit-details-marker]:hidden">
-                <span className="font-medium">Order sizes</span>
+                <span className="font-medium">Order Sizes</span>
                 <span className="num flex items-center gap-2 text-fg-3">{money(l.maxInventoryUsd)} per market, {money(l.quoteSizeUsd)} per side <CaretDownIcon size={12} className="transition-transform group-open:rotate-180" /></span>
               </summary>
               <div className="mt-4 grid gap-x-5 gap-y-5 @2xl:grid-cols-2">
-                <Row id="inventory" label="Position limit per market" note="Margin less the stop loss, times leverage, split across markets." error={bad.maxInventoryUsd}>
+                <Row id="inventory" label="Position Limit per Market"note="Margin less the stop loss, times leverage, split across markets." error={bad.maxInventoryUsd}>
                   <Money id="inventory" value={num(l.maxInventoryUsd)} invalid={!!bad.maxInventoryUsd} onChange={(s) => setLimit('maxInventoryUsd', parse(s))} />
                 </Row>
-                <Row id="quote" label="Quote per side" note="A tenth of the position limit. In a calm market one order may grow to 1.5 times it." error={bad.quoteSizeUsd}>
+                <Row id="quote" label="Quote per Side"note="A tenth of the position limit. In a calm market one order may grow to 1.5 times it." error={bad.quoteSizeUsd}>
                   <Money id="quote" value={num(l.quoteSizeUsd)} invalid={!!bad.quoteSizeUsd} onChange={(s) => setLimit('quoteSizeUsd', parse(s))} />
                 </Row>
               </div>
@@ -250,21 +250,21 @@ export function PolicyForm({ value, onChange, available, caps = null, balance = 
           </div>
         </Panel>
 
-        <Panel title="Pre-trade summary" aside={value.markets.join(', ')}>
+        <Panel title="Pre-Trade Summary" aside={value.markets.join(', ')}>
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 p-3 text-[13px]">
-            <Line k="Free for the market maker" v={balance == null ? '-' : money(balance, 2)} />
-            <Line k="Margin needed" v={money(need, 2)} tone={!fits ? 'text-ask-fg' : undefined} />
-            <Line k="Max loss (stop loss)" v={money(l.maxDailyLossUsd)} />
-            {takeProfit && <Line k="Take profit" v={value.takeProfitPct ? money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2) : 'Uncapped'} />}
-            <Line k="Position limit" v={`${money(l.maxInventoryUsd)} per market`} />
-            <Line k="Quote per side" v={money(l.quoteSizeUsd)} />
-            <Line k="Reference price" v={value.refMode === 'blend' ? `Blend ${value.blendWeight * 100}%` : REF_MODES.find((m) => m.id === value.refMode)?.label ?? '-'} />
+            <Line k="Free for the Market Maker" v={balance == null ? '-' : money(balance, 2)} />
+            <Line k="Margin Needed" v={money(need, 2)} tone={!fits ? 'text-ask-fg' : undefined} />
+            <Line k="Max Loss (Stop Loss)" v={money(l.maxDailyLossUsd)} />
+            {takeProfit && <Line k="Take Profit" v={value.takeProfitPct ? money(Math.floor(marginNum * value.takeProfitPct * 100) / 100, 2) : 'Uncapped'} />}
+            <Line k="Position Limit" v={`${money(l.maxInventoryUsd)} per market`} />
+            <Line k="Quote per Side" v={money(l.quoteSizeUsd)} />
+            <Line k="Reference Price" v={value.refMode === 'blend' ? `Blend ${value.blendWeight * 100}%` : REF_MODES.find((m) => m.id === value.refMode)?.label ?? '-'} />
             <Line k="Participation" v={`${PARTICIPATIONS.find((p) => p.id === value.participation)?.label}, ${PARTICIPATION[value.participation] * 100}%`} />
           </dl>
           {balance != null && !fits && (
             <p role="alert" className="mx-3 mb-3 text-[13px] text-ask-fg">
               These limits need <span className="num">{money(need, 2)}</span> and <span className="num">{money(balance, 2)}</span> is free.{' '}
-              <button type="button" onClick={fit} className="font-medium text-fg underline underline-offset-2 hover:text-accent">Fit to my balance</button>
+              <button type="button" onClick={fit} className="font-medium text-fg underline underline-offset-2 hover:text-accent">Fit to My Balance</button>
             </p>
           )}
           {shrunk && (

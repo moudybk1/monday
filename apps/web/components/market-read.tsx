@@ -29,7 +29,7 @@ export function InsightCard({ sym, q, m, spec }: { sym: MarketSym; q: UseQueryRe
           {!q.isError && <span className="text-[13px] text-fg-3" role="status">Reading D1, H4 and H1</span>}
         </div>
         {q.isError ? (
-          <p className="px-4 py-5 text-[14px] text-ask-fg">Could not read {sym} right now. <button type="button" className="underline underline-offset-2" onClick={() => void q.refetch()}>Try again</button></p>
+          <p className="px-4 py-5 text-[14px] text-ask-fg">Could not read {sym} right now. <button type="button" className="underline underline-offset-2" onClick={() => void q.refetch()}>Try Again</button></p>
         ) : (
           <>
             <div className="grid grid-cols-3 divide-x divide-line">{FRAMES.map(([k]) => <div key={k} className="grid gap-2 px-4 py-3"><Skeleton className="h-3 w-10" /><Skeleton className="h-10" /><Skeleton className="h-3 w-20" /></div>)}</div>

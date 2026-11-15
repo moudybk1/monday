@@ -3,7 +3,7 @@
 import { quotingFor, usd, usdCompact, type DashboardState, type MarketState, type MarketSym, type Policy, type Side } from '@monday/core';
 import { ago, fmtBps, fmtPrice, fmtSigned, fmtSize, fmtTime, fmtUsd, towardHl } from '@/lib/format';
 import { quoteStanding, tone } from './agent';
-import { SymButton, cx } from './ui';
+import { CoinIcon, SymButton, cx } from './ui';
 
 const HEAD = 'label sticky top-0 z-[1] h-6 bg-canvas text-left [&>th]:font-normal';
 
@@ -19,7 +19,7 @@ export function OpenOrders({ state, onPick }: { state: DashboardState; onPick?: 
       <thead>
         <tr className={HEAD}>
           <th className="pl-2.5">Market</th><th>Side</th><th className="text-right">Price</th><th className="text-right">Size</th><th className="text-right">Value</th>
-          <th className="text-right" title="Distance from the book mid, in basis points">From mid</th>
+          <th className="text-right" title="Distance from the book mid, in basis points">From Mid</th>
           <th className="pl-4" title="What has to trade before this order does">Queue</th><th className="text-right">Standing</th><th className="pr-2.5 text-right">Age</th>
         </tr>
       </thead>
@@ -32,7 +32,7 @@ export function OpenOrders({ state, onPick }: { state: DashboardState; onPick?: 
           const age = m.quoteAgeMs[side];
           return (
             <tr key={`${m.sym}:${side}`} className="h-[24px] border-t border-line">
-              <td className="pl-2.5 font-sans font-semibold"><SymButton sym={m.sym} onPick={onPick} /> <span className="font-normal text-fg-3">perp</span></td>
+              <td className="pl-2.5 font-sans font-semibold"><span className="flex items-center gap-1.5"><CoinIcon sym={m.sym} /><SymButton sym={m.sym} onPick={onPick} /><span className="font-normal text-fg-3">PERP</span></span></td>
               <td className={cx('font-sans', side === 'bid' ? 'text-bid-fg' : 'text-ask-fg')}>{side === 'bid' ? 'Buy' : 'Sell'}</td>
               <td className="text-right">{fmtPrice(q.price, m.spec)}</td>
               <td className="text-right">{fmtSize(q.size, m.spec)}</td>
@@ -65,7 +65,7 @@ export function Positions({ state, onPick }: { state: DashboardState; onPick?: (
     <table className="w-full min-w-[700px] text-[13px]">
       <thead>
         <tr className={HEAD}>
-          <th className="pl-2.5">Market</th><th>Side</th><th title="Notional at mark over the margin Perpl holds for the position">Leverage</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Entry</th><th className="text-right">Mark</th><th className="text-right">Open PnL</th><th className="pr-2.5 text-right" title="Share of your inventory limit this position uses">Of limit</th>
+          <th className="pl-2.5">Market</th><th>Side</th><th title="Notional at mark over the margin Perpl holds for the position">Leverage</th><th className="text-right">Size</th><th className="text-right">Value</th><th className="text-right">Entry</th><th className="text-right">Mark</th><th className="text-right">Open PnL</th><th className="pr-2.5 text-right" title="Share of your inventory limit this position uses">Of Limit</th>
         </tr>
       </thead>
       <tbody className="num">
@@ -78,7 +78,7 @@ export function Positions({ state, onPick }: { state: DashboardState; onPick?: (
           const plan = state.plans.find((x) => x.status !== 'done' && x.input.sym === m.sym);
           return (
             <tr key={m.sym} className={cx('h-[24px] border-t border-line', flat && 'text-fg-3')}>
-              <td className="pl-2.5 font-sans font-semibold text-fg"><SymButton sym={m.sym} onPick={onPick} /> <span className="font-normal text-fg-3">perp</span></td>
+              <td className="pl-2.5 font-sans font-semibold text-fg"><span className="flex items-center gap-1.5"><CoinIcon sym={m.sym} /><SymButton sym={m.sym} onPick={onPick} /><span className="font-normal text-fg-3">PERP</span></span></td>
               <td className={cx('font-sans', !flat && (long ? 'text-bid-fg' : 'text-ask-fg'))}>{flat ? 'Flat' : long ? 'Long' : 'Short'}</td>
               <td>{flat ? '-' : (() => {
                 const l = leverageOf(p, plan?.input.leverage ?? state.policy.maxLeverage);
@@ -97,7 +97,7 @@ export function Positions({ state, onPick }: { state: DashboardState; onPick?: (
       {open.length > 0 && (
         <tfoot className="num">
           <tr className="h-[24px] border-t border-line-2">
-            <td colSpan={7} className="pl-2.5 font-sans text-fg-2">Total open PnL</td>
+            <td colSpan={7} className="pl-2.5 font-sans text-fg-2">Total Open PnL</td>
             <td className={cx('text-right', tone(total))}>{fmtSigned(total)}</td>
             <td />
           </tr>
@@ -150,17 +150,18 @@ export function Model({ m, quoting, policy }: { m: MarketState; quoting: boolean
   const { quoteSizeUsd } = policy;
   // The reference mode and participation the engine uses for this policy, not the Grid and Normal defaults.
   const { blend, participation } = quotingFor(policy).cfg;
-  const rows: [string, string, string][] = [
-    ['Fair price', fmtPrice(m.model.ref, m.spec), m.hlMid != null && blend > 0 ? `Perpl, pulled ${fmtBps(m.model.blendBps, 1)} bps ${towardHl(blend)} to the reference market` : 'Perpl mark, or the book mid when it agrees'],
-    ['Half-spread', `${m.model.halfBps.toFixed(2)} bps`, `volatility ${m.sigma1mBps.toFixed(1)} bps a minute, widened ${g.spread_mult}x by the ${g.regime} regime. In a calm market the quote moves up to the best price instead.`],
-    ['Inventory skew', `${fmtBps(m.model.skewInvBps, 2)} bps`, m.model.q === 0 ? 'flat, no skew' : `leans to shed the ${m.model.q > 0 ? 'long' : 'short'}`],
-    ['Smart Trader skew', `${fmtBps(m.model.skewNanBps + g.skew_bias_bps, 2)} bps`, m.model.skewNanBps === 0 && g.skew_bias_bps === 0 ? 'off or neutral' : 'leans with the flow'],
-    ['Order-book skew', `${fmtBps(m.model.skewBookBps, 2)} bps`, `top 5 levels are ${Math.round(50 + Math.abs(m.book) * 50)}% ${m.book >= 0 ? 'bids' : 'asks'}`],
-    ['Trend skew', `${fmtBps(m.model.skewTrendBps, 2)} bps`, Math.abs(m.trend5mBps) <= 4 ? `price moved ${fmtBps(m.trend5mBps, 1)} bps in 5 min: no trend` : `price moved ${fmtBps(m.trend5mBps, 1)} bps in 5 min: the ${m.trend5mBps < 0 ? 'bid' : 'ask'} waits off the touch`],
-    ['Quote size', `${Math.round(g.size_mult * 100)}%`, m.model.sizeCapUsd != null && m.model.sizeCapUsd < quoteSizeUsd * g.size_mult
+  // The Smart Trader row only while that source is on.
+  const rows = ([
+    ['Fair Price', fmtPrice(m.model.ref, m.spec), m.hlMid != null && blend > 0 ? `Perpl, pulled ${fmtBps(m.model.blendBps, 1)} bps ${towardHl(blend)} to the reference market` : 'Perpl mark, or the book mid when it agrees'],
+    ['Half-Spread', `${m.model.halfBps.toFixed(2)} bps`, `volatility ${m.sigma1mBps.toFixed(1)} bps a minute, widened ${g.spread_mult}x by the ${g.regime} regime. In a calm market the quote moves up to the best price instead.`],
+    ['Inventory Skew', `${fmtBps(m.model.skewInvBps, 2)} bps`, m.model.q === 0 ? 'flat, no skew' : `leans to shed the ${m.model.q > 0 ? 'long' : 'short'}`],
+    m.signal ? ['Smart Trader Skew', `${fmtBps(m.model.skewNanBps + g.skew_bias_bps, 2)} bps`, m.model.skewNanBps === 0 && g.skew_bias_bps === 0 ? 'off or neutral' : 'leans with the flow'] : null,
+    ['Order-Book Skew', `${fmtBps(m.model.skewBookBps, 2)} bps`, `top 5 levels are ${Math.round(50 + Math.abs(m.book) * 50)}% ${m.book >= 0 ? 'bids' : 'asks'}`],
+    ['Trend Skew', `${fmtBps(m.model.skewTrendBps, 2)} bps`, Math.abs(m.trend5mBps) <= 4 ? `price moved ${fmtBps(m.trend5mBps, 1)} bps in 5 min: no trend` : `price moved ${fmtBps(m.trend5mBps, 1)} bps in 5 min: the ${m.trend5mBps < 0 ? 'bid' : 'ask'} waits off the touch`],
+    ['Quote Size', `${Math.round(g.size_mult * 100)}%`, m.model.sizeCapUsd != null && m.model.sizeCapUsd < quoteSizeUsd * g.size_mult
       ? `capped at ${usd(m.model.sizeCapUsd)}, ${Math.round(participation * 100)}% of an average hour's volume`
       : `of your ${usd(quoteSizeUsd)} per side`],
-  ];
+  ] as ([string, string, string] | null)[]).filter((r) => r !== null);
   return (
     <div className="grid text-[13px] md:grid-cols-2 md:gap-x-4">
       {rows.map(([k, v, note]) => (
