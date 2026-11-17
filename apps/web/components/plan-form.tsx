@@ -9,7 +9,7 @@ import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-q
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  BIAS_LABEL, MODE_LABEL, PLAN_DEFAULTS, PLAN_RULES, SCALP_TARGET_ATR, STYLE_LABEL, TREND_LABEL, planNumbers, planProblems, scalpMode, twapSlicesFor,
+  BIAS_LABEL, MODE_LABEL, PLAN_DEFAULTS, PLAN_RULES, SCALP_DIP_ATR, SCALP_TARGET_ATR, STYLE_LABEL, TREND_LABEL, planNumbers, planProblems, scalpMode, twapSlicesFor,
   type Bias, type DashboardState, type MarketInsight, type MarketRead, type MarketSpec, type MarketSym, type PlanField, type PlanInput, type PlanView, type ScalpFrame, type Trend, type TwapStyle,
 } from '@monday/core';
 import { InsightCard } from './market-read';
@@ -80,8 +80,8 @@ function modeLine(bias: Bias, read: Read | undefined, frame: ScalpFrame): string
   const side = bias === 'long' ? 'long' : 'short';
   if (!mode) return `D1 and H4 do not line up right now: Monday waits until both point the same way, then scalps your ${side}.`;
   return mode === 'follow'
-    ? `Your ${side} follows the market: Monday ${bias === 'long' ? 'buys pullbacks' : 'sells rallies'} to the 20 EMA on the ${frame} chart, aiming ${SCALP_TARGET_ATR.follow} bar ranges out.`
-    : `Your ${side} goes against the market: Monday only ${bias === 'long' ? 'buys a stretched RSI turning up' : 'sells a stretched RSI turning down'} on the ${frame} chart, aiming ${SCALP_TARGET_ATR.counter} bar range out.`;
+    ? `Your ${side} follows the market: Monday ${bias === 'long' ? `buys dips (${SCALP_DIP_ATR} bar ranges under the 20-bar average)` : `sells bounces (${SCALP_DIP_ATR} bar ranges over the 20-bar average)`} on the ${frame} chart, aiming ${SCALP_TARGET_ATR} bar ranges out.`
+    : `Your ${side} goes against the market: Monday takes no scalp against D1 and H4, so the session waits until both turn ${bias === 'long' ? 'up' : 'down'}.`;
 }
 
 export function PlanWizard({ kind }: { kind: Kind }) {
@@ -220,7 +220,7 @@ function DirectionStep({ kind, value, onPick }: { kind: Kind; value: Bias | null
     <div>
       <Heading title={kind === 'trade' ? 'Long or Short?' : 'Buy or Sell?'}>
         {kind === 'trade'
-          ? 'Your bias for the session. Monday reads D1 and H4 to see whether it follows the market or goes against it, then scalps that side on a short timeframe, again and again, until your stop loss or take profit.'
+          ? 'Your bias for the session. Monday reads D1 and H4 and, while both point your way, scalps that side on a short timeframe, again and again, until your stop loss or take profit.'
           : 'A TWAP opens a position in slices over time, so one large order does not move a thin book. Pick the side to build.'}
       </Heading>
       <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -308,8 +308,8 @@ function SettingsStep({ kind, draft, set, problems, input, specs, prices, balanc
 
             {kind === 'trade' ? (
               <>
-                <Choices legend="Trigger Timeframe" note="The bars each scalp is triggered and sized on. On 1m the moves are often too small to clear fees, and Monday skips those setups." error={problems.frame}>
-                  {(['1m', '5m', '15m'] as const).map((f) => <Chip key={f} type="radio" name="frame" checked={draft.frame === f} onChange={() => set({ frame: f })}>{f}</Chip>)}
+                <Choices legend="Trigger Timeframe" note="The bars each scalp is triggered and sized on. Only 15m: on 1m and 5m the fees outweigh the move." error={problems.frame}>
+                  {(['15m'] as const).map((f) => <Chip key={f} type="radio" name="frame" checked={draft.frame === f} onChange={() => set({ frame: f })}>{f}</Chip>)}
                 </Choices>
                 <Choices legend="Session Length" note="When it runs out, Monday closes any open scalp and stops." error={problems.expiryHours}>
                   {SESSIONS.map((h) => <Chip key={h} type="radio" name="session" checked={draft.expiryHours === h} onChange={() => set({ expiryHours: h })}>{hours(h)}</Chip>)}
@@ -477,7 +477,7 @@ function ReviewStep({ input, spec, mark, balance, read, sim, busy, error, onPlac
     <div>
       <Heading title="Review and Start">
         {input.kind === 'trade'
-          ? `Monday reads D1 and H4, then scalps your ${input.bias} on the ${input.frame} chart, one position at a time, until the session is down ${money(n.lossUsd, 2)}${n.profitUsd != null ? ` or up ${money(n.profitUsd, 2)}` : ''}, or after ${hoursLong(input.expiryHours)}. Each scalp's stop and target rest on ${sim ? 'the exchange' : 'Perpl'}. You can stop it from the terminal at any time.`
+          ? `Monday reads D1 and H4 and, while both point your way, scalps your ${input.bias} on the ${input.frame} chart, one position at a time, until the session is down ${money(n.lossUsd, 2)}${n.profitUsd != null ? ` or up ${money(n.profitUsd, 2)}` : ''}, or after ${hoursLong(input.expiryHours)}. Each scalp's stop and target rest on ${sim ? 'the exchange' : 'Perpl'}. You can stop it from the terminal at any time.`
           : `Monday ${long ? 'buys' : 'sells'} in ${input.slices} slices over ${input.durationMin} minutes and protects the position from the first fill. You can stop it from the terminal at any time.`}
       </Heading>
       <dl className="mt-8 grid border-t border-line-2 text-sm sm:grid-cols-2">

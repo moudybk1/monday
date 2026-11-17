@@ -17,7 +17,7 @@ const LOOP = { mm: 28, trade: 16, twap: 22 };
 /** The frame held under reduced motion: the ask pulled, inside the second scalp, slice 9 of 15. */
 const STILL = { mm: 13, trade: 9, twap: 9 };
 
-// ---- Market maker: calm, the reference market jumps, the ask is pulled, Kimi widens both, calm again. ----
+// ---- Market maker: calm, the reference market jumps, the ask is pulled, the LLM widens both, calm again. ----
 type MmPhase = 'calm' | 'jump' | 'pulled' | 'storm';
 const mmPhase = (m: number): MmPhase => (m >= 10 && m < 12 ? 'jump' : m >= 12 && m < 18 ? 'pulled' : m >= 18 && m < 24 ? 'storm' : 'calm');
 const MM_STATUS: Record<MmPhase, string> = {
@@ -179,7 +179,7 @@ const DEPTH = [0.45, 0.7, 0.4, 0.85, 0.55, 0.95, 0.6];
 
 /**
  * The book as a strip, price left to right: bids in teal, asks in vermilion, Monday's two quotes in amber either side
- * of the mid. A pull hatches the ask and slides it out; Kimi's storm settings set both further out and shorter.
+ * of the mid. A pull hatches the ask and slides it out; the LLM's storm settings set both further out and shorter.
  */
 function BookStrip({ phase }: { phase: MmPhase }) {
   const off = phase === 'storm' ? 15 : 6; // % of the width from the mid

@@ -22,6 +22,7 @@ import { config } from './config';
 import { atomically, db, event, journal } from './db';
 import { decide, fallbackDecision, hashOf, llmEnabled, llmFailures, rulesProposal, type GovernorContext } from './governor';
 import { hlAgeMs, hlMid, hlMoveBps } from './hyperliquid';
+import { ManualDesk } from './manual';
 import { PlanBook } from './plans';
 import { VenueError, type MarketFeed, type MarketSnapshot, type Venue, type VenueCredentials, type VenueDriver, type VenueFill } from './venue/types';
 
@@ -202,6 +203,7 @@ export class Runner {
   private lastPnlWrite = 0;
   private disconnectedAt = 0;
   private session: (SessionLimits & { startedAt: number; startEquity: number }) | null = null;
+  private lastRun: DashboardState['lastRun'] = null;
   private policyHash: string;
   /**
    * Cash that moved without a fill. `expected` is the balance the fills explain; a different balance that holds for
@@ -228,6 +230,7 @@ export class Runner {
   private resumeAt = 0;
   /** Agentic Trade and TWAP: the user's own trades, run on this runner's connection whether or not it quotes. */
   readonly plans: PlanBook;
+  readonly manual: ManualDesk;
   private planOpenAt = 0;
   /** Cancel or flatten still owed to Perpl. */
   get owes() {
@@ -283,6 +286,31 @@ export class Runner {
     for (const r of db.prepare('select distinct sym from fills where user_id = ? and coalesce(external, 0) = 0 and plan_id is null and ts >= ?').all(userId, Date.now() - 86_400_000) as { sym: MarketSym }[]) this.ownSyms.add(r.sym);
     tapeOf(deps.driver.feed);
     this.plans = new PlanBook(userId, deps.driver.feed, () => this.venue, (severity, message) => this.alert(severity, message));
+    this.manual = new ManualDesk(userId, deps.driver.feed, () => this.venue, (severity, message) => this.alert(severity, message));
+  }
+
+  /** Markets the market maker or a running plan holds: the Trade tab leaves them alone. */
+  takenMarkets(): MarketSym[] {
+    return [...new Set([...(this.status === 'quoting' ? this.policy.markets : []), ...this.plans.markets()])];
+  }
+
+  /**
+   * Collateral free for a hand-placed order: the balance less what the market maker and the plans hold, and less the
+   * margin of the hand-traded positions. Perpl takes a position's margin out of the balance and reports it; a simulated
+   * venue does neither, so there it is counted here at the leverage the position was opened with.
+   */
+  freeUsd(): number {
+    const v = this.venue;
+    if (!v) return 0;
+    const c = this.committed();
+    const held = new Set([...this.managed(), ...this.plans.markets()]);
+    const hand = MARKETS.filter((s) => !held.has(s)).reduce((a, s) => {
+      const p = v.position(s);
+      if (!p.size || p.marginUsd != null) return a;
+      const mark = this.deps.driver.feed.snapshot(s)?.mark ?? p.entryPrice;
+      return a + (Math.abs(p.size) * mark) / (this.manual.leverageOf(s) ?? Math.max(1, this.policy.maxLeverage));
+    }, 0);
+    return Math.max(0, v.account().balanceUsd - c.makerUsd - c.plansUsd - hand);
   }
 
   /** Open the trading connection now (a plan needs it before it can start). Throws VenueError. */
@@ -457,7 +485,9 @@ export class Runner {
 
   private endSession(why: string) {
     if (!this.session) return;
-    journal(this.userId, 'session_stop', null, this.equityNow(), { why, pnlUsd: this.sessionPnl(), startedAt: this.session.startedAt });
+    const pnlUsd = this.sessionPnl();
+    journal(this.userId, 'session_stop', null, this.equityNow(), { why, pnlUsd, startedAt: this.session.startedAt });
+    this.lastRun = { startedAt: this.session.startedAt, endedAt: Date.now(), why, pnlUsd };
     this.session = null;
   }
 
@@ -701,10 +731,11 @@ export class Runner {
           : this.alert('info', `Perpl is reachable again: all orders cancelled${what === 'flatten' ? ' and positions closed' : ''}.`));
       }
     }
-    // Plans run whether or not Monday quotes: keep the connection open while one runs.
-    if (this.plans.running().length) {
+    if (this.venue?.connected()) this.manual.tick();
+    // Plans run whether or not Monday quotes: keep the connection open while one runs (and while a hand-placed order works).
+    if (this.plans.running().length || this.manual.active()) {
       // Not during a kill's sweep or a stop's cancel: a slice posted again between the cancel and the flatten would rest with nobody watching it.
-      if (this.venue?.connected() && !this.cleaning) this.plans.tick(now);
+      if (this.venue?.connected() && !this.cleaning) { if (this.plans.running().length) this.plans.tick(now); }
       else if (!this.venue && !this.opening && now >= this.planOpenAt) {
         this.planOpenAt = now + 10_000;
         void this.open().catch((e) => event(this.userId, 'error', { plans: e instanceof Error ? e.message : String(e) }));
@@ -1116,6 +1147,7 @@ export class Runner {
    */
   private onFill(f: VenueFill) {
     const planId = this.plans.claim(f);
+    const manual = planId == null && !f.external && this.manual.owns(f);
     const rt = this.m[f.sym];
     const snap = this.deps.driver.feed.snapshot(f.sym);
     const sig = this.deps.collector.kind === 'none' ? null : this.deps.collector.signal(f.sym);
@@ -1130,23 +1162,26 @@ export class Runner {
       reflex: rt?.reflex ?? null, stage: rt?.stage ?? null, halfBps: rt?.model?.halfBps ?? null,
       // A fill against the position is a close, whatever its PnL (win rate must count the break-even ones too).
       reduces: (this.expectedPos[f.sym] ?? 0) !== 0 && Math.sign(this.expectedPos[f.sym]!) !== (f.side === 'bid' ? 1 : -1),
+      ...(manual ? { manual: 1 } : {}),
     };
     const regime = rt?.params.regime ?? 'calm';
     // The distance the fill actually had from fair, not the model's half-spread: joining the touch brings a quote inside it.
     const ref = rt?.model?.ref ?? snap?.mid ?? null;
     const distBps = ref ? Math.abs(f.price / ref - 1) * 1e4 : null;
     const inserted = atomically(() => {
-      const r = insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, distBps, planId == null && f.external ? 1 : 0, quoteEventId, JSON.stringify(ctx), planId);
+      const r = insFill.run(f.id, this.userId, f.sym, f.side, f.price, f.size, f.feeUsd, f.isMaker ? 1 : 0, f.ts, regime, f.realizedUsd, distBps, planId == null && (f.external || manual) ? 1 : 0, quoteEventId, JSON.stringify(ctx), planId);
       if (r.changes === 0) return false;
       this.venue?.persist?.();
       return true;
     });
     if (!inserted) return;
     this.expectedPos[f.sym] = (this.expectedPos[f.sym] ?? 0) + (f.side === 'bid' ? f.size : -f.size);
-    if (!f.external && planId == null) this.ownSyms.add(f.sym);
+    if (!f.external && !manual && planId == null) this.ownSyms.add(f.sym);
     if (this.cash.expected != null) this.cash.expected += f.realizedUsd - f.feeUsd;
     // A plan's fill is the plan's result: in equity like any fill, never in the market maker's.
     if (planId != null) return this.plans.onFill(f, planId);
+    // The user's own trade from the Trade tab: in equity and the loss limit, never in the market maker's results.
+    if (manual) return this.manual.onFill(f, ctx.reduces);
     if (f.external) {
       this.alert('info', `A ${f.sym} trade placed outside Monday filled. It counts toward your limits but not toward Monday's results.`);
       return;
@@ -1519,6 +1554,7 @@ export class Runner {
         depositsUsd: this.flows.dayIn + this.flows.dayOut, fundingUsd: this.flows.dayFunding,
       },
       session: this.session && { startedAt: this.session.startedAt, pnlUsd: this.sessionPnl(), stopLossUsd: this.session.stopLossUsd, takeProfitUsd: this.session.takeProfitUsd },
+      lastRun: this.lastRun,
       health: {
         marketDataAgeMs: worstAge, signalAgeMs: Number.isFinite(this.deps.collector.ageMs) ? this.deps.collector.ageMs : -1, budgetRemaining: Math.floor(this.tokens),
         budgetPerMin: this.budget, venueConnected: this.venue?.connected() ?? false, llm: llmEnabled, llmFailing: llmEnabled && llmFailures >= 3, chain: chainEnabled && agentAddress !== null,
@@ -1528,6 +1564,7 @@ export class Runner {
       costs: this.costs(now),
       markets, equity: this.equity.filter((_, i) => i % step === 0 || i === this.equity.length - 1), fills: this.fills.slice(0, 40), decisions, alerts: this.alerts,
       plans: this.plans.views(),
+      manual: { ...this.manual.views(), freeUsd: this.freeUsd() },
     };
   }
 }

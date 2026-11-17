@@ -18,8 +18,8 @@ interface PlanBase {
   leverage: number;
 }
 /**
- * Agentic Trade: a scalping session. Monday reads D1 and H4, then scalps the user's side on the trigger timeframe, one
- * position at a time, until the session has lost its stop loss or made its take profit (both shares of the margin), or
+ * Agentic Trade: a scalping session. Monday reads D1 and H4 and, while both point the user's way, scalps that side on
+ * the trigger timeframe, one position at a time, until the session has lost its stop loss or made its take profit (both shares of the margin), or
  * its time is up.
  */
 export interface TradeInput extends PlanBase {
@@ -118,7 +118,7 @@ export const PLAN_RULES = {
 } as const;
 
 export const PLAN_DEFAULTS = {
-  trade: { leverage: 3, frame: '5m' as ScalpFrame, lossLimitPct: 20, profitTargetPct: 30, expiryHours: 24 },
+  trade: { leverage: 3, frame: '15m' as ScalpFrame, lossLimitPct: 20, profitTargetPct: 30, expiryHours: 24 },
   twap: { leverage: 3, durationMin: 30, style: 'balanced' as TwapStyle, stopLossPct: 2, takeProfitPct: null as number | null },
 };
 
@@ -173,8 +173,8 @@ export function planNumbers(p: PlanInput, spec: MarketSpec, mark: number): PlanN
   const notionalUsd = size * mark;
   const liqPrice = liquidationAt(p.bias, mark, size, p.leverage, spec);
   const liqPct = Math.abs(liqPrice / mark - 1) * 100;
-  // Scalps enter and take profit with maker orders; TWAP slices enter as their style says. A stop always exits as taker.
-  const makerIn = p.kind === 'trade' || p.style === 'passive';
+  // Scalps enter at market; TWAP slices enter as their style says. A stop always exits as taker.
+  const makerIn = p.kind === 'twap' && p.style === 'passive';
   const feesUsd = (notionalUsd * ((makerIn ? spec.makerFeeBps : spec.takerFeeBps) + spec.takerFeeBps)) / 1e4;
   if (p.kind === 'trade') {
     const lossUsd = (p.marginUsd * p.lossLimitPct) / 100;
@@ -222,7 +222,9 @@ export function planProblems(p: PlanInput, spec: MarketSpec | undefined, ctx: Pl
   else if (ctx.balanceUsd != null && p.marginUsd > ctx.balanceUsd) out.marginUsd = `More than the ${usd(ctx.balanceUsd, 2)} still free in your Perpl account.`;
 
   if (p.kind === 'trade') {
-    if (!['1m', '5m', '15m'].includes(p.frame)) out.frame = 'Pick 1m, 5m or 15m.';
+    // Only 15m is offered: on 1m and 5m the bars' range is too small against the fees and the same trigger lost in every
+    // market (replay, 2026-11-17). Sessions started on them still run.
+    if (p.frame !== '15m') out.frame = 'Only 15m: on 1m and 5m the fees outweigh the move.';
     if (!(p.lossLimitPct >= R.minLossLimitPct && p.lossLimitPct <= R.maxLossLimitPct)) out.lossLimitPct = `Between ${R.minLossLimitPct}% and ${R.maxLossLimitPct}% of the margin.`;
     if (p.profitTargetPct != null && !(p.profitTargetPct >= R.minLossLimitPct && p.profitTargetPct <= R.maxProfitTargetPct)) out.profitTargetPct = `Between ${R.minLossLimitPct}% and ${R.maxProfitTargetPct}% of the margin, or off.`;
     if (!(p.expiryHours >= 1 && p.expiryHours <= R.maxExpiryHours)) out.expiryHours = `Between 1 and ${R.maxExpiryHours} hours.`;

@@ -13,6 +13,15 @@ for (const p of [resolve(process.cwd(), '.env'), resolve(process.cwd(), '../../.
 }
 
 const env = (k: string, d = '') => (process.env[k] ?? '').trim() || d;
+/** One model's settings from `${prefix}PROVIDER`, `BASE_URL`, `API_KEY`, `MODEL` and `THINKING_OFF`. */
+const llmFrom = (prefix: string) => ({
+  provider: env(`${prefix}PROVIDER`, 'anthropic') as 'anthropic' | 'openai-compatible' | 'claude-code' | 'jev',
+  baseUrl: env(`${prefix}BASE_URL`),
+  apiKey: env(`${prefix}API_KEY`),
+  model: env(`${prefix}MODEL`),
+  // yes: the openai-compatible provider accepts `thinking: { type: 'disabled' }`, sent on quick calls to answer in seconds.
+  thinkingOff: env(`${prefix}THINKING_OFF`) === 'yes',
+});
 const num = (k: string, d: number) => (Number.isFinite(Number(env(k))) && env(k) !== '' ? Number(env(k)) : d);
 
 // One switch picks the chain and every Perpl address together, so they cannot disagree.
@@ -78,12 +87,13 @@ export const config = {
     pollSeconds: num('NANSEN_POLL_SECONDS', 600),
   },
 
-  llm: {
-    provider: env('LLM_PROVIDER', 'anthropic') as 'anthropic' | 'openai-compatible' | 'claude-code',
-    baseUrl: env('LLM_BASE_URL'),
-    apiKey: env('LLM_API_KEY'),
-    model: env('LLM_MODEL'),
-  },
+  /** The model that writes text: the setup page's market read and the analytics pages. */
+  llm: llmFrom('LLM_'),
+  /**
+   * The market maker's governor. GOVERNOR_LLM_PROVIDER set: its own model (say Jev picking the regime while DeepSeek
+   * writes the pages), from the GOVERNOR_LLM_* keys only. Unset: the same model as the pages.
+   */
+  governorLlm: env('GOVERNOR_LLM_PROVIDER') ? llmFrom('GOVERNOR_LLM_') : llmFrom('LLM_'),
   governorIntervalMin: num('GOVERNOR_INTERVAL_MIN', 15),
   // An early review (a Smart Trader burst, data going stale) waits at least this long after the last one, and runs with
   // the model's reasoning off: bursts of reviews under two minutes apart were about half of all model calls (2026-10-13).
@@ -138,7 +148,7 @@ for (const url of new Set([config.chain.rpcUrl, config.stats.rpcUrl].filter(Bool
     // not a URL: nothing to hide
   }
 }
-for (const s of [config.telegram.token, config.nansen.apiKey, config.llm.apiKey, config.stats.envioToken, config.masterKey, config.sessionSecret]) if (s.length >= 8) SECRETS.push([s, '***']);
+for (const s of [config.telegram.token, config.nansen.apiKey, config.llm.apiKey, config.governorLlm.apiKey, config.stats.envioToken, config.masterKey, config.sessionSecret]) if (s.length >= 8) SECRETS.push([s, '***']);
 export const redact = (text: string): string => SECRETS.reduce((t, [from, to]) => t.replaceAll(from, to), text);
 for (const k of ['error', 'warn', 'log'] as const) {
   const write = console[k].bind(console);

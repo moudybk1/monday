@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { SmartTrade } from '@monday/core';
 
-Object.assign(process.env, { VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_API_KEY: '' });
+Object.assign(process.env, { GOVERNOR_LLM_PROVIDER: '', VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_API_KEY: '' });
 const { Collector, LIVE } = await import('./collector');
 // A fixed clock, half a minute in. On the real one a fill in a minute's last second put Nansen's row, a second later,
 // in the next minute (outside flowNow), and the poll test reads the time twice and needs the same millisecond.

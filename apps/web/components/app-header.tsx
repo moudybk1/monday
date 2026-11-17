@@ -3,14 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { at } from '@/lib/hosts';
+import { analyticsOn, at } from '@/lib/hosts';
 import { Wordmark, cx } from './ui';
 
 // In the order a user goes through them: set Monday up, then watch it trade.
 const NAV = [
   { href: '/app/setup', label: 'Setup' },
-  { href: '/app', label: 'Terminal' },
-  { href: '/analytics', label: 'Analytics' },
+  { href: '/app', label: 'Agentic' },
+  { href: '/app/trade', label: 'Trade' },
+  ...(analyticsOn ? [{ href: '/analytics', label: 'Analytics' }] : []),
 ];
 // Setup covers the choice of what to run and each one's own setup: the market maker's policy and onboarding too.
 const isOn = (href: string, path: string) =>

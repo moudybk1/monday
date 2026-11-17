@@ -1,5 +1,5 @@
 // Ask Monday's answers. A question becomes an action (resolveAsk), and the action becomes an answer built from the same
-// data the analytics pages show: one or two sentences, at most a small table, and buttons to see more. Kimi reads the
+// data the analytics pages show: one or two sentences, at most a small table, and buttons to see more. The LLM reads the
 // questions the quick rules cannot, and writes the open answers, but only from the figures handed to it here.
 
 import {
@@ -15,11 +15,11 @@ export interface ChatAnswer {
   actions: { label: string; href: string }[];
   /** Where the figures come from and for which window, so a reader can check them. */
   source: string;
-  /** Who read the question: the quick rules, or Kimi (which also wrote open answers). */
-  by: 'rules' | 'kimi';
+  /** Who read the question: the quick rules, or the LLM (which also wrote open answers). */
+  by: 'rules' | 'llm';
   dropped?: string;
   intent?: AskIntent;
-  /** The answer is about this wallet: the panel offers Kimi's plain-words summary of it. */
+  /** The answer is about this wallet: the panel offers the LLM's plain-words summary of it. */
   wallet?: string;
   explainNow?: boolean;
 }
@@ -237,7 +237,7 @@ async function walletAnswer(q: string, data: ChatData, explainNow = false): Prom
   };
 }
 
-/** Kimi answers from a sheet of the current figures, and only from it. */
+/** The LLM answers from a sheet of the current figures, and only from it. */
 async function openAnswer(q: string, data: ChatData): Promise<ChatAnswer> {
   const fallback: ChatAnswer = {
     text: 'I can answer with Perpl\'s figures: volume, open interest, funding, long/short, liquidations, the top traders, any wallet or market. Try one of the suggestions.',
@@ -263,9 +263,9 @@ async function openAnswer(q: string, data: ChatData): Promise<ChatAnswer> {
       console.warn(JSON.stringify({ service: 'stats', event: 'chat_unquoted', text: text.slice(0, 300) }));
       return fallback;
     }
-    return text ? { text, actions: [{ label: 'Open the Perpl overview', href: '/analytics' }], source: `${SRC}, written by Kimi from these figures`, by: 'kimi' } : fallback;
+    return text ? { text, actions: [{ label: 'Open the Perpl overview', href: '/analytics' }], source: `${SRC}, written by the LLM from these figures`, by: 'llm' } : fallback;
   } catch (e) {
-    return { ...fallback, text: `Kimi ${timedOut(e) ? 'did not answer in time' : 'is unavailable right now'}. ${fallback.text}` };
+    return { ...fallback, text: `The LLM ${timedOut(e) ? 'did not answer in time' : 'is unavailable right now'}. ${fallback.text}` };
   }
 }
 
@@ -277,7 +277,7 @@ const numbers = (s: string, re: RegExp) => [...s.matchAll(re)].map((m) => {
 });
 
 /**
- * Kimi's reply quotes only the sheet: every dollar amount and percentage in it rounds from a number on the sheet, so
+ * The LLM's reply quotes only the sheet: every dollar amount and percentage in it rounds from a number on the sheet, so
  * $1.5M, $1.50M and $1,500,000 all match "$1.5M". ponytail: any number on the sheet will do, a count included.
  */
 export function quotesOnly(reply: string, sheet: string): boolean {
@@ -316,7 +316,7 @@ export async function chat(raw: string, ctx: { wallet?: string; last?: AskIntent
   }
   const r = await resolveAsk(text);
   if (r.intent.kind === 'unknown') return openAnswer(q, data);
-  return build(r.intent, r.source === 'model' ? 'kimi' : 'rules', r.dropped, data);
+  return build(r.intent, r.source === 'model' ? 'llm' : 'rules', r.dropped, data);
 }
 
 async function build(i: AskIntent, by: ChatAnswer['by'], dropped: string | undefined, data: ChatData): Promise<ChatAnswer> {

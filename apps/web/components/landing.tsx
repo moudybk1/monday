@@ -565,7 +565,7 @@ export function Story({ onchain = false }: { onchain?: boolean }) {
 // ---- The landing's modes: a prompt line, chips to pick a mode, and the mode's facts and drawing in a window. ----
 
 // Same facts as Setup and the plan forms; keep them in step.
-const MODE_ROWS = ['What It Does', 'Use It For', 'Runs', 'Kimi\'s Part', 'Protection'] as const;
+const MODE_ROWS = ['What It Does', 'Use It For', 'Runs', 'LLM\'s Part', 'Protection'] as const;
 const MODES = [
   {
     key: 'mm', tab: 'Market Maker', name: 'Agentic Market Maker', icon: ArrowsLeftRightIcon, href: '/app/onboarding', cta: 'Set Up the Market Maker',

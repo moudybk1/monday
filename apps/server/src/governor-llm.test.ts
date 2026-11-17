@@ -1,13 +1,13 @@
 import { expect, it, vi } from 'vitest';
 
-// The governor against an OpenAI-compatible Kimi, with the network replaced: what each kind of review asks for.
+// The governor against an OpenAI-compatible LLM, with the network replaced: what each kind of review asks for.
 Object.assign(process.env, {
-  VENUE: 'sim', DATABASE_PATH: ':memory:', LLM_PROVIDER: 'openai-compatible', LLM_BASE_URL: 'https://llm.test/v1', LLM_API_KEY: 'k', LLM_MODEL: 'kimi-k3',
+  VENUE: 'sim', DATABASE_PATH: ':memory:', GOVERNOR_LLM_PROVIDER: '', LLM_PROVIDER: 'openai-compatible', LLM_BASE_URL: 'https://llm.test/v1', LLM_API_KEY: 'k', LLM_MODEL: 'test-model', LLM_THINKING_OFF: 'yes',
 });
 const { decide } = await import('./governor');
 const { PRESETS } = await import('@monday/core');
 
-it('asks Kimi to reason on a scheduled review and not on an early one', async () => {
+it('asks the LLM to reason on a scheduled review and not on an early one', async () => {
   const bodies: Record<string, unknown>[] = [];
   const answer = { market: 'BTC', enabled: true, spread_mult: 2, skew_bias_bps: 0, size_mult: 0.5, max_inventory_usd: 100, ttl_min: 15, regime: 'active', reason: 'Selling picked up.' };
   vi.stubGlobal('fetch', async (_url: string, init: { body: string }) => {
@@ -24,7 +24,7 @@ it('asks Kimi to reason on a scheduled review and not on an early one', async ()
   };
   expect((await decide(ctx)).source).toBe('governor');
   expect((await decide(ctx, true)).source).toBe('governor');
-  expect(bodies[0]).not.toHaveProperty('thinking'); // scheduled: Kimi thinks it through
-  expect(bodies[1]).toMatchObject({ model: 'kimi-k3', thinking: { type: 'disabled' } }); // early: an answer in seconds
+  expect(bodies[0]).not.toHaveProperty('thinking'); // scheduled: the LLM thinks it through
+  expect(bodies[1]).toMatchObject({ model: 'test-model', thinking: { type: 'disabled' } }); // early: an answer in seconds
   vi.unstubAllGlobals();
 });

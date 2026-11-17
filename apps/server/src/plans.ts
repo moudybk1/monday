@@ -4,7 +4,7 @@
 // drops the other one as soon as either closes the position.
 
 import {
-  D1_SEC, FRAME_SEC, H4_SEC, OUTCOME_LABEL, READ_BARS, SCALP_ENTRY_BARS, SCALP_MAX_BARS, SCALP_MIN_TARGET_FEES, TREND_LABEL,
+  D1_SEC, FRAME_SEC, H4_SEC, OUTCOME_LABEL, READ_BARS, SCALP_MAX_BARS, SCALP_MIN_TARGET_FEES, SCALP_DIP_ATR, TREND_LABEL,
   closedBars, liquidationAt, marketRead, planNumbers, planProblems, priceAway, rollUp, scalpExits, scalpMode, scalpSignal, sizeFor, toTick, trendOf, usd,
   type Bar, type MarketRead, type MarketSym, type PlanInput, type PlanOutcome, type PlanStatus, type PlanView, type ScalpMode, type Side, type TradeInput, type Trend, type TwapInput,
 } from '@monday/core';
@@ -351,8 +351,7 @@ export class PlanBook {
       // A position with no scalp on record (a restart mid-fill): adopt it with the last range seen, or a fifth of a percent.
       if (!st.scalp) {
         const range = st.lastAtr ?? pos.entryPrice * 0.002;
-        const mode = scalpMode(input.bias, marketRead(st.d1, st.h4)) ?? 'counter';
-        const ex = scalpExits(input.bias, mode, pos.entryPrice, range);
+        const ex = scalpExits(input.bias, pos.entryPrice, range);
         st.scalp = { entry: pos.entryPrice, tp: ex.tp, sl: ex.sl, size: Math.abs(pos.size), why: 'Position found on restart', signalAt: now, filledAt: now, from: { realized: st.realized, fees: st.fees } };
       }
       st.scalp.filledAt ??= now;
@@ -364,27 +363,20 @@ export class PlanBook {
         st.retryAt = now + 3_000;
         return this.run(p, this.closeNow(p, v, EXIT_SLIP_BPS * 2));
       }
-      if (entryOpen && now - st.scalp.signalAt > SCALP_ENTRY_BARS * frameMs) return this.run(p, v.cancelOrder(st.entryKey!).then(() => void (st.entryKey = null)));
       return this.protect(p, v, snap);
     }
 
-    if (entryOpen) {
-      // The signal's moment has passed without a fill: let it go and wait for the next one.
-      if (!st.scalp || now - st.scalp.signalAt > SCALP_ENTRY_BARS * frameMs) {
-        return this.run(p, v.cancelOrder(st.entryKey!).then(() => {
-          Object.assign(st, { entryKey: null, scalp: null });
-          st.note = 'The entry was not filled in time. Waiting for the next setup.';
-        }));
-      }
-      return;
-    }
-    if (st.scalp && st.scalp.filledAt == null) st.scalp = null; // its entry is gone without a fill
+    // Entries are taken at market and never rest: one found working (left by an earlier version) is pulled.
+    if (entryOpen) return this.run(p, v.cancelOrder(st.entryKey!).then(() => void Object.assign(st, { entryKey: null, scalp: null })));
+    // A market entry that found nothing to take: its moment has passed. A few seconds' grace for a fill still on its way.
+    if (st.scalp && st.scalp.filledAt == null && now - st.scalp.signalAt > 5_000) st.scalp = null;
+    if (st.scalp) return;
     p.status = 'waiting';
 
     if (now - st.readAt > READ_EVERY_MS) return this.run(p, this.read(p, now));
     const mode = scalpMode(input.bias, marketRead(st.d1, st.h4));
-    if (!mode) {
-      st.note = `D1 ${TREND_LABEL[st.d1].toLowerCase()}, H4 ${TREND_LABEL[st.h4].toLowerCase()}: waiting until both point the same way.`;
+    if (mode !== 'follow') {
+      st.note = `D1 ${TREND_LABEL[st.d1].toLowerCase()}, H4 ${TREND_LABEL[st.h4].toLowerCase()}: waiting until both point ${input.bias === 'long' ? 'up' : 'down'}, your side.`;
       return;
     }
     if (now < st.cooldownUntil) return;
@@ -396,7 +388,7 @@ export class PlanBook {
     Object.assign(p.st, { d1: r.d1, h4: r.h4, readAt: now });
   }
 
-  /** On each newly closed trigger bar: look for the setup and, on one, rest a maker entry sized to the loss limit left. */
+  /** On each newly closed trigger bar: look for the setup and, on one, enter at market, sized to the loss limit left. */
   private async trigger(p: Plan, input: TradeInput, v: Venue, mode: ScalpMode, lossLimit: number, now: number) {
     const st = p.st;
     const bars = await barsOf(this.feed, input.sym, FRAME_SEC[input.frame], 80, 5_000);
@@ -404,23 +396,20 @@ export class PlanBook {
     // Once per closed bar: what it showed stays the note until the next one.
     if (!last || last.t <= st.lastBarT) return;
     st.lastBarT = last.t;
-    st.note = mode === 'follow'
-      ? `Follow: watching the ${input.frame} chart for a pullback to the 20 EMA.`
-      : `Counter: watching the ${input.frame} chart for a stretched RSI to turn.`;
+    st.note = `Watching the ${input.frame} chart for ${input.bias === 'long' ? `a dip (a close ${SCALP_DIP_ATR} bar ranges under the 20-bar average) to buy` : `a bounce (a close ${SCALP_DIP_ATR} bar ranges over the 20-bar average) to sell`}.`;
     const sig = scalpSignal(bars, input.bias, mode);
     if (!sig) return;
+    const long = input.bias === 'long';
     const snap = this.feed.snapshot(input.sym);
     const spec = this.feed.specs()[input.sym];
-    const long = input.bias === 'long';
-    const touch = long ? snap?.bestBid : snap?.bestAsk;
-    if (!snap || !spec || touch == null) return;
-    // Never across the book: a maker entry at the signal's close, or at the touch if the price has come through it.
-    const price = toTick(long ? Math.min(sig.price, touch) : Math.max(sig.price, touch), spec.priceTick);
+    // Taken at market: a resting entry only filled when the price came back through it, and missed the moves that ran.
+    const price = long ? snap?.bestAsk : snap?.bestBid;
+    if (!snap || !spec || price == null) return;
     let size = sizeFor(input.marginUsd * input.leverage, price, spec);
     const liq = liquidationAt(input.bias, price, size, input.leverage, spec);
-    const ex = scalpExits(input.bias, mode, price, sig.atr, STOP_SHARE_OF_LIQ * Math.abs(price - liq));
+    const ex = scalpExits(input.bias, price, sig.atr, STOP_SHARE_OF_LIQ * Math.abs(price - liq));
     // A target the fees would eat is no scalp: on a quiet market or a short timeframe the setup is skipped.
-    const fees = (price * (spec.makerFeeBps + spec.takerFeeBps)) / 1e4;
+    const fees = (price * 2 * spec.takerFeeBps) / 1e4;
     if (Math.abs(ex.tp - price) < SCALP_MIN_TARGET_FEES * fees) {
       st.note = `${sig.why}, but skipped: a ${((Math.abs(ex.tp - price) / price) * 100).toFixed(3)}% target does not clear the ${((fees / price) * 100).toFixed(3)}% of fees ${SCALP_MIN_TARGET_FEES} times. A longer timeframe gives it room.`;
       return;
@@ -437,13 +426,13 @@ export class PlanBook {
     st.lastAtr = sig.atr;
     st.scalp = { entry: price, tp: toTick(ex.tp, spec.priceTick), sl: toTick(ex.sl, spec.priceTick), size, why: sig.why, signalAt: now, filledAt: null, from: { realized: st.realized, fees: st.fees } };
     p.status = 'entering';
-    st.note = `${sig.why}: ${long ? 'buying' : 'selling'} ${size} at ${price}.`;
+    st.note = `${sig.why}: ${long ? 'buying' : 'selling'} ${size} near ${price}.`;
     try {
-      await this.send(p, v, { sym: input.sym, side: long ? 'bid' : 'ask', size, leverage: input.leverage, price, postOnly: true }, 'entry');
+      await this.send(p, v, { sym: input.sym, side: long ? 'bid' : 'ask', size, leverage: input.leverage, slippageBps: ENTRY_SLIP_BPS }, 'entry');
     } catch (e) {
       Object.assign(st, { scalp: null, entryKey: null });
       p.status = 'waiting';
-      st.note = e instanceof VenueError && e.code === 'crosses_book' ? 'The price moved through the entry before it rested. Waiting for the next setup.' : `The entry was refused: ${e instanceof Error ? e.message : e}`;
+      st.note = `The entry was refused: ${e instanceof Error ? e.message : e}`;
     }
   }
 

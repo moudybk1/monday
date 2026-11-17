@@ -3,7 +3,7 @@ import { PRESETS, type MarketSym, type Policy } from '@monday/core';
 import type { TapeTrade, VenueFill } from './venue/types';
 
 // Before config loads: nothing in this test may touch a real database, chain or LLM.
-Object.assign(process.env, { VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_PROVIDER: 'anthropic', LLM_API_KEY: '', MONDAY_REGISTRY_ADDRESS: '', TELEGRAM_BOT_TOKEN: '' });
+Object.assign(process.env, { GOVERNOR_LLM_PROVIDER: '', VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_PROVIDER: 'anthropic', LLM_API_KEY: '', MONDAY_REGISTRY_ADDRESS: '', TELEGRAM_BOT_TOKEN: '' });
 const { Runner } = await import('./runner');
 const { VenueError } = await import('./venue/types');
 const { db, simStore, upsertUser } = await import('./db');

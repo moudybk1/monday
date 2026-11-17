@@ -16,6 +16,7 @@ import { config, redact } from './config';
 import { db, seal, upsertUser } from './db';
 import { llmEnabled } from './governor';
 import { marketInsight } from './insight';
+import { ManualError, type ManualInput } from './manual';
 import { PlanError, readMarket } from './plans';
 import type { Runner } from './runner';
 import type { SimWorld } from './venue/sim';
@@ -525,13 +526,63 @@ export async function buildApi(deps: ApiDeps) {
     const { close } = z.object({ close: z.boolean().default(false) }).parse(req.body ?? {});
     return r.plans.cancel(id, close).catch(planError);
   });
+  // ---- the Trade tab: orders placed by hand ----
+  const manualError = (e: unknown): never => {
+    if (e instanceof ManualError) throw new HttpError(e.status, e.status === 404 ? 'not_found' : e.status === 409 ? 'not_ready' : 'invalid_order', e.message, e.field);
+    throw e;
+  };
+  const price = z.number().positive().finite();
+  const ManualBody = z.object({
+    sym: z.enum(MARKETS), side: z.enum(['bid', 'ask']), kind: z.enum(['market', 'limit', 'stop']),
+    size: z.number().positive().finite(), leverage: z.number().min(1).max(100),
+    price: price.optional(), tif: z.enum(['post', 'ioc']).optional(), triggerPrice: price.optional(), reduceOnly: z.boolean().optional(),
+    tpPrice: price.optional(), slPrice: price.optional(), slippageBps: z.number().min(1).max(500).optional(),
+  });
+  const SymBody = z.object({ sym: z.enum(MARKETS) });
+  // The Trade tab opens the trading connection at once, so the balance and positions show before the first order.
+  app.post('/api/manual/connect', async (req) => {
+    await runner(req).connect();
+    return { ok: true };
+  });
+  app.post('/api/manual/orders', async (req) => {
+    const r = runner(req);
+    const input = ManualBody.parse(req.body) as ManualInput;
+    await r.connect();
+    return r.manual.place(input, { freeUsd: r.freeUsd(), taken: r.takenMarkets(), capNotionalUsd: config.caps?.maxInventoryUsd ?? null }).catch(manualError);
+  });
+  app.post('/api/manual/orders/cancel', async (req) => {
+    const r = runner(req);
+    const { key } = z.object({ key: z.string().min(1).max(80) }).parse(req.body);
+    await r.manual.cancel(key).catch(manualError);
+    return { ok: true };
+  });
+  app.post('/api/manual/orders/cancel-all', async (req) => ({ cancelled: await runner(req).manual.cancelAll().catch(manualError) }));
+  app.post('/api/manual/close', async (req) => {
+    const r = runner(req);
+    const { sym } = SymBody.parse(req.body);
+    await r.connect();
+    await r.manual.close(sym, r.takenMarkets()).catch(manualError);
+    return { ok: true };
+  });
+  app.post('/api/manual/close-all', async (req) => {
+    const r = runner(req);
+    await r.connect();
+    return { closed: await r.manual.closeAll(r.takenMarkets()).catch(manualError) };
+  });
+  app.post('/api/manual/protect', async (req) => {
+    const r = runner(req);
+    const b = SymBody.extend({ tpPrice: price.optional(), slPrice: price.optional() }).parse(req.body);
+    await r.connect();
+    return r.manual.protect(b.sym, b.tpPrice, b.slPrice, r.takenMarkets()).catch(manualError);
+  });
   app.get('/api/analytics', async (req): Promise<Analytics> => {
     const s = need(req);
-    const { days } = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) }).parse(req.query);
-    const to = Date.now();
-    const from = to - days * 86_400_000;
+    // A window (from/to, ms) is one run's summary; otherwise the last `days` days.
+    const q = z.object({ days: z.coerce.number().int().min(1).max(90).default(30), from: z.coerce.number().int().positive().optional(), to: z.coerce.number().int().positive().optional() }).parse(req.query);
+    const to = q.to ?? Date.now();
+    const from = q.from ?? to - q.days * 86_400_000;
     // Monday's own fills: a trade placed by hand on the same account is not Monday's result.
-    const rows = db.prepare("select *, json_extract(ctx, '$.reduces') as reduces from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 and plan_id is null order by ts").all(s.uid, from) as Record<string, never>[];
+    const rows = db.prepare("select *, json_extract(ctx, '$.reduces') as reduces from fills where user_id = ? and ts >= ? and ts <= ? and coalesce(external, 0) = 0 and plan_id is null order by ts").all(s.uid, from, to) as Record<string, never>[];
     return analyticsOf(rows.map((r) => ({
       sym: r.sym, side: r.side, price: r.price, size: r.size, fee: r.fee, isMaker: !!r.is_maker, ts: r.ts, regime: r.regime, realized: r.realized, halfBps: r.half_bps,
       closes: r.reduces == null ? null : Boolean(r.reduces),

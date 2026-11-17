@@ -5,7 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
 
-const { provider, apiKey, baseUrl, model: configured } = config.llm;
+const { provider, apiKey, baseUrl, model: configured, thinkingOff } = config.llm;
 // STATS_LLM_MODEL picks a quicker model for the pages than the one the governor thinks with.
 const model = (process.env.STATS_LLM_MODEL ?? '').trim() || configured || (provider === 'openai-compatible' ? '' : 'claude-haiku-5-5');
 export const llmReady = Boolean(apiKey && model && (provider === 'anthropic' || (provider === 'openai-compatible' && baseUrl)));
@@ -13,13 +13,13 @@ const anthropic = llmReady && provider === 'anthropic' ? new Anthropic({ apiKey,
 
 /**
  * One answer, at most `maxTokens` long, within `timeoutMs`. Throws when the model is off, slow or refuses.
- * The request stays minimal on purpose: on b.ai, kimi-k2.6 rejects any `temperature` with a 400 and answers an empty
+ * The request stays minimal on purpose: on b.ai, the LLM rejects any `temperature` with a 400 and answers an empty
  * string in JSON mode or under a `max_tokens` cap (measured 2026-10-11), so the OpenAI-compatible call sends only the
- * model, the messages and, for Kimi, thinking off. Callers that want JSON ask for it in the prompt and the parser accepts fenced replies; the
+ * model, the messages and, where LLM_THINKING_OFF allows it, thinking off. Callers that want JSON ask for it in the prompt and the parser accepts fenced replies; the
  * prompts themselves keep the answers short.
  */
 // The per-address limits stop one visitor; this stops many. Past it the pages answer from the rules, as when the
-// model is down (2026-10-13: the project runs on one prepaid Kimi balance until 4 Nov).
+// model is down (2026-10-13: the project runs on one prepaid LLM balance until 4 Nov).
 let spent = { day: 0, n: 0 };
 
 export async function ask(system: string, user: string, { maxTokens = 300, timeoutMs = 25_000, model: which = model } = {}): Promise<string> {
@@ -36,9 +36,9 @@ export async function ask(system: string, user: string, { maxTokens = 300, timeo
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    // Kimi thinks before it writes by default: about 2,700 hidden tokens and 38 s for a wallet summary, against 4 s and
+    // The LLM thinks before it writes by default: about 2,700 hidden tokens and 38 s for a wallet summary, against 4 s and
     // 160 tokens with thinking off (measured on b.ai 2026-10-12). These are short, factual tasks, so it stays off.
-    body: JSON.stringify({ model: which, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], ...(/^kimi/i.test(which) ? { thinking: { type: 'disabled' } } : {}) }),
+    body: JSON.stringify({ model: which, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], ...(thinkingOff ? { thinking: { type: 'disabled' } } : {}) }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`LLM ${res.status}`);

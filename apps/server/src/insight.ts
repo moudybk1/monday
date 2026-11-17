@@ -1,5 +1,5 @@
 // The market read the Agentic Trade and TWAP setup shows before a trade is set up: D1, H4 and H1 by the scalper's trend
-// rule, then a few sentences on them from the model (Kimi on the VPS, thinking off) or, when the model is off, late or
+// rule, then a few sentences on them from the model (the LLM on the VPS, thinking off) or, when the model is off, late or
 // over its daily budget, from a rule. One answer per market for ten minutes, however many people open the page.
 
 import { D1_SEC, H1_SEC, H4_SEC, READ_BARS, ema, marketRead, trendOf, type Bar, type FrameRead, type MarketInsight, type MarketSym, type Trend } from '@monday/core';
