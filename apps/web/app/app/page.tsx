@@ -1,6 +1,6 @@
 'use client';
 
-import { QuestionIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
+import { PowerIcon, QuestionIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -142,6 +142,8 @@ function TerminalView() {
   };
   const openPositions = shown.filter((s) => Math.abs(state.markets[s]?.position.notionalUsd ?? 0) >= 0.5).length;
   const running = state.plans.filter((p) => p.status !== 'done');
+  const resting = shown.reduce((n, s) => n + (state.markets[s]?.quotes.bid ? 1 : 0) + (state.markets[s]?.quotes.ask ? 1 : 0), 0);
+  const canKill = !state.closing && (quoting || running.length > 0 || openPositions > 0 || resting > 0);
   const ended = state.plans.filter((p) => p.status === 'done');
   const status = terminalStatus(state);
   // A market picked from a table: its chart and book, its URL (?m=) so a reload keeps it, and the chart in view on a phone.
@@ -187,6 +189,19 @@ function TerminalView() {
             {/* Phones show the status in the Agent panel right below; here it keeps only the dot. */}
             <span className="max-md:sr-only">{status.text}</span>
           </span>
+          {/* The one Kill on the terminal: away from every per-run Stop, Cancel and Close, behind its own divider and a
+              confirm. Shown while anything trades or anything is held, since it closes all of it. */}
+          {canKill && (
+            <span className="ml-1 flex items-center border-l border-line pl-3">
+              <button
+                type="button" onClick={() => killDialog.current?.showModal()} disabled={busy !== null}
+                title="Kill Switch: cancel every order and close every position on the account. Asks first."
+                className="flex h-7 items-center gap-1.5 rounded-sm border border-ask/60 px-2.5 text-[12px] font-semibold text-ask-fg transition-colors hover:bg-ask hover:text-white disabled:opacity-50"
+              >
+                <PowerIcon size={13} weight="bold" />Kill Switch
+              </button>
+            </span>
+          )}
         </div>
       </div>
 
@@ -233,7 +248,7 @@ function TerminalView() {
                 {/* One line, cut short when the tabs need the room: it never wraps into the tab row. */}
                 <span className="hidden min-w-0 flex-1 truncate pl-4 text-right text-[13px] text-fg-3 lg:block">
                   {tab === 'orders' ? "the market maker's quotes; a plan's orders show under Plans"
-                    : tab === 'positions' ? 'opened by fills; Kill and Flatten closes all'
+                    : tab === 'positions' ? 'opened by fills; the Kill Switch (top right) closes all'
                     : tab === 'plans' ? `everything that trades; plan stop losses rest on ${state.sim || state.paper ? 'the exchange' : 'Perpl'}`
                     : tab === 'decisions' ? (state.health.chain ? 'every decision is hashed and logged on Monad' : 'hashed; on-chain log is off')
                     : tab === 'fills' ? (past === 'fills' ? "the market maker's fills; markout is the move after, positive is good" : 'Agentic Trade and TWAP that have ended')
@@ -246,7 +261,7 @@ function TerminalView() {
                 {tab === 'plans' && (
                   <PlanList
                     plans={running} specs={cfg?.specs ?? {}} sim={state.sim || state.paper} now={now} onError={setError} onPick={pick}
-                    maker={quoting ? <MakerRow state={state} busy={busy !== null} onStop={() => void act('/agent/pause')} onKill={() => killDialog.current?.showModal()} onPick={pick} /> : undefined}
+                    maker={quoting ? <MakerRow state={state} busy={busy !== null} onStop={() => void act('/agent/pause')} onPick={pick} /> : undefined}
                   />
                 )}
                 {tab === 'fills' && (
@@ -312,13 +327,10 @@ function TerminalView() {
               third column, its panels a fixed 360px wide, so folding clips them while they fade instead of squeezing them. */}
           <div className={cx('contents xl:col-start-3 xl:row-start-1 xl:flex xl:min-h-0 xl:flex-col xl:gap-1 xl:overflow-hidden xl:transition-[opacity,visibility] xl:duration-300 xl:ease-out-expo', agentHidden && 'xl:invisible xl:opacity-0')}>
           <div className={cx('order-first md:col-span-2 xl:order-none xl:w-[360px]', m.signal ? 'xl:flex-none' : 'xl:flex xl:min-h-0 xl:flex-1 xl:flex-col [&>*]:xl:flex-1')}>
-            {state.policy.markets.length ? (
-              <AgentConsole
-                state={state} sym={sym} onPick={pick} onShowPlans={showPlans} onHide={toggleAgent}
-              />
-            ) : (
-              <NoMaker running={running.length} onKill={() => killDialog.current?.showModal()} onHide={toggleAgent} />
-            )}
+            <AgentConsole
+              state={state} sym={sym} specs={cfg?.specs ?? {}} busy={busy !== null} onPick={pick} onError={setError} onHide={toggleAgent}
+              onStop={() => void act('/agent/pause')}
+            />
           </div>
           {/* Only while a Smart Trader source is on (SMART_TRADERS=on, or the simulator): off since 2026-11-16. */}
           {m.signal && <div className="flex min-h-0 flex-col xl:w-[360px] xl:flex-1">
@@ -358,15 +370,22 @@ function TerminalView() {
 
       <Guide dialog={guide} sim={Boolean(cfg?.sim)} paper={Boolean(cfg?.paper)} />
 
-      <RunSummary state={state} />
+      <RunSummary state={state} specs={cfg?.specs ?? {}} />
 
       <dialog ref={killDialog} className="m-auto w-[min(92vw,26rem)] rounded-md border border-line-2 bg-canvas p-5 text-fg">
-        <h2 className="text-[17px] font-semibold tracking-tight">Kill and Flatten?</h2>
-        <p className="mt-2 text-[14px] text-fg-2">
-          Monday cancels every open order on this Perpl account, in every market, then closes every open position on it with reduce-only market orders, including Agentic Trade and TWAP plans and anything you placed by hand. Closing at market can cost some slippage. The agent stays stopped until you restart it.
+        <h2 className="flex items-center gap-2 text-[17px] font-semibold tracking-tight"><PowerIcon size={18} weight="bold" className="text-ask-fg" />Kill and flatten everything?</h2>
+        {/* What it ends, counted, so nobody kills more than they meant to. */}
+        <ul className="num mt-3 grid gap-1 rounded-sm border border-line bg-raised px-3 py-2 text-[13px]">
+          {quoting && <li>Market maker on {state.policy.markets.join(', ')} stops</li>}
+          {running.length > 0 && <li>{running.length} plan{running.length > 1 ? 's' : ''} end{running.length > 1 ? '' : 's'}: {running.map((p) => `${p.input.sym} ${p.input.kind === 'twap' ? 'TWAP' : 'Agentic Trade'}`).join(', ')}</li>}
+          <li>{openPositions} open position{openPositions === 1 ? '' : 's'} closed at market</li>
+          <li>Every open order on the account cancelled</li>
+        </ul>
+        <p className="mt-3 text-[13px] text-fg-2">
+          This covers the whole Perpl account, in every market, including anything you placed by hand. Closing at market can cost some slippage. To end just one run, use its own Stop or Close instead.
         </p>
         <form method="dialog" className="mt-5 flex justify-end gap-2">
-          <Button type="submit" variant="ghost">Keep Running</Button>
+          <Button type="submit" variant="ghost" autoFocus>Keep Running</Button>
           <Button type="submit" variant="danger" onClick={() => void act('/agent/kill')}>Kill and Flatten</Button>
         </form>
       </dialog>
@@ -414,20 +433,5 @@ function Loading() {
         <Skeleton className="hidden xl:block" />
       </div>
     </div>
-  );
-}
-
-/** The agent column for an account with no market maker set up: one way to Setup, and Kill still covers any running plan. */
-function NoMaker({ running, onKill, onHide }: { running: number; onKill: () => void; onHide: () => void }) {
-  return (
-    <Panel title="Agent" aside={<>{running > 0 && <span>{running} plan{running > 1 ? 's' : ''} running</span>}<HideAgentButton onHide={onHide} /></>}>
-      <div className="grid gap-3 p-3 text-[13px] text-fg-2">
-        <p>{running ? 'Your plans are trading; follow them under Plans. Start the market maker or another plan in Setup.' : 'Nothing is trading yet. Pick a mode in Setup: the market maker, Agentic Trade or TWAP.'}</p>
-        <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/app/setup" size="sm">Setup</ButtonLink>
-          {running > 0 && <Button size="sm" variant="danger" onClick={onKill}>Kill and Flatten</Button>}
-        </div>
-      </div>
-    </Panel>
   );
 }
