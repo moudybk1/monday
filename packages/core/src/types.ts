@@ -296,9 +296,13 @@ export interface DashboardState {
    * already inside equity and are not taken off again. realized and fees cover Monday's own fills only.
    */
   pnl: { todayUsd: number; realizedUsd: number; unrealizedUsd: number; feesUsd: number; lossLimitUsedPct: number; depositsUsd: number; fundingUsd: number };
-  /** Since the last Start: per-run stop loss and take profit, on top of the daily loss limit. */
-  session: { startedAt: number; pnlUsd: number; stopLossUsd: number | null; takeProfitUsd: number | null } | null;
-  /** The last run that ended (Stop, Kill or take profit) since the server started: its window, why it ended and its PnL then. */
+  /**
+   * Since the last Start: per-run stop loss and take profit, on top of the daily loss limit. pnlUsd is the whole
+   * account's equity change since Start (what the session stop and target watch), plans included; makerPnlUsd is the
+   * market maker's own fills and the open PnL of its markets only.
+   */
+  session: { startedAt: number; pnlUsd: number; makerPnlUsd: number; stopLossUsd: number | null; takeProfitUsd: number | null } | null;
+  /** The last market maker run that ended (Stop, Kill or take profit) since the server started: its window, why it ended and the maker's own PnL. */
   lastRun: { startedAt: number; endedAt: number; why: string; pnlUsd: number } | null;
   health: {
     marketDataAgeMs: number; signalAgeMs: number; budgetRemaining: number; budgetPerMin: number; venueConnected: boolean; llm: boolean; llmFailing: boolean; chain: boolean;

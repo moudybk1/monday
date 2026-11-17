@@ -204,6 +204,8 @@ export class Runner {
   private disconnectedAt = 0;
   private session: (SessionLimits & { startedAt: number; startEquity: number }) | null = null;
   private lastRun: DashboardState['lastRun'] = null;
+  /** The market maker's own fills this session, realized minus fees. Plans and hand-placed trades are not in it. */
+  private makerBooked = 0;
   private policyHash: string;
   /**
    * Cash that moved without a fill. `expected` is the balance the fills explain; a different balance that holds for
@@ -269,7 +271,11 @@ export class Runner {
       if (last) this.cash.expected = last.balance;
     }
     const a = db.prepare('select status, kill_reason, started_at, session_sl, session_tp, session_equity, owed from agents where user_id = ?').get(userId) as Record<string, never> | undefined;
-    if (a?.session_equity != null) this.session = { startedAt: a.started_at ?? Date.now(), startEquity: a.session_equity, stopLossUsd: a.session_sl, takeProfitUsd: a.session_tp };
+    if (a?.session_equity != null) {
+      this.session = { startedAt: a.started_at ?? Date.now(), startEquity: a.session_equity, stopLossUsd: a.session_sl, takeProfitUsd: a.session_tp };
+      const b = db.prepare('select coalesce(sum(coalesce(realized, 0) - fee), 0) as v from fills where user_id = ? and ts >= ? and coalesce(external, 0) = 0 and plan_id is null').get(userId, this.session.startedAt) as { v: number };
+      this.makerBooked = b.v;
+    }
     // A stopped agent comes back stopped, with whatever cleanup it still owes. A quoting one is resumed by boot (start()).
     if (a?.status === 'killed' || a?.status === 'paused') {
       this.status = a.status;
@@ -401,6 +407,7 @@ export class Runner {
     if (limits || !this.session) {
       this.session = { stopLossUsd: null, takeProfitUsd: null, ...limits, startedAt: this.startedAt, startEquity: this.equityNow() };
       this.flows.sessionIn = this.flows.sessionOut = 0;
+      this.makerBooked = 0;
       journal(this.userId, 'session_start', null, this.session.startEquity, {
         strategy: STRATEGY_VERSION, policyHash: this.policyHash, policy: this.policy, stopLossUsd: this.session.stopLossUsd, takeProfitUsd: this.session.takeProfitUsd,
         positions: Object.fromEntries(MARKETS.map((s) => [s, this.venue?.position(s).size ?? 0])),
@@ -486,8 +493,8 @@ export class Runner {
   private endSession(why: string) {
     if (!this.session) return;
     const pnlUsd = this.sessionPnl();
-    journal(this.userId, 'session_stop', null, this.equityNow(), { why, pnlUsd, startedAt: this.session.startedAt });
-    this.lastRun = { startedAt: this.session.startedAt, endedAt: Date.now(), why, pnlUsd };
+    journal(this.userId, 'session_stop', null, this.equityNow(), { why, pnlUsd, makerPnlUsd: this.makerPnl(), startedAt: this.session.startedAt });
+    this.lastRun = { startedAt: this.session.startedAt, endedAt: Date.now(), why, pnlUsd: this.makerPnl() };
     this.session = null;
   }
 
@@ -1197,6 +1204,7 @@ export class Runner {
     if (this.fills.length > 80) this.fills.pop();
     this.realized += f.realizedUsd;
     this.fees += f.feeUsd;
+    if (this.session) this.makerBooked += f.realizedUsd - f.feeUsd;
     if (f.isMaker) this.pendingMarkouts.push(fill);
   }
 
@@ -1289,6 +1297,16 @@ export class Runner {
    */
   private riskPnlToday(): number {
     return this.dayKey ? this.equityNow() - this.dayStartEquity - this.flows.dayIn - this.flows.dayOutIdle : 0;
+  }
+  /** The market maker's own result this session: its booked fills plus the open PnL of the markets it manages. */
+  private makerPnl(): number {
+    let u = 0;
+    for (const sym of this.managed()) {
+      const p = this.venue?.position(sym);
+      const snap = this.deps.driver.feed.snapshot(sym);
+      if (p && snap && p.size !== 0) u += p.size * (snap.mark - p.entryPrice);
+    }
+    return this.makerBooked + u;
   }
   private sessionPnl(): number {
     return this.session ? this.equityNow() - this.session.startEquity - this.flows.sessionIn - this.flows.sessionOut : 0;
@@ -1553,7 +1571,7 @@ export class Runner {
         todayUsd: this.pnlToday(), realizedUsd: this.realized, unrealizedUsd: this.unrealized(), feesUsd: this.fees, lossLimitUsedPct: this.lossUsedPct(),
         depositsUsd: this.flows.dayIn + this.flows.dayOut, fundingUsd: this.flows.dayFunding,
       },
-      session: this.session && { startedAt: this.session.startedAt, pnlUsd: this.sessionPnl(), stopLossUsd: this.session.stopLossUsd, takeProfitUsd: this.session.takeProfitUsd },
+      session: this.session && { startedAt: this.session.startedAt, pnlUsd: this.sessionPnl(), makerPnlUsd: this.makerPnl(), stopLossUsd: this.session.stopLossUsd, takeProfitUsd: this.session.takeProfitUsd },
       lastRun: this.lastRun,
       health: {
         marketDataAgeMs: worstAge, signalAgeMs: Number.isFinite(this.deps.collector.ageMs) ? this.deps.collector.ageMs : -1, budgetRemaining: Math.floor(this.tokens),
