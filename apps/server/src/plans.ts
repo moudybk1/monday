@@ -505,17 +505,19 @@ export class PlanBook {
       return nextSlice();
     }
     if (st.slicesDone >= input.slices) {
-      p.status = st.filled > 0 ? 'open' : 'done';
-      if (p.status === 'done') this.end(p, 'failed', 'Nothing filled: the price stayed outside your limit.');
-      else this.save(p);
-      return;
+      // `end` sets the outcome and the time, and does nothing to a plan already done: never mark it done first.
+      if (st.filled > 0) return void ((p.status = 'open'), this.save(p));
+      return this.end(p, 'failed', input.limitPrice != null
+        ? `Nothing filled: the price stayed outside your limit of ${input.limitPrice}.`
+        : `Nothing filled in ${input.slices} slices.`);
     }
     if (st.nextAt != null && now < st.nextAt) return;
     // This slice: what is left, spread over the slices left, give or take a fifth so the pattern is not exact.
     const remaining = Math.max(0, p.targetSize - st.filled);
     const slicesLeft = input.slices - st.slicesDone;
     const jitter = slicesLeft > 1 ? 1 + (Math.random() - 0.5) * 0.4 : 1;
-    const size = Math.min(remaining, Math.floor((remaining / slicesLeft) * jitter / spec.sizeStep + 1e-9) * spec.sizeStep);
+    // At least one size step: jitter must not floor a slice near one step to nothing and end the entering early.
+    const size = Math.min(remaining, Math.max(spec.sizeStep, Math.floor((remaining / slicesLeft) * jitter / spec.sizeStep + 1e-9) * spec.sizeStep));
     if (!(size >= spec.sizeStep)) {
       st.slicesDone = input.slices;
       return void this.save(p);

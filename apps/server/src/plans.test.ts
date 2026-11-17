@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Bar, MarketSpec, MarketSym, PlanInput, TradeInput, TwapInput } from '@monday/core';
 
 // Before config loads: nothing in this test may touch a real database, chain or LLM.
@@ -210,6 +210,33 @@ describe('TWAP', () => {
     expect(u.plan()).toMatchObject({ status: 'done', outcome: 'stop_loss' });
     await u.tick(10 * 60);
     expect(u.v.position('BTC').size).toBe(0); // no more slices after the stop
+  });
+
+  it('ends as failed, with a time and a reason, when every slice passed and nothing filled', async () => {
+    const t = await setup();
+    await t.create(twap({ limitPrice: 59_000 }));
+    await t.tick(6 * 60);
+    const p = t.plan();
+    expect(p).toMatchObject({ status: 'done', outcome: 'failed' });
+    expect(p.endedAt).not.toBeNull();
+    expect(p.note).toMatch(/Nothing filled/);
+    expect(t.alerts.some((a) => /Nothing filled/.test(a))).toBe(true);
+  });
+
+  it('never rounds a slice to nothing: a small TWAP still places its first slice', async () => {
+    // Plan #12: ETH, 0.033 over 30 slices is 0.0011 a slice against a 0.001 step; jitter under 0.91 floored it to 0 and
+    // skipped all 30 slices at once. Here 0.00033 BTC over 30 slices is 0.000011 against a 0.00001 step, jitter 0.8.
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const t = await setup();
+      await t.create(twap({ marginUsd: 20, leverage: 1, durationMin: 30, slices: 30 }));
+      await t.tick(2);
+      expect(t.v.position('BTC').size).toBeGreaterThan(0);
+      expect(t.plan()).toMatchObject({ status: 'entering' });
+      expect(t.plan().twap?.slicesDone).toBe(1);
+    } finally {
+      random.mockRestore();
+    }
   });
 });
 
