@@ -94,6 +94,18 @@ docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 
 Point A records for `DOMAIN`, `app.DOMAIN` and `analytics.DOMAIN` at the machine and Caddy gets the certificates. If the host already runs Caddy, add `infra/docker-compose.host-caddy.yml` and use `infra/host-caddy.caddy`. The databases live in `apps/server/data` on the host; `scripts/backup-db.sh` backs up the account database. Never run two Mondays on the same Perpl account.
 
+### CI and CD
+
+CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`: typecheck, tests, and a build of both Docker images, so a broken Dockerfile or Next build shows on the PR.
+
+Deploys are by hand only, since a deploy restarts the bot. **Actions → Deploy → Run workflow** on `main` runs the checks again on that commit, waits for an approval in the `production` environment, then runs `infra/deploy.sh` on the VPS over SSH. That script fast-forwards the checkout to the commit, backs up the account database, builds the new images while the old containers keep trading, swaps them, and waits for server, stats and web to pass their health checks (it prints the logs and fails if they don't). The same script works by hand on the VPS: `infra/deploy.sh`.
+
+One-time setup, in **Settings → Environments → New environment** `production`:
+
+1. Add yourself under **Required reviewers**, and limit **Deployment branches** to `main`.
+2. Add the secrets `VPS_HOST`, `VPS_USER`, `VPS_PATH` (the checkout on the VPS), `VPS_PORT` (if not 22), `VPS_SSH_KEY` (the private half of a key made only for deploys, whose public half is in that user's `~/.ssh/authorized_keys`), and `VPS_KNOWN_HOSTS` (the output of `ssh-keyscan -p PORT HOST`, so the job only talks to that host).
+3. The deploy user needs to run `git` in the checkout and `docker compose`, and `sqlite3` and `curl` should be installed for the backup and the health checks.
+
 ## Layout
 
 ```

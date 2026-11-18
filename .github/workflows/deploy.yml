@@ -1,0 +1,60 @@
+name: Deploy
+
+# Ships main to the VPS, by hand only: Monday trades real money and a deploy restarts the bot, so nothing deploys on
+# its own. Actions → Deploy → Run workflow (on main). The checks run again on that commit, then the job waits for an
+# approval in the `production` environment, then runs infra/deploy.sh on the machine over SSH.
+#
+# Secrets in the `production` environment: VPS_HOST, VPS_USER, VPS_SSH_KEY (a deploy key), VPS_KNOWN_HOSTS (the
+# output of `ssh-keyscan -p PORT HOST`, so the host is pinned), VPS_PATH (the checkout on the VPS), optional VPS_PORT.
+
+on:
+  workflow_dispatch:
+
+# One deploy at a time; a second waits instead of cancelling one that is halfway through.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://app.mondaytrade.xyz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH key and pinned host
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          test -n "$VPS_SSH_KEY" && test -n "$VPS_KNOWN_HOSTS" || { echo "Set VPS_SSH_KEY and VPS_KNOWN_HOSTS in the production environment." >&2; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy ${{ github.sha }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${VPS_PORT:-22}" -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" "cd \"$VPS_PATH\" && infra/deploy.sh $GITHUB_SHA"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
