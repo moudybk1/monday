@@ -4,7 +4,7 @@ import type { MarketSpec } from './types';
 
 const BTC: MarketSpec = { sym: 'BTC', marketId: 16, priceTick: 0.1, sizeStep: 0.00001, makerFeeBps: 0.45, takerFeeBps: 3.45, maxLeverage: 15, maintLeverage: 25 };
 const ETH: MarketSpec = { ...BTC, sym: 'ETH', priceTick: 0.01, sizeStep: 0.001, maxLeverage: 12, maintLeverage: 20 };
-const trade = (o: Partial<TradeInput> = {}): TradeInput => ({ kind: 'trade', sym: 'BTC', bias: 'long', marginUsd: 100, leverage: 5, frame: '5m', lossLimitPct: 20, profitTargetPct: 30, expiryHours: 24, ...o });
+const trade = (o: Partial<TradeInput> = {}): TradeInput => ({ kind: 'trade', sym: 'BTC', bias: 'long', marginUsd: 100, leverage: 5, frame: '15m', lossLimitPct: 20, profitTargetPct: 30, expiryHours: 24, ...o });
 const twap = (o: Partial<TwapInput> = {}): TwapInput => ({ kind: 'twap', sym: 'BTC', bias: 'long', marginUsd: 100, leverage: 5, durationMin: 30, slices: 30, style: 'balanced', limitPrice: null, stopLossPct: 2, takeProfitPct: null, ...o });
 const ctx = (o: Partial<PlanContext> = {}): PlanContext => ({ mark: 60_000, balanceUsd: 1_000, makerMarkets: [], planMarkets: [], activePlans: 0, ...o });
 
@@ -16,7 +16,7 @@ describe('plan numbers', () => {
     expect(n.profitUsd).toBe(30);
     expect(n.rr).toBe(1.5);
     expect(n.slPrice).toBeNull(); // each scalp sets its own from its entry
-    expect(n.feesUsd).toBeCloseTo(0.00833 * 60_000 * (0.45 + 3.45) / 1e4, 9); // maker in, taker out at the stop
+    expect(n.feesUsd).toBeCloseTo(0.00833 * 60_000 * (3.45 + 3.45) / 1e4, 9); // taker in at market, taker out at the stop
     // Perpl's formula: entry * (1 + 1/25 - 1/5) for a long at 5x with 25x maintenance.
     expect(n.liqPrice).toBeCloseTo(60_000 * 0.84, 6);
     expect(planNumbers(trade({ profitTargetPct: null }), BTC, 60_000).profitUsd).toBeNull();

@@ -4,6 +4,9 @@ const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? '';
 const APP = process.env.NEXT_PUBLIC_APP_URL ?? '';
 const ANALYTICS = process.env.NEXT_PUBLIC_ANALYTICS_URL ?? '';
 
+/** The analytics pages are switched off for now: no links to them, and their URLs redirect home (next.config.ts). */
+export const analyticsOn = process.env.NEXT_PUBLIC_ANALYTICS === 'on';
+
 /** A page's address on the host that serves it: signed-in pages (My Monday included) on the app's, public analytics on theirs. */
 export function at(path: string): string {
   if (/^\/(app|analytics\/monday)(?=[/?#]|$)/.test(path)) return APP + path;

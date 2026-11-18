@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 
 // Before config loads: nothing in this test may touch a real database, chain or LLM.
-Object.assign(process.env, { VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_API_KEY: '', MONDAY_REGISTRY_ADDRESS: '', TELEGRAM_BOT_TOKEN: '', ENVIO_API_TOKEN: '' });
+Object.assign(process.env, { GOVERNOR_LLM_PROVIDER: '', VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_API_KEY: '', MONDAY_REGISTRY_ADDRESS: '', TELEGRAM_BOT_TOKEN: '', ENVIO_API_TOKEN: '' });
 const { buildApi } = await import('./api');
 
 /** The API with a scripted runner behind every user: it records what it was told to do. */

@@ -4,11 +4,11 @@ import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { Toc } from '@/components/toc';
 import { ArrowRightIcon } from '@phosphor-icons/react/dist/ssr';
 import { Tag, cx } from '@/components/ui';
-import { at } from '@/lib/hosts';
+import { analyticsOn, at } from '@/lib/hosts';
 
 export const metadata: Metadata = {
   title: 'System',
-  description: 'How Monday works: the engine, the reflexes, Kimi as the risk governor, the risk controls, Agentic Trade and TWAP, the Perpl analytics and Ask Monday.',
+  description: 'How Monday works: the engine, the reflexes, the LLM as the risk governor, the risk controls, Agentic Trade and TWAP, the Perpl analytics and Ask Monday.',
 };
 
 // One centred column pair: the contents on the left, the article beside it, nothing left empty on the right.
@@ -21,21 +21,20 @@ const TOC = [
   { id: 'custody', label: 'Custody and Keys' },
   { id: 'engine', label: 'The Engine' },
   { id: 'reflexes', label: 'Reflexes' },
-  { id: 'kimi', label: 'Kimi, the Risk Governor' },
+  { id: 'llm', label: 'LLM, the Risk Governor' },
   { id: 'risk', label: 'Risk Controls' },
   { id: 'plans', label: 'Agentic Trade and TWAP' },
-  { id: 'analytics', label: 'Perpl Analytics' },
-  { id: 'ask', label: 'Ask Monday' },
+  ...(analyticsOn ? [{ id: 'analytics', label: 'Perpl Analytics' }, { id: 'ask', label: 'Ask Monday' }] : []),
   { id: 'infrastructure', label: 'Infrastructure' },
   { id: 'limits', label: 'Limits' },
 ];
 
-// Measured on the live decision log (Monad mainnet, kimi-k3, 10 Oct 18:59 to 12 Oct 06:17 UTC). Fixed here on purpose:
+// Measured on the live decision log (Monad mainnet, 10 Oct 18:59 to 12 Oct 06:17 UTC). Fixed here on purpose:
 // the page is a written account of what happened, and it must load the same whatever the servers are doing.
-const KIMI = { decisions: 167, differed: 120, wider: 114, smaller: 106, capLower: 70, looser: 0, clamped: 0, avgSec: 51 };
+const LLM = { decisions: 167, differed: 120, wider: 114, smaller: 106, capLower: 70, looser: 0, clamped: 0, avgSec: 51 };
 
-// Four Kimi decisions as they were recorded, each with its public record (hashes of the parameters and the evidence). The
-// last agreed with the rules: Kimi departs from them when the data says to, not by habit. They date from October, when
+// Four LLM decisions as they were recorded, each with its public record (hashes of the parameters and the evidence). The
+// last agreed with the rules: the LLM departs from them when the data says to, not by habit. They date from October, when
 // Monday still read Smart Trader flow, so they name it; the page says so above them.
 const EXAMPLES = [
   { id: 1967, when: '11 Oct 18:04 UTC', set: 'spread 2x, size 0.3x, position cap $75', reason: 'Smart Traders sold about $575k net over the past hour, though the last 15 minutes were quiet. With 79% of the daily loss limit used, Monday is keeping quotes wider and cutting size and inventory to protect the account.' },
@@ -47,7 +46,7 @@ const EXAMPLES = [
 const LOOPS = [
   { name: 'Engine', when: 'every second', who: 'code', text: 'Prices both quotes from the book, the reference market and the position, and changes only what moved enough to matter.' },
   { name: 'Reflexes', when: 'within seconds', who: 'code', text: 'Widen or pull the side that is about to be run over: a move in the reference market, a fill, a lopsided book.' },
-  { name: 'Governor', when: 'every 15 minutes', who: 'Kimi', text: 'Reads the whole situation and sets how carefully Monday quotes, with a reason in plain words. Never places an order.' },
+  { name: 'Governor', when: 'every 15 minutes', who: 'LLM', text: 'Reads the whole situation and sets how carefully Monday quotes, with a reason in plain words. Never places an order.' },
 ];
 
 export default function SystemPage() {
@@ -63,7 +62,7 @@ export default function SystemPage() {
           <p className="label">System</p>
           <h1 className="display mt-3 max-w-[20ch] text-[2.5rem] font-semibold tracking-[-0.045em] sm:text-5xl lg:text-[3.5rem]">How Monday works, part by part.</h1>
           <p className="mt-6 max-w-[62ch] text-[17px] leading-relaxed text-fg-2 md:text-[18px]">
-            Monday is an AI trading terminal for Perpl, the on-chain order book on Monad: a market maker, Agentic Trade and TWAP, all trading from the user&apos;s own account. Code quotes and protects; Kimi, Moonshot AI&apos;s model, decides how carefully the market maker quotes and says why, and sums up the market before a trade. Alongside it runs a public analytics dashboard for all of Perpl, with a chat that answers from real on-chain data.
+            Monday is an AI trading terminal for Perpl, the on-chain order book on Monad: a market maker, Agentic Trade and TWAP, all trading from the user&apos;s own account. Code quotes and protects; an LLM decides how carefully the market maker quotes and says why, and sums up the market before a trade.{analyticsOn && ' Alongside it runs a public analytics dashboard for all of Perpl, with a chat that answers from real on-chain data.'}
           </p>
           </div>
         </header>
@@ -83,10 +82,10 @@ export default function SystemPage() {
               </p>
               <ol className="mt-8 grid gap-3 md:grid-cols-3">
                 {LOOPS.map((l) => (
-                  <li key={l.name} className={cx('rounded-2xl bg-raised p-5', l.who === 'Kimi' ? 'shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_45%,transparent)]' : 'shadow-[inset_0_0_0_1px_var(--line)]')}>
+                  <li key={l.name} className={cx('rounded-2xl bg-raised p-5', l.who === 'LLM' ? 'shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_45%,transparent)]' : 'shadow-[inset_0_0_0_1px_var(--line)]')}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[17px] font-semibold tracking-tight">{l.name}</p>
-                      <Tag tone={l.who === 'Kimi' ? 'accent' : 'neutral'}>{l.who}</Tag>
+                      <Tag tone={l.who === 'LLM' ? 'accent' : 'neutral'}>{l.who}</Tag>
                     </div>
                     <p className="num mt-1 text-[13px] text-fg-3">{l.when}</p>
                     <p className="mt-3 text-[15px] text-fg-2">{l.text}</p>
@@ -131,17 +130,17 @@ export default function SystemPage() {
               </ul>
             </Section>
 
-            <Section id="kimi" title="Kimi, the Risk Governor">
+            <Section id="llm" title="LLM, the Risk Governor">
               <p className={P}>
-                A market maker&apos;s hardest call is not the price, it is <i>how carefully</i> to quote right now. Fixed rules weigh one signal at a time. Kimi reads the whole situation every 15 minutes per market (sooner when something changes) and answers with a few bounded settings and a reason a non-trader can read.
+                A market maker&apos;s hardest call is not the price, it is <i>how carefully</i> to quote right now. Fixed rules weigh one signal at a time. The LLM reads the whole situation every 15 minutes per market (sooner when something changes) and answers with a few bounded settings and a reason a non-trader can read.
               </p>
 
-              <h3 className={H3}>What Kimi sees</h3>
+              <h3 className={H3}>What the LLM sees</h3>
               <p className={P}>
                 A JSON snapshot of one market: price, one-minute volatility against its normal, funding; Monday&apos;s own position, PnL today, fees, fill quality and fills over the last hour, how long the position is open and what stage it is in; data freshness and order latency; the user&apos;s limits; and what the fixed rules would set.
               </p>
 
-              <h3 className={H3}>What Kimi decides</h3>
+              <h3 className={H3}>What the LLM decides</h3>
               <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Spread">1 to 4 times normal.</Item>
                 <Item k="Size">0 to 1.5 times normal.</Item>
@@ -152,20 +151,20 @@ export default function SystemPage() {
 
               <h3 className={H3}>Guardrails</h3>
               <p className={P}>
-                Kimi never places an order. Its answer is validated against a schema, every number is clamped to the bounds and the user&apos;s policy, and loosening is limited to one step per decision so a single odd answer cannot swing the book. An answer for the wrong market, a late one or a failed call is dropped and the rules answer instead, so the account is always covered. Every decision is stored with keccak256 hashes of its parameters and its evidence, and published.
+                The LLM never places an order. Its answer is validated against a schema, every number is clamped to the bounds and the user&apos;s policy, and loosening is limited to one step per decision so a single odd answer cannot swing the book. An answer for the wrong market, a late one or a failed call is dropped and the rules answer instead, so the account is always covered. Every decision is stored with keccak256 hashes of its parameters and its evidence, and published.
               </p>
 
               <h3 className={H3}>What it did on mainnet</h3>
               <dl className="frost mt-6 grid gap-1.5 sm:grid-cols-3">
-                <Stat k="Kimi Decisions" v={String(KIMI.decisions)} sub="real funds, kimi-k3, 10 to 12 Oct" />
-                <Stat k="Different From the Rules" v={`${Math.round((KIMI.differed / KIMI.decisions) * 100)}%`} sub={`${KIMI.differed} of ${KIMI.decisions}, every one more careful`} />
-                <Stat k="Looser Than the Rules" v={String(KIMI.looser)} sub={`and ${KIMI.clamped} answers needed clamping`} />
+                <Stat k="LLM Decisions" v={String(LLM.decisions)} sub="real funds, 10 to 12 Oct" />
+                <Stat k="Different From the Rules" v={`${Math.round((LLM.differed / LLM.decisions) * 100)}%`} sub={`${LLM.differed} of ${LLM.decisions}, every one more careful`} />
+                <Stat k="Looser Than the Rules" v={String(LLM.looser)} sub={`and ${LLM.clamped} answers needed clamping`} />
               </dl>
               <p className={P}>
-                Where Kimi departed from the rules it quoted wider {KIMI.wider} times, smaller {KIMI.smaller} times and lowered the position cap {KIMI.capLower} times. It never quoted tighter or bigger than the rules would have, and none of its {KIMI.decisions} answers fell outside the bounds. It reacted to things the rules do not weigh together: how much of the day&apos;s loss limit was already used, whether recent fills had been costly, selling that had stopped but might not be over.
+                Where the LLM departed from the rules it quoted wider {LLM.wider} times, smaller {LLM.smaller} times and lowered the position cap {LLM.capLower} times. It never quoted tighter or bigger than the rules would have, and none of its {LLM.decisions} answers fell outside the bounds. It reacted to things the rules do not weigh together: how much of the day&apos;s loss limit was already used, whether recent fills had been costly, selling that had stopped but might not be over.
               </p>
               <p className={P}>
-                These answers date from October, when Monday still read Smart Trader flow, so some of them cite it. Since 16 November it no longer does, and Kimi weighs the rest.
+                These answers date from October, when Monday still read Smart Trader flow, so some of them cite it. Since 16 November it no longer does, and the LLM weighs the rest.
               </p>
               <ul className="mt-6 grid gap-3">
                 {EXAMPLES.map((e) => (
@@ -181,10 +180,10 @@ export default function SystemPage() {
 
               <h3 className={H3}>How it is called</h3>
               <p className={P}>
-                Through an OpenAI-compatible API with JSON output. The governor runs kimi-k3 with its reasoning on for the scheduled review: about {KIMI.avgSec} seconds an answer, which a 15-minute loop absorbs while the rules hold the book. An early review, after a start, a change of limits or a day&apos;s loss past 70% of its limit, runs with reasoning off and answers in seconds, at most every 10 minutes. Ask Monday runs the same model with reasoning off, about 4 seconds an answer, because a person is waiting.
+                Through an OpenAI-compatible API with JSON output. The governor runs the LLM with its reasoning on for the scheduled review: about {LLM.avgSec} seconds an answer, which a 15-minute loop absorbs while the rules hold the book. An early review, after a start, a change of limits or a day&apos;s loss past 70% of its limit, runs with reasoning off and answers in seconds, at most every 10 minutes. Ask Monday runs the same model with reasoning off, about 4 seconds an answer, because a person is waiting.
               </p>
 
-              <h3 className={H3}>What Kimi brings</h3>
+              <h3 className={H3}>What the LLM brings</h3>
               <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Judgement">It combines volatility, fill quality, the position and the loss limit into one call, which rules can only do signal by signal.</Item>
                 <Item k="Safety">Its departures from the rules all went toward caution, and it stayed inside the bounds every time.</Item>
@@ -206,15 +205,15 @@ export default function SystemPage() {
 
             <Section id="plans" title="Agentic Trade and TWAP">
               <p className={P}>
-                Two more ways to trade from the same account, run by code from start to finish. Each takes a margin and a leverage, trades one market of its own (never one the market maker quotes), and can run while the market maker is stopped. Before either starts, Kimi sums up the daily, 4-hour and hourly charts in a few sentences; the entries and exits are the code&apos;s.
+                Two more ways to trade from the same account, run by code from start to finish. Each takes a margin and a leverage, trades one market of its own (never one the market maker quotes), and can run while the market maker is stopped. Before either starts, the LLM sums up the daily, 4-hour and hourly charts in a few sentences; the entries and exits are the code&apos;s.
               </p>
               <h3 className={H3}>Agentic Trade</h3>
               <p className={P}>
-                A scalping session on a long or short bias. Monday reads the daily and 4-hour trend (the close against a sloping 20-bar average) and re-reads it every 15 minutes. When both agree with the bias it follows the trend, entering on a pullback to the 20 EMA that has resumed; when both run against it, it fades the move, entering when a stretched RSI turns; when they disagree, it waits.
+                A scalping session on a long or short bias. Monday reads the daily and 4-hour trend (the close against a sloping 20-bar average) and re-reads it every 15 minutes. When both agree with the bias it buys dips in an uptrend and sells bounces in a downtrend: the last closed bar two usual bar ranges under its 20-bar average for a long, two over it for a short. When they disagree, or both run against the bias, it waits.
               </p>
               <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
-                <Item k="Entry">A maker limit at the trigger bar&apos;s close, on a 1, 5 or 15 minute chart. Unfilled after two bars, it is cancelled and the next setup is awaited.</Item>
-                <Item k="Exits">From the fill, a stop one bar&apos;s usual range away (never past 80% of the way to liquidation) rests on Perpl as a trigger, and a target of one and a half ranges (one, against the trend) rests as a maker order. A scalp still open after 12 bars is closed.</Item>
+                <Item k="Entry">At market when the trigger bar closes, on the 15 minute chart (on 1 and 5 minutes the fees outweighed the move in every market), at most 0.5% from the mark.</Item>
+                <Item k="Exits">From the fill, a stop three bars&apos; usual ranges away (never past 80% of the way to liquidation) rests on Perpl as a trigger, and a target three ranges away rests as a maker order. A scalp still open after 48 bars is closed.</Item>
                 <Item k="Sizing">Margin times leverage, cut so that one stop can lose at most what is left of the session&apos;s loss limit. A target that does not clear three times the round trip&apos;s fees is skipped.</Item>
                 <Item k="Session">Ends at a loss or a profit the user set as a share of the margin, or when its time (up to a week) is up. Stop takes no new scalp and lets the open one reach its exit; Close closes it at once.</Item>
               </ul>
@@ -229,6 +228,7 @@ export default function SystemPage() {
               </ul>
             </Section>
 
+            {analyticsOn && (<>
             <Section id="analytics" title="Perpl Analytics">
               <p className={P}>
                 A public dashboard for all of Perpl, no wallet needed. Every trade since launch is indexed from the Exchange contract&apos;s events through Envio HyperSync: fills with their fees, position changes, liquidations, deposits and withdrawals. Perpl&apos;s own API and contract reads add live funding, the book and every open position.
@@ -243,9 +243,11 @@ export default function SystemPage() {
 
             <Section id="ask" title="Ask Monday">
               <p className={P}>
-                The chat on the analytics pages, and the second place Kimi works. Common questions get an answer from rules in a fraction of a second. For anything else, Kimi turns the question into a structured query (a metric, a market, a screen, a comparison, a wallet) and the code answers it from the live figures, with a table and links. Open questions get an answer Kimi writes from a sheet of live figures only: a reply that quotes a dollar or percent figure not on the sheet is thrown away. On a wallet page, Kimi writes the &ldquo;explain in plain words&rdquo; summary from that wallet&apos;s numbers.
+                The chat on the analytics pages, and the second place the LLM works. Common questions get an answer from rules in a fraction of a second. For anything else, the LLM turns the question into a structured query (a metric, a market, a screen, a comparison, a wallet) and the code answers it from the live figures, with a table and links. Open questions get an answer the LLM writes from a sheet of live figures only: a reply that quotes a dollar or percent figure not on the sheet is thrown away. On a wallet page, the LLM writes the &ldquo;explain in plain words&rdquo; summary from that wallet&apos;s numbers.
               </p>
             </Section>
+
+            </>)}
 
             <Section id="infrastructure" title="Infrastructure">
               <p className={P}>
@@ -256,16 +258,16 @@ export default function SystemPage() {
             <Section id="limits" title="Limits">
               <ul className="mt-3 grid gap-2.5 text-[16px] text-fg-2">
                 <Item k="Profit Is Not Promised">Market making at retail size and full maker fees is hard on Perpl, and earlier versions of Monday lost small amounts. The exit rules in force since 12 October have done better, on a few days of data.</Item>
-                <Item k="Kimi Manages Risk">It decides how carefully to quote. It does not create an edge on its own, and the record above covers two days.</Item>
+                <Item k="The LLM Manages Risk">It decides how carefully to quote. It does not create an edge on its own, and the record above covers two days.</Item>
                 <Item k="No Smart Trader Signal">Monday read Smart Trader flow until 16 November. It led the next move only weakly, on one market, and replays found it no help to entries, so it is off.</Item>
                 <Item k="Scalps and TWAPs">Their triggers are plain chart rules that have not shown an edge of their own in replay; they work the user&apos;s view carefully, they do not supply one.</Item>
-                <Item k="Without Kimi">If Kimi is unavailable the rules set every parameter, and the record says so.</Item>
+                <Item k="Without the LLM">If the LLM is unavailable the rules set every parameter, and the record says so.</Item>
               </ul>
               <div className="mt-10 flex flex-wrap gap-3">
                 <Link href={at('/app')} className="group inline-flex h-12 items-center gap-2 rounded-lg bg-fg px-6 text-[15px] font-medium text-canvas transition-opacity hover:opacity-90 active:translate-y-px">
                   Launch App<ArrowRightIcon size={15} weight="bold" className="nudge" />
                 </Link>
-                <Link href={at('/analytics')} className="bead inline-flex h-12 items-center rounded-lg px-6 text-[15px] font-medium text-fg transition-colors hover:bg-raised-2 active:translate-y-px">Open the Analytics</Link>
+                {analyticsOn && <Link href={at('/analytics')} className="bead inline-flex h-12 items-center rounded-lg px-6 text-[15px] font-medium text-fg transition-colors hover:bg-raised-2 active:translate-y-px">Open the Analytics</Link>}
               </div>
             </Section>
           </article>

@@ -16,7 +16,7 @@ interface ChatAnswer {
   table?: { cols: string[]; rows: { cells: string[]; href?: string }[] };
   actions: { label: string; href: string }[];
   source: string;
-  by: 'rules' | 'kimi';
+  by: 'rules' | 'llm';
   dropped?: string;
   intent?: AskIntent;
   wallet?: string;
@@ -34,7 +34,7 @@ function suggestions(path: string): string[] {
 
 /**
  * Ask Monday: a chat in the corner of every analytics page. Each answer carries the figures (from the same data as the
- * pages), at most a small table, and links to see more. Kimi reads the questions the quick rules cannot and writes the
+ * pages), at most a small table, and links to see more. The LLM reads the questions the quick rules cannot and writes the
  * open answers and wallet summaries, from the figures only. Cmd/Ctrl+K opens it.
  */
 export function AskChat() {
@@ -60,7 +60,7 @@ export function AskChat() {
   }, []);
   useEffect(() => { if (open) input.current?.focus(); }, [open]);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: reduce ? 'auto' : 'smooth' }); }, [msgs, reduce]);
-  // The thinking clock: Kimi takes 5 to 15 s on a full sentence, and a counter reads better than a frozen spinner.
+  // The thinking clock: the LLM takes 5 to 15 s on a full sentence, and a counter reads better than a frozen spinner.
   useEffect(() => {
     if (!busy && !msgs.some((m) => m.explain && !m.explain.text && !m.explain.error)) return;
     const t = setInterval(() => setNow(Date.now()), 500);
@@ -74,7 +74,7 @@ export function AskChat() {
       const r = await api<{ available: boolean; text?: string; source?: 'model' | 'facts' }>(`/stats/wallet/${encodeURIComponent(w)}/explain`);
       patch(id, { explain: r.text ? { text: r.text, fromFacts: r.source === 'facts' } : { error: 'Plain-words summaries are off on this server.' } });
     } catch (e) {
-      patch(id, { explain: { error: e instanceof Error ? e.message : 'Kimi did not answer.' } });
+      patch(id, { explain: { error: e instanceof Error ? e.message : 'The LLM did not answer.' } });
     }
   };
   const send = async (text: string) => {
@@ -115,7 +115,7 @@ export function AskChat() {
             <header className="flex h-11 flex-none items-center gap-2 border-b border-line px-3">
               <SparkleIcon size={14} weight="fill" className="text-accent" />
               <span className="text-[14px] font-semibold">Ask Monday</span>
-              <Tag tone="accent">Powered by Kimi</Tag>
+              <Tag tone="accent">Powered by LLM</Tag>
               <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="ml-auto grid size-7 place-items-center rounded-sm text-fg-3 hover:bg-raised-2 hover:text-fg"><XIcon size={14} /></button>
             </header>
 
@@ -132,7 +132,7 @@ export function AskChat() {
                     {m.error ? <p className="mr-6 rounded-md border border-warn/40 px-2.5 py-1.5 text-warn">{m.error}</p>
                       : !m.a ? (
                         <p className="mr-6 flex items-center gap-2 text-fg-3"><CircleNotchIcon size={12} className="animate-spin text-accent" />
-                          {now - m.at < 4_000 ? 'Monday is thinking…' : `Kimi is reading the question… ${Math.round((now - m.at) / 1000)}s`}
+                          {now - m.at < 4_000 ? 'Monday is thinking…' : `The LLM is reading the question… ${Math.round((now - m.at) / 1000)}s`}
                         </p>
                       ) : <Answer m={m} onExplain={explain} />}
                   </div>
@@ -193,8 +193,8 @@ function Answer({ m, onExplain }: { m: Msg; onExplain: (id: number, w: string) =
         <div className="rounded-sm border border-accent/30 bg-accent/6 px-2 py-1.5">
           {m.explain.text ? <p className="leading-snug">{m.explain.text}</p>
             : m.explain.error ? <p className="text-warn">{m.explain.error}</p>
-            : <p className="flex items-center gap-2 text-fg-3"><CircleNotchIcon size={12} className="animate-spin text-accent" /> Kimi is writing the summary…</p>}
-          {m.explain.text && <p className="mt-1 text-[12px] text-fg-3">{m.explain.fromFacts ? 'Kimi was slow, so these are the wallet\'s own figures.' : 'Written by Kimi from this wallet\'s figures only.'}</p>}
+            : <p className="flex items-center gap-2 text-fg-3"><CircleNotchIcon size={12} className="animate-spin text-accent" /> The LLM is writing the summary…</p>}
+          {m.explain.text && <p className="mt-1 text-[12px] text-fg-3">{m.explain.fromFacts ? 'The LLM was slow, so these are the wallet\'s own figures.' : 'Written by the LLM from this wallet\'s figures only.'}</p>}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -206,7 +206,7 @@ function Answer({ m, onExplain }: { m: Msg; onExplain: (id: number, w: string) =
         )}
       </div>
       <p className="flex items-center gap-1.5 text-[12px] text-fg-3">
-        {a.by === 'kimi' && <span className="rounded-[3px] border border-accent/40 px-1 text-accent">Kimi</span>}
+        {a.by === 'llm' && <span className="rounded-[3px] border border-accent/40 px-1 text-accent">LLM</span>}
         <span>{a.source}</span>
       </p>
     </div>

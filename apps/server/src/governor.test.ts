@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-Object.assign(process.env, { VENUE: 'sim', DATABASE_PATH: ':memory:', LLM_PROVIDER: 'anthropic', LLM_API_KEY: '' });
+Object.assign(process.env, { GOVERNOR_LLM_PROVIDER: '', VENUE: 'sim', DATABASE_PATH: ':memory:', LLM_PROVIDER: 'anthropic', LLM_API_KEY: '' });
 const { fallbackDecision, firstJsonObject, walletKind } = await import('./governor');
 const { PRESETS } = await import('@monday/core');
 

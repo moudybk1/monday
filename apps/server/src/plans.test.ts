@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Bar, MarketSpec, MarketSym, PlanInput, TradeInput, TwapInput } from '@monday/core';
 
 // Before config loads: nothing in this test may touch a real database, chain or LLM.
-Object.assign(process.env, { VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_API_KEY: '', MONDAY_REGISTRY_ADDRESS: '', TELEGRAM_BOT_TOKEN: '', ENVIO_API_TOKEN: '' });
+Object.assign(process.env, { GOVERNOR_LLM_PROVIDER: '', VENUE: 'sim', DATABASE_PATH: ':memory:', NANSEN_API_KEY: '', LLM_API_KEY: '', MONDAY_REGISTRY_ADDRESS: '', TELEGRAM_BOT_TOKEN: '', ENVIO_API_TOKEN: '' });
 const { PlanBook } = await import('./plans');
 const { SimVenue } = await import('./venue/sim');
 const { upsertUser } = await import('./db');
@@ -22,19 +22,19 @@ function series(res: number, to: number, closes: number[], wick = 0.3): Bar[] {
 
 /**
  * One market whose price the test moves; the book is a tick either side of it. D1 and H4 trend as `htf` says; the
- * trigger timeframe shows an uptrend that dipped to its 20 EMA and closed back above it: a follow long, 188 under the
- * start price, on 5m bars about 0.09% wide, wide enough for a target to clear the fees. `k` scales the bars.
+ * trigger timeframe rose and then fell fourteen bars in a row, so it closes far under its 20-bar average: a dip to buy with the trend,
+ * on 5m bars about 0.1% wide, wide enough for a target to clear the fees. `k` scales the bars.
  */
 function world(start = 60_000, htf: 'up' | 'down' | 'mixed' = 'up', k = 40) {
   let px = start;
   const snapshot = (sym: MarketSym) => (sym === 'BTC' ? {
     sym, mark: px, oracle: px, mid: px, bestBid: px - 0.1, bestAsk: px + 0.1, bids: [], asks: [], fundingRate: 0, openInterest: 0, updatedAt: Date.now(),
   } : null);
-  const pullback = [...line(start - 30 * k, 0.5 * k, 60), start - 5.5 * k, start - 4.7 * k];
+  const dip = [...line(start - 11 * k, 0.5 * k, 50), ...line(start + 13 * k, -k, 14)];
   const candles = async (_sym: MarketSym, _from: number, to: number, res = 60) => {
     if (res === 86_400) return series(res, to, htf === 'down' ? line(70_000, -150, 60) : line(50_000, 150, 60));
     if (res === 14_400) return series(res, to, htf === 'up' ? line(55_000, 80, 60) : line(65_000, -80, 60));
-    return series(res, to, pullback, 0.3 * k);
+    return series(res, to, dip, 0.3 * k);
   };
   const market = { snapshot, specs: () => ({ BTC }), price: () => px };
   const feed = { ...market, start: async () => {}, stop: () => {}, candles };
@@ -72,26 +72,23 @@ async function setup(start?: number, htf?: 'up' | 'down' | 'mixed', k?: number) 
   return { ...w, v, book, tick, create, alerts, plan: () => book.views()[0], at: () => now };
 }
 
-const trade = (o: Partial<TradeInput> = {}): TradeInput => ({ kind: 'trade', sym: 'BTC', bias: 'long', marginUsd: 100, leverage: 5, frame: '5m', lossLimitPct: 20, profitTargetPct: 30, expiryHours: 24, ...o });
+const trade = (o: Partial<TradeInput> = {}): TradeInput => ({ kind: 'trade', sym: 'BTC', bias: 'long', marginUsd: 100, leverage: 5, frame: '15m', lossLimitPct: 20, profitTargetPct: 30, expiryHours: 24, ...o });
 
 describe('Agentic Trade: a scalping session', () => {
-  it('reads D1 and H4, rests a maker entry on the trigger, protects the fill, and books the scalp at its target', async () => {
+  it('reads D1 and H4, buys the dip at market on the trigger, protects the fill, and books the scalp at its target', async () => {
     const t = await setup();
     await t.create(trade());
-    await t.tick(3); // read the higher timeframes, then the trigger bar
+    await t.tick(5); // read the higher timeframes, then the trigger bar; the entry is taken at the ask
     let p = t.plan();
     expect(p.scalp).toMatchObject({ d1: 'bullish', h4: 'bullish', market: 'bullish', mode: 'follow' });
-    expect(p.status).toBe('entering');
-    expect(p.avgEntry).toBe(59_812); // the signal bar's close, under the touch: a maker entry
-    expect(t.v.position('BTC').size).toBe(0);
-    t.move(59_811); // the price comes down to it
-    await t.tick(3);
-    p = t.plan();
+    expect(p.scalp!.why).toMatch(/a dip in an uptrend/);
     expect(p.status).toBe('open');
-    expect(t.v.position('BTC').size).toBeCloseTo(0.00835, 8); // $500 at 59,812
+    expect(p.avgEntry).toBe(60_000.1);
+    expect(t.v.position('BTC').size).toBeCloseTo(0.00833, 8); // $500 at 60,000.1
     expect(p.stopOnVenue && p.takeOnVenue).toBe(true);
-    // 1.5 ranges up, 1 range down; each rounded to the 0.1 tick on its own.
-    expect(Math.abs(p.tpPrice! - 59_812 - 1.5 * (p.avgEntry! - p.slPrice!))).toBeLessThanOrEqual(0.15);
+    // Two ranges up, two down; each rounded to the 0.1 tick on its own.
+    expect(p.tpPrice! - p.avgEntry!).toBeGreaterThan(100);
+    expect(Math.abs(p.tpPrice! - p.avgEntry! - (p.avgEntry! - p.slPrice!))).toBeLessThanOrEqual(0.15);
     t.move(p.tpPrice! + 0.5);
     await t.tick(3);
     p = t.plan();
@@ -104,10 +101,9 @@ describe('Agentic Trade: a scalping session', () => {
   it('ends the session once its loss reaches the share of the margin set', async () => {
     const t = await setup();
     await t.create(trade({ leverage: 15, lossLimitPct: 1 })); // $1 of a $100 margin
-    await t.tick(3);
-    t.move(59_811);
-    await t.tick(3);
+    await t.tick(5);
     expect(t.v.position('BTC').size).toBeGreaterThan(0);
+    expect(t.v.position('BTC').size).toBeLessThan(0.02); // cut down so its stop costs no more than the $1
     t.move(59_650); // a gap through the stop
     await t.tick(6);
     const p = t.plan();
@@ -116,25 +112,24 @@ describe('Agentic Trade: a scalping session', () => {
     expect(p.note).toMatch(/Session loss limit reached/);
   });
 
-  it('waits while D1 and H4 disagree, and calls a long against both a counter trade', async () => {
+  it('waits while D1 and H4 disagree, and while both run against the side', async () => {
     const mixed = await setup(60_000, 'mixed');
     await mixed.create(trade());
     await mixed.tick(5);
-    expect(mixed.plan().note).toMatch(/waiting until both point the same way/);
+    expect(mixed.plan().note).toMatch(/waiting until both point up, your side/);
     expect(mixed.plan().status).toBe('waiting');
     const counter = await setup(60_000, 'down');
     await counter.create(trade());
-    await counter.tick(3);
+    await counter.tick(5);
     expect(counter.plan().scalp?.mode).toBe('counter');
-    expect(counter.plan().status).toBe('waiting'); // the pullback pattern is not a counter setup
+    expect(counter.plan().status).toBe('waiting'); // a long against D1 and H4 is not taken, however deep the dip
+    expect(counter.v.position('BTC').size).toBe(0);
   });
 
   it('Stop takes no new scalp but lets the open one run to its exit; Close closes it now', async () => {
     const t = await setup();
     const a = await t.create(trade());
-    await t.tick(3);
-    t.move(59_811);
-    await t.tick(3);
+    await t.tick(5);
     await t.book.cancel(a.id, false);
     await t.tick(2);
     expect(t.v.position('BTC').size).toBeGreaterThan(0); // still open, still protected
@@ -144,9 +139,7 @@ describe('Agentic Trade: a scalping session', () => {
     expect(t.plan()).toMatchObject({ status: 'done', outcome: 'cancelled' });
     const u = await setup();
     const b = await u.create(trade());
-    await u.tick(3);
-    u.move(59_811);
-    await u.tick(3);
+    await u.tick(5);
     await u.book.cancel(b.id, true);
     await u.tick(4);
     expect(u.v.position('BTC').size).toBe(0);
@@ -154,7 +147,7 @@ describe('Agentic Trade: a scalping session', () => {
   });
 
   it('skips a setup whose target would not clear the fees', async () => {
-    const t = await setup(60_000, 'up', 1); // the same pattern on bars 40 times smaller: a 0.004% target
+    const t = await setup(60_000, 'up', 1); // the same pattern on bars 40 times smaller: a 0.008% target
     await t.create(trade());
     await t.tick(3);
     expect(t.plan().status).toBe('waiting');
@@ -164,9 +157,7 @@ describe('Agentic Trade: a scalping session', () => {
   it('places the stop loss again when it disappears from the book', async () => {
     const t = await setup();
     await t.create(trade());
-    await t.tick(3);
-    t.move(59_811);
-    await t.tick(3);
+    await t.tick(5);
     await t.v.cancelAll(false); // someone pulled every order on the account
     expect(t.plan().stopOnVenue).toBe(false);
     await t.tick(3);
@@ -219,6 +210,33 @@ describe('TWAP', () => {
     expect(u.plan()).toMatchObject({ status: 'done', outcome: 'stop_loss' });
     await u.tick(10 * 60);
     expect(u.v.position('BTC').size).toBe(0); // no more slices after the stop
+  });
+
+  it('ends as failed, with a time and a reason, when every slice passed and nothing filled', async () => {
+    const t = await setup();
+    await t.create(twap({ limitPrice: 59_000 }));
+    await t.tick(6 * 60);
+    const p = t.plan();
+    expect(p).toMatchObject({ status: 'done', outcome: 'failed' });
+    expect(p.endedAt).not.toBeNull();
+    expect(p.note).toMatch(/Nothing filled/);
+    expect(t.alerts.some((a) => /Nothing filled/.test(a))).toBe(true);
+  });
+
+  it('never rounds a slice to nothing: a small TWAP still places its first slice', async () => {
+    // Plan #12: ETH, 0.033 over 30 slices is 0.0011 a slice against a 0.001 step; jitter under 0.91 floored it to 0 and
+    // skipped all 30 slices at once. Here 0.00033 BTC over 30 slices is 0.000011 against a 0.00001 step, jitter 0.8.
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const t = await setup();
+      await t.create(twap({ marginUsd: 20, leverage: 1, durationMin: 30, slices: 30 }));
+      await t.tick(2);
+      expect(t.v.position('BTC').size).toBeGreaterThan(0);
+      expect(t.plan()).toMatchObject({ status: 'entering' });
+      expect(t.plan().twap?.slicesDone).toBe(1);
+    } finally {
+      random.mockRestore();
+    }
   });
 });
 

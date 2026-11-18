@@ -34,27 +34,25 @@ describe('trigger and exits', () => {
     expect(atr(bars(line(100, 0.5, 10)))).toBeNull();
   });
 
-  it('follow: a pullback to the 20 EMA in an uptrend that closes back above it', () => {
-    const up = line(100, 0.5, 60); // ends at 129.5 with the 20 EMA about 4.75 under it
-    const signal = scalpSignal(bars([...up, 124.5, 125.3]), 'long', 'follow');
-    expect(signal).toMatchObject({ price: 125.3 });
+  it('with the market: a close stretched from its average on the last closed bar, a dip for a long and a spike for a short', () => {
+    const dip = [...line(100, 0.5, 50), ...line(123.5, -1, 14)]; // rose, then fell 14 bars: far under the 20-bar average
+    const signal = scalpSignal(bars(dip), 'long', 'follow');
+    expect(signal).toMatchObject({ price: 110.5 });
     expect(signal!.atr).toBeGreaterThan(1);
-    expect(scalpSignal(bars([...up, 130, 130.5]), 'long', 'follow')).toBeNull(); // no dip: nothing to buy
-    expect(scalpSignal(bars([...up, 124.5, 124.4]), 'long', 'follow')).toBeNull(); // dipped and kept falling
-    expect(scalpSignal(bars([...up, 124.5, 125.3]), 'short', 'follow')).toBeNull(); // the EMAs point up
+    expect(scalpSignal(bars(dip), 'short', 'follow')).toBeNull(); // stretched down is no short
+    expect(scalpSignal(bars(line(100, 0.5, 64)), 'long', 'follow')).toBeNull(); // no dip: nothing to buy
+    expect(scalpSignal(bars(line(100, 0.5, 64)), 'short', 'follow')).toMatchObject({ price: 131.5 }); // a steady rise sits over its average
+    expect(scalpSignal(bars(dip.slice(-40)), 'long', 'follow')).toBeNull(); // too few bars
   });
 
-  it('counter: a stretched RSI that turns past the previous bar', () => {
-    const down = line(130, -0.5, 60); // RSI pinned near 0
-    expect(scalpSignal(bars([...down, 101.5]), 'long', 'counter')).toMatchObject({ price: 101.5 }); // above the last bar's 101.3 high
-    expect(scalpSignal(bars([...down, 100]), 'long', 'counter')).toBeNull(); // still falling
-    expect(scalpSignal(bars([...line(100, 0.5, 60), 129]), 'long', 'counter')).toBeNull(); // RSI never stretched down
+  it('against the market: no setup at all', () => {
+    expect(scalpSignal(bars([...line(100, 0.5, 50), ...line(123.5, -1, 14)]), 'long', 'counter')).toBeNull();
   });
 
-  it('places a scalp target a range or a range and a half away, the stop one range the other way, capped', () => {
-    expect(scalpExits('long', 'follow', 100, 2)).toEqual({ tp: 103, sl: 98 });
-    expect(scalpExits('short', 'counter', 100, 2)).toEqual({ tp: 98, sl: 102 });
-    expect(scalpExits('long', 'follow', 100, 2, 0.5)).toEqual({ tp: 103, sl: 99.5 });
+  it('places a scalp target three ranges away and the stop three the other way, capped', () => {
+    expect(scalpExits('long', 100, 2)).toEqual({ tp: 106, sl: 94 });
+    expect(scalpExits('short', 100, 2)).toEqual({ tp: 94, sl: 106 });
+    expect(scalpExits('long', 100, 2, 0.5)).toEqual({ tp: 106, sl: 99.5 });
   });
 
   it('rolls minutes up and keeps only closed bars', () => {

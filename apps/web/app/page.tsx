@@ -5,7 +5,7 @@ import { LimitsExplorer, LiveProvider, ModePrompt, PartsTabs, PerplStats, Reveal
 import { GlassBubbles, LiquidPearl } from '@/components/scene-3d';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { Mark, cx } from '@/components/ui';
-import { at } from '@/lib/hosts';
+import { analyticsOn, at } from '@/lib/hosts';
 
 /*
   The landing, after Imagica (2026-11-15), on the Dusk palette: a pearl with Monday's mark resting in dark liquid that
@@ -121,7 +121,7 @@ export default async function Landing() {
                   parts={[
                     { title: 'Engine', when: 'every second', icon: <GaugeIcon size={17} />, glyph: <TickGlyph />, text: 'Prices both quotes from the book, the reference market and the position, and moves only what changed enough to matter.' },
                     { title: 'Reflex', when: 'the next tick', icon: <LightningIcon size={17} />, glyph: <ReflexGlyph />, text: 'Pulls or widens the side about to be run over: a jump in the reference market, a fill, a lopsided book.' },
-                    { title: 'Governor', when: 'every 15 minutes', icon: <BrainIcon size={17} />, glyph: <DialsGlyph />, text: 'Kimi reads the whole situation and sets how carefully Monday quotes, inside hard bounds. It never places an order.' },
+                    { title: 'Governor', when: 'every 15 minutes', icon: <BrainIcon size={17} />, glyph: <DialsGlyph />, text: 'The LLM reads the whole situation and sets how carefully Monday quotes, inside hard bounds. It never places an order.' },
                     { title: 'Maker Orders', when: 'post-only', icon: <StackIcon size={17} />, glyph: <LadderGlyph />, text: 'Placed on your own Perpl account, they rest on the book and never cross it.' },
                     { title: 'A Public Record', when: onchain ? 'logged on Monad' : 'open to anyone', icon: <SealCheckIcon size={17} />, glyph: <RecordGlyph />, text: onchain ? 'Every decision with its reason, and a hash of it and its evidence logged on Monad.' : 'Every decision with its reason, and a hash of the data behind it.' },
                     { title: 'Stop and Kill', when: 'one click each', icon: <PowerIcon size={17} />, glyph: <SwitchGlyph />, text: 'Stop pulls Monday\'s orders and leaves positions to you. Kill also closes them.' },
@@ -183,6 +183,7 @@ export default async function Landing() {
           </section>
 
           {/* Analytics, split like a spread: the claim on white, the live figures in a window on a pale panel. */}
+          {analyticsOn && (
           <section className="grid bg-raised lg:min-h-[44rem] lg:grid-cols-2">
             <div className="flex items-center px-4 py-24 sm:px-8 lg:justify-end lg:pr-16">
               <Reveal className="max-w-[31rem]">
@@ -205,6 +206,7 @@ export default async function Landing() {
               </Reveal>
             </div>
           </section>
+          )}
 
           {/* Custody: the promise on the left; on the right, what Monday's key may and may not do, and where the money sits. */}
           <section id="custody" className="relative scroll-mt-20 overflow-hidden py-24 md:py-36">
@@ -413,7 +415,7 @@ function Flow() {
           <div className="flex justify-between rounded-md bg-[color-mix(in_oklab,var(--ask)_9%,var(--raised))] px-2.5 py-1.5"><dt className="text-ask-fg">Ask</dt><dd>85,237.9</dd></div>
           <div className="flex justify-between rounded-md bg-[color-mix(in_oklab,var(--bid)_9%,var(--raised))] px-2.5 py-1.5"><dt className="text-bid-fg">Bid</dt><dd>85,162.1</dd></div>
         </dl>
-        <p className="mt-3 flex items-center gap-1.5 text-[13px] text-fg-3"><BroadcastIcon size={14} className="text-accent" />Kimi reviews them every 15 minutes</p>
+        <p className="mt-3 flex items-center gap-1.5 text-[13px] text-fg-3"><BroadcastIcon size={14} className="text-accent" />The LLM reviews them every 15 minutes</p>
       </div>
     </div>
   );

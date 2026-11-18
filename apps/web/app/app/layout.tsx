@@ -1,6 +1,7 @@
 'use client';
 
-import { SignOutIcon } from '@phosphor-icons/react';
+import { GearSixIcon, SignOutIcon } from '@phosphor-icons/react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
@@ -9,7 +10,7 @@ import { Button, Notice, Skeleton, Tag, cx } from '@/components/ui';
 import { shortAddr } from '@/lib/format';
 import { safeReturnPath } from '@monday/core';
 import { showAccount } from '@/lib/api';
-import { at } from '@/lib/hosts';
+import { analyticsOn, at } from '@/lib/hosts';
 import { Providers, chain, useAppConfig, useMe, useSession, walletConnectReady } from '@/lib/wallet';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,31 +28,25 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   // A key is all the terminal needs: it shows the market maker when one is set up, and Agentic Trade and TWAP plans either way.
+  // Signing in needs only the wallet; the key is added in Account Settings, and each trading page asks for it until then.
   const onboarded = Boolean(me.data?.hasKey);
-  // A page that sent the user here to sign in (`?next=`). Reading your own history needs a session, not a running agent,
-  // so an analytics page is returned to at once; anything else once setup is done. Read after mount: during a client
-  // navigation the new page renders before the address bar changes. Undefined until read, and nothing redirects before.
-  const [next, setNext] = useState<string | null | undefined>(undefined);
+  // A page that sent the user here to sign in (`?next=`): returned to as soon as the wallet is signed in. Read after mount:
+  // during a client navigation the new page renders before the address bar changes.
+  const [next, setNext] = useState<string | null>(null);
   useEffect(() => setNext(safeReturnPath(new URLSearchParams(location.search).get('next'))), []);
-  const readOnly = next?.startsWith('/analytics') ?? false;
-  // Not connected to Perpl yet: the key comes first, once, before any choice of what to run.
-  const mustOnboard = me.data && next !== undefined && !onboarded && !readOnly && pathname !== '/app/connect';
-  const terminal = pathname === '/app' && onboarded;
+  const terminal = (pathname === '/app' || pathname === '/app/trade') && onboarded;
 
   // Every change this tab asks for names the account it shows (see lib/api).
   const wallet = me.data?.wallet ?? null;
   useEffect(() => showAccount(wallet), [wallet]);
 
   useEffect(() => {
-    if (mustOnboard) router.replace(`/app/connect${next ? `?next=${encodeURIComponent(next)}` : ''}`);
-  }, [mustOnboard, next, router]);
-  useEffect(() => {
-    if (me.data && next && (readOnly || (onboarded && pathname === '/app'))) router.replace(next);
-  }, [me.data, next, readOnly, onboarded, pathname, router]);
+    if (me.data && next && pathname === '/app') router.replace(next);
+  }, [me.data, next, pathname, router]);
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
-      <AppHeader nav={onboarded}>
+      <AppHeader nav={Boolean(me.data)}>
         {/* Always say which network the orders go to. A live mainnet is never hidden, even on a phone. */}
         {cfg.data?.realFunds ? (
           <>
@@ -61,8 +56,12 @@ function Shell({ children }: { children: React.ReactNode }) {
         ) : cfg.data &&<span><Tag tone={cfg.data.sim || cfg.data.paper ? 'warn' : 'neutral'}>{cfg.data.sim ? 'Simulated market' : cfg.data.paper ? 'Paper trading' : cfg.data.networkName}</Tag></span>}
         {me.data && (
           <span className="flex h-7 items-center rounded-sm border border-line-2">
-            <span className={cx('hidden whitespace-nowrap pl-2.5 pr-1 text-[13px] text-fg-2 sm:inline', !me.data.demo && 'font-mono')}>{me.data.demo ? 'Demo Account' : shortAddr(me.data.wallet)}</span>
-            <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" title="Sign Out" className="grid h-full w-7 place-items-center text-fg-2 hover:bg-raised hover:text-fg">
+            <Link href="/app/account" title="Account Settings" aria-current={pathname === '/app/account' ? 'page' : undefined} className={cx('flex h-full items-center gap-1.5 pl-2.5 pr-2 text-[13px] text-fg-2 hover:bg-raised hover:text-fg aria-[current=page]:text-fg', !me.data.demo && 'font-mono')}>
+              {!onboarded && <span aria-label="Perpl not connected" className="size-1.5 rounded-full bg-warn" />}
+              <span className="hidden whitespace-nowrap sm:inline">{me.data.demo ? 'Demo Account' : shortAddr(me.data.wallet)}</span>
+              <GearSixIcon size={14} className="sm:hidden" />
+            </Link>
+            <button type="button" onClick={() => void session.signOut()} aria-label="Sign out" title="Sign Out" className="grid h-full w-7 place-items-center border-l border-line-2 text-fg-2 hover:bg-raised hover:text-fg">
               <SignOutIcon size={14} />
             </button>
           </span>
@@ -89,7 +88,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           </div>
         ) : !me.data ? (
           <Connect sim={Boolean(cfg.data?.sim || cfg.data?.paper)} realFunds={Boolean(cfg.data?.realFunds)} />
-        ) : mustOnboard ? null : (
+        ) : (
           children
         )}
       </main>
@@ -112,7 +111,7 @@ function NoWallet({ here }: { here: string }) {
   return (
     <div className="mt-6 max-w-[52ch]">
       <Notice>
-        No wallet found in this browser. Install a browser wallet such as MetaMask or Rabby and reload this page, or open it in your wallet app&apos;s own browser: <a className={link} href={`https://metamask.app.link/dapp/${here}`}>open in MetaMask</a>. The <a className={link} href={at('/analytics')}>Perpl analytics</a> need no wallet.
+        No wallet found in this browser. Install a browser wallet such as MetaMask or Rabby and reload this page, or open it in your wallet app&apos;s own browser: <a className={link} href={`https://metamask.app.link/dapp/${here}`}>open in MetaMask</a>.{analyticsOn && <> The <a className={link} href={at('/analytics')}>Perpl analytics</a> need no wallet.</>}
       </Notice>
     </div>
   );

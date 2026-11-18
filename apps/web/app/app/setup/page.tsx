@@ -3,7 +3,7 @@
 import { ArrowsLeftRightIcon, CrosshairIcon, HourglassIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import type { PlanView } from '@monday/core';
-import { Button, ButtonLink, Tag } from '@/components/ui';
+import { Button, ButtonLink, Notice, Tag } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAppConfig, useMe } from '@/lib/wallet';
 
@@ -21,7 +21,7 @@ export default function Setup() {
   const cards = [
     {
       id: 'maker', icon: ArrowsLeftRightIcon, title: 'Agentic Market Maker',
-      text: 'Quotes both sides of the book in the markets you choose and earns the spread. Kimi reviews its spread and size every 15 minutes, inside limits your wallet signs on Monad.',
+      text: 'Quotes both sides of the book in the markets you choose and earns the spread. The LLM reviews its spread and size every 15 minutes, inside limits your wallet signs on Monad.',
       facts: ['Runs until you stop it', 'Daily loss limit you sign', 'Every decision hashed and logged'],
       // Like the other two: a tag only while it runs, and a button that starts one (a saved policy opens prefilled).
       status: me.status === 'quoting' ? <Tag tone="bid">Running</Tag> : null,
@@ -30,7 +30,7 @@ export default function Setup() {
     {
       id: 'trade', icon: CrosshairIcon, title: 'Agentic Trade',
       text: 'Your bias, scalped: long or short on one market. Monday reads D1 and H4, then scalps that side on a short timeframe, again and again, until your stop loss or take profit on the margin.',
-      facts: ['Follow or counter, read from D1 and H4', 'Every scalp protected on Perpl itself', 'Stops at your stop loss or take profit'],
+      facts: ['Trades with D1 and H4, waits against them', 'Every scalp protected on Perpl itself', 'Stops at your stop loss or take profit'],
       status: trades ? <Tag tone="accent">{trades} running</Tag> : null,
       cta: 'New Trade', href: '/app/setup/trade',
     },
@@ -43,12 +43,20 @@ export default function Setup() {
     },
   ];
 
+  // Without a Perpl key every mode starts in Account Settings, and comes back to its own setup once the key is in.
+  if (!me.hasKey) for (const c of cards) c.href = `/app/account?next=${encodeURIComponent(c.href)}`;
+
   return (
     // Centred in the window below the 56px header; taller content (a phone's stacked cards) simply scrolls.
     <div className="grid min-h-[calc(100dvh-3.5rem)] content-center gap-8 py-10 md:py-14">
       <header className="text-center">
         <h1 className="display text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Setup</h1>
         <p className="mx-auto mt-3 max-w-[62ch] text-fg-2">Choose how Monday trades for you. They can run side by side, each in markets of its own, all inside your own Perpl account.</p>
+        {!me.hasKey && (
+          <div className="mx-auto mt-5 max-w-[46rem] text-left">
+            <Notice action={<ButtonLink href="/app/account?next=%2Fapp%2Fsetup" size="xs" variant="ghost">Account Settings</ButtonLink>}>Connect your Perpl account first: add a trade-only API key in Account Settings.</Notice>
+          </div>
+        )}
       </header>
       <div className="grid gap-3 lg:grid-cols-3">
         {cards.map((c) => (

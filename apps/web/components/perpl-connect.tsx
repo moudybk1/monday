@@ -6,7 +6,7 @@
 import { ArrowSquareOutIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 import { usd } from '@monday/core';
-import { Button, Field, INPUT, Notice, Skeleton, cx } from '@/components/ui';
+import { Button, ButtonLink, Field, INPUT, Notice, Skeleton, cx } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { fmtUsd, shortAddr } from '@/lib/format';
 
@@ -18,16 +18,16 @@ export interface PerplAccount {
   makerAvailableUsd: number | null;
 }
 
-export function Heading({ title, children }: { title: string; children: React.ReactNode }) {
+export function Heading({ title, children, compact = false }: { title: string; children: React.ReactNode; compact?: boolean }) {
   return (
     <>
-      <h1 className="display text-3xl md:text-4xl">{title}</h1>
-      <p className="mt-3 max-w-[60ch] text-fg-2">{children}</p>
+      {compact ? <h3 className="text-[17px] font-semibold tracking-tight">{title}</h3> : <h1 className="display text-3xl md:text-4xl">{title}</h1>}
+      <p className={cx('max-w-[60ch] text-fg-2', compact ? 'mt-1.5 text-[14px]' : 'mt-3')}>{children}</p>
     </>
   );
 }
 
-export function AccountStep({ wallet, account, loading, error, retry, next }: { wallet: string | null; account?: PerplAccount; loading: boolean; error: Error | null; retry: () => void; next: () => void }) {
+export function AccountStep({ wallet, account, loading, error, retry, next, compact = false }: { wallet: string | null; account?: PerplAccount; loading: boolean; error: Error | null; retry: () => void; next: () => void; compact?: boolean }) {
   if (!account && error) {
     return <Notice tone="warn" action={<Button size="sm" variant="ghost" onClick={retry}>Check Now</Button>}>Could not look up your Perpl account: {error.message} It retries by itself every few seconds.</Notice>;
   }
@@ -35,7 +35,7 @@ export function AccountStep({ wallet, account, loading, error, retry, next }: { 
   if (!account.exists) {
     return (
       <div>
-        <Heading title="You Need a Perpl Account First">
+        <Heading compact={compact} title="You Need a Perpl Account First">
           Monday trades inside your own Perpl exchange account, and {wallet ? <span className="font-mono text-fg">{shortAddr(wallet)}</span> : 'this wallet'} does not have one yet. Open it on Perpl with the same wallet and a deposit of at least {usd(account.minDepositUsd)}. Already deposited? Then Perpl holds it under another wallet: sign out and connect that one.
         </Heading>
         <div className="mt-8 flex flex-wrap gap-3">
@@ -58,7 +58,7 @@ export function AccountStep({ wallet, account, loading, error, retry, next }: { 
   );
 }
 
-export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: boolean; paper: boolean; perplUrl: string; hasKey: boolean; revoked: boolean; next: () => Promise<void> }) {
+export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next, compact = false }: { sim: boolean; paper: boolean; perplUrl: string; hasKey: boolean; revoked: boolean; next: () => Promise<void>; compact?: boolean }) {
   const [token, setToken] = useState('');
   const [secret, setSecret] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,7 +83,7 @@ export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: 
 
   return (
     <div>
-      <Heading title="Give Monday a Trade-Only Key">
+      <Heading compact={compact} title="Give Monday a Trade-Only Key">
         A Perpl API key lets Monday place and cancel orders in your account. No API key can withdraw or transfer funds, whatever its scope, and you can revoke it on Perpl at any moment.
       </Heading>
       <ol className="mt-8 grid gap-3 border-y border-line-2 py-5 text-sm">
@@ -115,6 +115,22 @@ export function KeyStep({ sim, paper, perplUrl, hasKey, revoked, next }: { sim: 
         {err?.field === 'form' && <p role="alert" className="text-[14px] text-ask-fg">{err.message}</p>}
         <div><Button type="submit" size="lg" disabled={busy || !token || !secret}>{busy ? 'Signing in to Perpl' : 'Validate Key'}</Button></div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Where a page that trades would be, while no Perpl key is stored: what is missing and one way to add it. Everything
+ * Perpl-related lives in Account Settings; `next` brings the user back here once the key is in.
+ */
+export function ConnectPrompt({ next, what = 'trade' }: { next: string; what?: string }) {
+  return (
+    <div className="mx-auto grid min-h-[calc(100dvh-3.5rem-1px)] max-w-[34rem] content-center gap-5 py-12 text-center">
+      <h1 className="display text-3xl font-semibold tracking-[-0.04em]">Connect Perpl to {what}</h1>
+      <p className="text-fg-2">
+        Monday trades inside your own Perpl account through a trade-only API key. Add it once in Account Settings; it can place and cancel orders, never withdraw, and you can revoke it on Perpl at any moment.
+      </p>
+      <div className="flex justify-center"><ButtonLink href={`/app/account?next=${encodeURIComponent(next)}`} size="lg">Open Account Settings</ButtonLink></div>
     </div>
   );
 }

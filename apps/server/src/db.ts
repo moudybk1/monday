@@ -98,6 +98,9 @@ create table if not exists plans (
   created_at integer not null, ended_at integer
 );
 create index if not exists plans_user on plans (user_id, status);
+create table if not exists manual_orders (
+  user_id integer not null, key text not null, json text not null, placed_at integer not null, primary key (user_id, key)
+);
 `);
 // Columns added after the first deploy. SQLite has no "add column if not exists".
 const added = [

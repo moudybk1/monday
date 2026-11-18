@@ -1,7 +1,7 @@
 // Agentic Trade's scalper: the higher-timeframe read (D1 and H4), the low-timeframe trigger, and the exits of one scalp.
 // Pure functions of closed candles, so the setup page, the server and the tests read the market the same way.
 
-import { RSI0, ema, rsiStep } from './indicators';
+import { ema } from './indicators';
 import type { Bias } from './plan';
 import type { MarketSym } from './types';
 
@@ -19,14 +19,21 @@ export const H1_SEC = 3_600;
 /** Bars each read asks for: enough for a 20-period EMA and its slope, with room to spare. */
 export const READ_BARS = 60;
 
-/** A follow scalp aims for one and a half bars' usual range, a counter scalp for one; both stop one range away. */
-export const SCALP_TARGET_ATR: Record<ScalpMode, number> = { follow: 1.5, counter: 1 };
-export const SCALP_STOP_ATR = 1;
-/** A scalp still open after this many trigger bars is closed: a scalp that has not worked by then is not a scalp. */
-export const SCALP_MAX_BARS = 12;
-/** An entry order still unfilled this many bars after its signal has missed its moment. */
-export const SCALP_ENTRY_BARS = 2;
-/** A scalp's target must clear its round trip's fees (maker in, taker out at worst) this many times over, or it is skipped. */
+/**
+ * A scalp aims three of the trigger bars' usual ranges out and stops three away. Measured on Perpl mainnet candles
+ * (2026-11-16, five markets, 150 days) with the trigger below on 15m: about 0.75 scalps a market a day at +11 bps of
+ * notional each after fees (+10 in the first half, +11 in the second; BTC alone lost). On 5m it was about -2.
+ */
+export const SCALP_TARGET_ATR = 3;
+export const SCALP_STOP_ATR = 3;
+/** A scalp still open after this many trigger bars is closed: a bounce that has not come by then is not coming. */
+export const SCALP_MAX_BARS = 48;
+/**
+ * A close this many usual ranges under the 20-bar average is a dip (a long's setup); over it, a bounce (a short's).
+ * A Keltner band. Shallower dips (RSI under 40, CCI, a 1.5-range band) came twice as often and made a third as much.
+ */
+export const SCALP_DIP_ATR = 2;
+/** A scalp's target must clear its round trip's fees (taker in, taker out at worst) this many times over, or it is skipped. */
 export const SCALP_MIN_TARGET_FEES = 3;
 
 /** Merge candles into `spanMs` buckets aligned to UTC. A no-op on candles that already have that width. */
@@ -101,7 +108,7 @@ export interface FrameRead {
   low: number;
 }
 
-/** Follow when the user's side is the market's, counter when it is against it; a mixed market has no mode. */
+/** Follow when the user's side is the market's, counter when it is against it (it then waits); a mixed market has no mode. */
 export const scalpMode = (bias: Bias, market: MarketRead): ScalpMode | null =>
   market === 'mixed' ? null : (market === 'bullish') === (bias === 'long') ? 'follow' : 'counter';
 
@@ -126,44 +133,28 @@ export interface ScalpSignal {
 }
 
 /**
- * The trigger, read on the last closed bar of the trigger timeframe.
- * Follow: the 20 EMA beyond the 50 EMA in the trade's direction, price dipped to the 20 EMA within the last 3 bars, and
- * this bar closed back beyond it, in the trade's direction and within one range of it: a pullback that resumed.
- * Counter: RSI(14) stretched against the trade within the last 3 bars (under 30 for a long, over 70 for a short) and this
- * bar closed past the previous bar's extreme the trade's way: a turn from an extreme.
+ * The trigger, read on the last closed bar of the trigger timeframe: a close stretched two usual ranges away from
+ * its 20-bar average against the trade (under it for a long, over it for a short) while D1 and H4 point the trade's
+ * way: a dip in an uptrend, a bounce in a downtrend. Only with the market (`follow`). On the same candles, entries
+ * that chase the move (a pullback that resumed, a breakout, a MACD or average cross) and any entry against D1 and
+ * H4 lost more than a random entry did, so a side against the market waits.
  */
 export function scalpSignal(bars: Bar[], bias: Bias, mode: ScalpMode): ScalpSignal | null {
-  if (bars.length < 55) return null;
+  if (mode !== 'follow' || bars.length < 55) return null;
   const range = atr(bars);
   if (!range) return null;
   const long = bias === 'long';
-  const last = bars[bars.length - 1], prev = bars[bars.length - 2];
-  const dir = (a: number, b: number) => (long ? a > b : a < b); // a beyond b in the trade's direction
-  const closes = bars.map((b) => b.c);
-  if (mode === 'follow') {
-    const fast = emaSeries(closes, 20), slow = emaSeries(closes, 50);
-    const f = fast[fast.length - 1];
-    if (!dir(f, slow[slow.length - 1])) return null;
-    const dipped = bars.slice(-3).some((b, i) => (long ? b.l <= fast[fast.length - 3 + i] : b.h >= fast[fast.length - 3 + i]));
-    const resumed = dir(last.c, f) && dir(last.c, last.o) && Math.abs(last.c - f) <= range;
-    return dipped && resumed ? { price: last.c, atr: range, barT: last.t, why: `Pullback to the 20 EMA resumed ${long ? 'up' : 'down'}` } : null;
-  }
-  let s = RSI0;
-  const rsi: (number | null)[] = closes.map((c) => {
-    const r = rsiStep(s, c);
-    s = r.state;
-    return r.rsi;
-  });
-  const stretched = rsi.slice(-3).some((r) => r != null && (long ? r < 30 : r > 70));
-  const turned = long ? last.c > prev.h && last.c > last.o : last.c < prev.l && last.c < last.o;
-  return stretched && turned ? { price: last.c, atr: range, barT: last.t, why: `RSI ${long ? 'under 30' : 'over 70'} turned ${long ? 'up' : 'down'}` } : null;
+  const last = bars[bars.length - 1];
+  const mean = emaSeries(bars.map((b) => b.c), 20)[bars.length - 1];
+  const stretch = (long ? mean - last.c : last.c - mean) / range;
+  if (stretch <= SCALP_DIP_ATR) return null;
+  return { price: last.c, atr: range, barT: last.t, why: `${stretch.toFixed(1)} ranges ${long ? 'under' : 'over'} the 20-bar average: ${long ? 'a dip in an uptrend' : 'a bounce in a downtrend'}` };
 }
 
 /** One scalp's target and stop from its entry: ranges of the trigger timeframe, the stop never past `maxStop` away. */
-export function scalpExits(bias: Bias, mode: ScalpMode, entry: number, range: number, maxStop = Infinity): { tp: number; sl: number } {
+export function scalpExits(bias: Bias, entry: number, range: number, maxStop = Infinity): { tp: number; sl: number } {
   const up = bias === 'long' ? 1 : -1;
-  const stop = Math.min(SCALP_STOP_ATR * range, maxStop);
-  return { tp: entry + up * SCALP_TARGET_ATR[mode] * range, sl: entry - up * stop };
+  return { tp: entry + up * SCALP_TARGET_ATR * range, sl: entry - up * Math.min(SCALP_STOP_ATR * range, maxStop) };
 }
 
 export const TREND_LABEL: Record<Trend, string> = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Neutral' };

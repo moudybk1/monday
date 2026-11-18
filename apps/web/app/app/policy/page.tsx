@@ -177,7 +177,7 @@ export default function PolicyPage() {
         )}
         {action}
         {note && <p role={note.ok ? 'status' : 'alert'} className={note.ok ? 'text-[13px] text-fg-2' : 'text-[13px] text-ask-fg'}>{note.text}</p>}
-        <p className="text-[13px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and Flatten is in the terminal.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
+        <p className="text-[13px] text-fg-3">{running ? 'Saving applies to the running bot from its next tick. Its take profit was set at Start: to change it, Stop and Start again. Stop cancels its orders and leaves positions; Kill and Flatten is in Agentic.' : 'Saving does not start the bot. Start runs it with the settings in force and the take profit above.'}</p>
         {view.data.onchainTx && (
           <p className="text-[13px] text-fg-3">
             In force on Monad since {cfg ? <a className="font-mono underline underline-offset-2" href={`${cfg.explorerUrl}/tx/${view.data.onchainTx}`} target="_blank" rel="noreferrer">{shortHash(view.data.onchainTx)}</a> : <span className="num">{shortHash(view.data.onchainTx)}</span>}.

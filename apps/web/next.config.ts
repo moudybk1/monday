@@ -12,7 +12,8 @@ const nextConfig: NextConfig = {
   // next dev would otherwise write AGENTS.md and CLAUDE.md into apps/web on every start.
   agentRules: false,
   // The same NETWORK switch the server reads decides which chain the wallet talks to.
-  env: { NEXT_PUBLIC_NETWORK: process.env.NETWORK === 'mainnet' ? 'mainnet' : 'testnet' },
+  // Analytics is switched off for now (2026-11-16): ANALYTICS=on brings the pages and every link to them back.
+  env: { NEXT_PUBLIC_NETWORK: process.env.NETWORK === 'mainnet' ? 'mainnet' : 'testnet', NEXT_PUBLIC_ANALYTICS: process.env.ANALYTICS === 'on' ? 'on' : 'off' },
   turbopack: {
     root,
     // wagmi's Base Account connector pulls in @coinbase/cdp-sdk, a server SDK whose optional x402 imports break the build.
@@ -36,7 +37,11 @@ const nextConfig: NextConfig = {
   },
   // The evidence page is gone (2026-10-12); links to it, shared before, land on the home page.
   async redirects() {
-    return [{ source: '/evidence', destination: '/', permanent: false }];
+    const off = process.env.ANALYTICS !== 'on';
+    return [
+      { source: '/evidence', destination: '/', permanent: false },
+      ...(off ? [{ source: '/analytics', destination: '/', permanent: false }, { source: '/analytics/:path*', destination: '/', permanent: false }] : []),
+    ];
   },
   // The browser only ever talks to this origin, so the session cookie stays first-party and SameSite=Strict.
   async rewrites() {

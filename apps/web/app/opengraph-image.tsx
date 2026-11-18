@@ -26,7 +26,7 @@ export default function Image() {
             <span style={{ color: ACCENT }}>Perpl.</span>
           </div>
           <div style={{ display: 'flex', fontSize: 30, lineHeight: 1.35, color: FG2, maxWidth: 1000 }}>
-            <span>Make markets, scalp a bias, or build a position in slices, from your own Perpl account and inside your limits. Kimi is the risk governor.</span>
+            <span>Make markets, scalp a bias, or build a position in slices, from your own Perpl account and inside your limits. An LLM is the risk governor.</span>
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 26, color: FG2 }}>

@@ -63,7 +63,7 @@ export function normalise(o: Record<string, unknown>): Record<string, unknown> {
 
 const answers = new Map<string, { at: number; v: Promise<AskAnswer> }>();
 const CACHE_MS = 10 * 60_000;
-// With thinking off (see ./llm) Kimi k2.6 on b.ai answers these in about 4 s (measured 2026-10-12); the timeouts leave
+// With thinking off (see ./llm) the LLM on b.ai answers these in about 4 s (measured 2026-10-12); the timeouts leave
 // room for a slow provider, and the bar says it is still thinking.
 // STATS_ASK_MODEL lets the bar use a quicker model than the summaries without touching the governor's setting.
 const ASK_TIMEOUT_MS = Number(process.env.STATS_ASK_TIMEOUT_MS) || 60_000;
@@ -151,7 +151,7 @@ export function explainWallet(w: PxWallet): Promise<string> | null {
   const key = `${w.network}:${w.account ?? w.address}`;
   const hit = explanations.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.v;
-  // With thinking off Kimi answers in seconds but runs long: the prompt's three sentences are kept, the rest dropped.
+  // With thinking off the LLM answers in seconds but runs long: the prompt's three sentences are kept, the rest dropped.
   // An empty reply is a failure: the route falls back to the facts, and nothing is cached.
   const v = ask(EXPLAIN, walletFacts(w).join('\n'), { maxTokens: 220, timeoutMs: EXPLAIN_TIMEOUT_MS }).then((t) => {
     const s = t.trim().split(/(?<=[.!?])\s+/).slice(0, 3).join(' ');

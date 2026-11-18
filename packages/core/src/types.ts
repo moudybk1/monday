@@ -296,8 +296,14 @@ export interface DashboardState {
    * already inside equity and are not taken off again. realized and fees cover Monday's own fills only.
    */
   pnl: { todayUsd: number; realizedUsd: number; unrealizedUsd: number; feesUsd: number; lossLimitUsedPct: number; depositsUsd: number; fundingUsd: number };
-  /** Since the last Start: per-run stop loss and take profit, on top of the daily loss limit. */
-  session: { startedAt: number; pnlUsd: number; stopLossUsd: number | null; takeProfitUsd: number | null } | null;
+  /**
+   * Since the last Start: per-run stop loss and take profit, on top of the daily loss limit. pnlUsd is the whole
+   * account's equity change since Start (what the session stop and target watch), plans included; makerPnlUsd is the
+   * market maker's own fills and the open PnL of its markets only.
+   */
+  session: { startedAt: number; pnlUsd: number; makerPnlUsd: number; stopLossUsd: number | null; takeProfitUsd: number | null } | null;
+  /** The last market maker run that ended (Stop, Kill or take profit) since the server started: its window, why it ended and the maker's own PnL. */
+  lastRun: { startedAt: number; endedAt: number; why: string; pnlUsd: number } | null;
   health: {
     marketDataAgeMs: number; signalAgeMs: number; budgetRemaining: number; budgetPerMin: number; venueConnected: boolean; llm: boolean; llmFailing: boolean; chain: boolean;
     /** Age of the last Hyperliquid frame (mids and the live smart-money tape), -1 when it is off. */
@@ -314,6 +320,29 @@ export interface DashboardState {
   alerts: Alert[];
   /** Agentic Trade and TWAP plans: the running ones and the last few that ended. */
   plans: PlanView[];
+  /** Orders the user placed by hand from the Trade tab, still working, and their latest fills. */
+  manual: { orders: ManualOrderView[]; fills: Fill[]; /** Collateral a new hand-placed order can use, as the server checks it. */ freeUsd: number };
+}
+
+/** How a hand-placed order works: at the market (IOC), a limit that rests (post-only) or takes at once (IOC), or waits for a trigger. */
+export type ManualKind = 'market' | 'limit' | 'stop';
+/** Why the order exists: the entry itself, or the take profit / stop loss placed with it. */
+export type ManualRole = 'entry' | 'tp' | 'sl' | 'close';
+
+export interface ManualOrderView {
+  key: string;
+  sym: MarketSym;
+  side: Side;
+  kind: ManualKind;
+  role: ManualRole;
+  size: number;
+  /** Limit price; null for a market order and a stop that goes in at the market. */
+  price: number | null;
+  /** Mark price that sends a stop, take profit or stop loss to the book. */
+  triggerPrice: number | null;
+  reduceOnly: boolean;
+  leverage: number;
+  placedAt: number;
 }
 
 export const REGIME_CODE: Record<string, number> = { calm: 0, active: 1, storm: 2, stale: 3, reflex: 4 };

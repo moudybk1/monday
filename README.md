@@ -1,6 +1,6 @@
 # Monday
 
-Monday is a trading terminal for [Perpl](https://perpl.xyz), the on-chain order book on Monad. It runs from your own Perpl account through a trade-only API key, so your funds never move. You pick a mode and a loss you can live with; the code does the trading and Kimi acts as the risk governor. Next to it there is a public analytics site for all of Perpl.
+Monday is a trading terminal for [Perpl](https://perpl.xyz), the on-chain order book on Monad. It runs from your own Perpl account through a trade-only API key, so your funds never move. You pick a mode and a loss you can live with; the code does the trading and the LLM acts as the risk governor. Next to it there is a public analytics site for all of Perpl.
 
 It is live on Monad mainnet with real money: the terminal at [app.mondaytrade.xyz](https://app.mondaytrade.xyz), the analytics at [analytics.mondaytrade.xyz](https://analytics.mondaytrade.xyz), and a long-form explanation of every part at [mondaytrade.xyz/system](https://mondaytrade.xyz/system). It was built for Monad Metropolis (Track 01), Perpl's analytics bounty and the Kimi bounty, and the analytics index Perpl's history through Envio HyperSync.
 
@@ -10,13 +10,13 @@ It is live on Monad mainnet with real money: the terminal at [app.mondaytrade.xy
 
 ## Three modes
 
-The market maker quotes both sides of the book in the markets you choose and earns the spread. It runs until you stop it. Every 15 minutes Kimi reviews how wide and how big it should quote, inside bounds the code enforces; it never places an order itself. You give it a margin and a daily stop loss; when the loss is hit it cancels its orders and closes what it holds.
+The market maker quotes both sides of the book in the markets you choose and earns the spread. It runs until you stop it. Every 15 minutes the LLM reviews how wide and how big it should quote, inside bounds the code enforces; it never places an order itself. You give it a margin and a daily stop loss; when the loss is hit it cancels its orders and closes what it holds.
 
-Agentic Trade is a scalping session on one market. You say long or short, Monday reads the daily and 4-hour charts, and then scalps your side on a 1, 5 or 15 minute timeframe, one position at a time, until the session's stop loss or take profit (both a share of its margin) or its time is up. Each scalp's stop and target rest on Perpl as real orders from the moment it fills.
+Agentic Trade is a scalping session on one market. You say long or short, Monday reads the daily and 4-hour charts, and then scalps your side on the 15 minute chart while both point your way, one position at a time, until the session's stop loss or take profit (both a share of its margin) or its time is up. Each scalp's stop and target rest on Perpl as real orders from the moment it fills.
 
 TWAP builds a position in slices, as maker orders where it can, so a big order does not move a thin book. It takes up to a day to build and then holds the position under a stop loss (and an optional target) that also rest on Perpl. You can give it a price it must not pass.
 
-All three can run at the same time, each in its own markets, and Kimi writes a short read of the market before you start any of them.
+All three can run at the same time, each in its own markets, and the LLM writes a short read of the market before you start any of them.
 
 Custody is simple. Your collateral stays in your Perpl account; only your wallet can withdraw. Monday holds a Perpl API key with trade scope, stored encrypted, and Perpl does not let any API key withdraw or transfer. Stop and Kill are one click, and revoking the key on Perpl cuts Monday off at once. Signing in is a signed message from your wallet, no gas.
 
@@ -28,7 +28,7 @@ The engine runs every second. It prices both quotes from Perpl's book, blended t
 
 The reflex runs on the next tick after something happens: a burst of trading by Smart Traders (wallets with a consistent profit record, from Nansen's labels), a move in the reference market that Perpl's book has not caught up with, or a fill on Monday's own quote. It pulls or widens the side that is about to get run over, for a short while.
 
-The governor is Kimi, every 15 minutes per market. It gets a snapshot (flow, volatility, funding, the position, today's result and fill quality, your limits, and what the fixed rules would choose) and answers with spread and size multipliers, a position cap, whether to quote at all, and a reason in plain words. The code validates and clamps every number, hashes the decision together with its evidence, and publishes it at `/decisions/<id>`. If Kimi is slow or down, the rules take over.
+The governor is an LLM, every 15 minutes per market. It gets a snapshot (flow, volatility, funding, the position, today's result and fill quality, your limits, and what the fixed rules would choose) and answers with spread and size multipliers, a position cap, whether to quote at all, and a reason in plain words. The code validates and clamps every number, hashes the decision together with its evidence, and publishes it at `/decisions/<id>`. If the LLM is slow or down, the rules take over.
 
 Every order also passes a risk gate: a 1% band around the oracle, position and account caps, a leverage check, your daily stop loss (a warning at 70%, kill and flatten at 100%), a margin floor so the kill fires before Perpl's maintenance margin, a kill when market data stops for 30 seconds, and a kill after three failed orders in a row.
 
@@ -40,7 +40,7 @@ Every Perpl trade since launch, for all 11 markets, refreshed every few seconds 
 
 The overview has volume, open interest, TVL, fees and active traders over 24h, 7d, 30d and all time, daily series, collateral flows, funding and long/short per market, a liquidation map with the positions closest to it, the largest positions, who makes money, retention cohorts and when Perpl trades. The Flow tab shows what the top traders, the consistent winners and the whales hold and how they moved over the last hours, plus a live tape of their orders. Any wallet can be opened by address or account number: equity, open positions with liquidation prices, the trade history with realised PnL, win rate, profit factor, drawdown, streaks, hold time, best and worst markets, and where it ranks among active accounts. Up to four wallets can be compared side by side, and a screener with presets (winners, streaks, whales, makers, takers, liquidated, losers) and leaderboards for 1 to 90 days sits next to it.
 
-Ask Monday is the chat on those pages. Common questions are answered by rules straight away. For free-form questions Kimi turns the text into a structured query that the code answers with real numbers, and it writes the plain-words wallet summaries from a sheet of live facts; an answer that quotes a number not on that sheet is thrown away.
+Ask Monday is the chat on those pages. Common questions are answered by rules straight away. For free-form questions the LLM turns the text into a structured query that the code answers with real numbers, and it writes the plain-words wallet summaries from a sheet of live facts; an answer that quotes a number not on that sheet is thrown away.
 
 The data comes from Perpl's Exchange contract events (fills with fees, positions, liquidations, deposits, withdrawals) through Envio HyperSync, with the chain head followed over RPC while HyperSync is rate-limited, plus Perpl's API and contract reads for live funding, the book and open positions.
 
@@ -67,7 +67,7 @@ To go live, copy `.env.example` to `.env`. Each block there switches one piece f
 | --- | --- |
 | Smart Trader data | `NANSEN_API_KEY` (the first boot backfills 7 days) |
 | Real orders | `VENUE=perpl` and `MONDAY_MASTER_KEY`; testnet unless `NETWORK=mainnet` |
-| Kimi (governor, Ask Monday) | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` |
+| LLM (governor, Ask Monday) | `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_THINKING_OFF`; a separate governor model with `GOVERNOR_LLM_*` |
 | Full Perpl history | `ENVIO_API_TOKEN` |
 | Policies and decisions on Monad | `MONDAY_REGISTRY_ADDRESS` and `AGENT_LOGGER_PRIVATE_KEY` |
 | Telegram alerts | `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` |

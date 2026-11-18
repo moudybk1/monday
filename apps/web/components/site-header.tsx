@@ -1,14 +1,14 @@
 import { ArrowRightIcon } from '@phosphor-icons/react/dist/ssr';
 import Link from 'next/link';
 import { ScrollHeader, SiteMenu, SiteNav } from './site-menu';
-import { at } from '@/lib/hosts';
+import { analyticsOn, at } from '@/lib/hosts';
 import { Wordmark } from './ui';
 
 const LINKS = [
   { href: at('/#modes'), label: 'Modes' },
   { href: at('/#how'), label: 'How It Works' },
   { href: at('/system'), label: 'System' },
-  { href: at('/analytics'), label: 'Analytics' },
+  ...(analyticsOn ? [{ href: at('/analytics'), label: 'Analytics' }] : []),
 ];
 
 /**
@@ -44,8 +44,8 @@ export function SiteHeader() {
 }
 
 const COLUMNS = [
-  { title: 'Product', links: [{ href: at('/app'), label: 'Launch App' }, { href: at('/analytics'), label: 'Perpl Analytics' }, { href: at('/analytics/screener'), label: 'Screener' }, { href: at('/analytics/flow'), label: 'Flow' }] },
-  { title: 'Learn', links: [{ href: at('/#modes'), label: 'Modes' }, { href: at('/#how'), label: 'How It Works' }, { href: at('/system'), label: 'System' }, { href: at('/system#kimi'), label: 'Kimi, the Risk Governor' }, { href: at('/#faq'), label: 'Questions' }] },
+  { title: 'Product', links: [{ href: at('/app'), label: 'Launch App' }, ...(analyticsOn ? [{ href: at('/analytics'), label: 'Perpl Analytics' }, { href: at('/analytics/screener'), label: 'Screener' }, { href: at('/analytics/flow'), label: 'Flow' }] : [])] },
+  { title: 'Learn', links: [{ href: at('/#modes'), label: 'Modes' }, { href: at('/#how'), label: 'How It Works' }, { href: at('/system'), label: 'System' }, { href: at('/system#llm'), label: 'LLM, the Risk Governor' }, { href: at('/#faq'), label: 'Questions' }] },
   { title: 'Built On', links: [{ href: 'https://perpl.xyz', label: 'Perpl', external: true }, { href: 'https://www.monad.xyz', label: 'Monad', external: true }] },
 ] as const;
 
