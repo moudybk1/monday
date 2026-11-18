@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Deploy runs the same checks on the exact commit it ships.
+  workflow_call:
 
 jobs:
   check:
@@ -17,3 +19,14 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  # The images the VPS builds, built here first, so a broken Dockerfile or a failing Next build shows on the PR and
+  # not halfway through a deploy. Nothing is pushed anywhere.
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Server image
+        run: docker build -f infra/Dockerfile -t monday-server:ci .
+      - name: Web image
+        run: docker build -f infra/Dockerfile.web --build-arg NEXT_PUBLIC_WS_URL=wss://example.invalid/ws -t monday-web:ci .
